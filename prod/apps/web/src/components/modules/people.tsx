@@ -1,4 +1,5 @@
 'use client';
+import { Avatar } from '@/components/avatar';
 import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 import { HR_DOC_TYPES, LEAVE_DECIDERS, LEAVE_TYPES, type Checklist, type HrDoc, type HrProfile, type Records } from '@jscore/contracts';
@@ -62,7 +63,7 @@ export function PeopleView({ tab }: { tab?: string }) {
         }
         if (t === 'employees') {
           return <Card title={`Çalışanlar (${staff.length})`}><Table heads={['Ad', 'Unvan', 'Departman', 'Yönetici', 'Durum', '']}>{staff.map((m) => { const p = prof(m.id); return (
-            <tr key={m.id}><td><Link className="font-semibold hover:underline" href={`/app/people/${m.id}`}>{m.name}</Link></td><td className="text-muted">{m.role_title}</td><td>{p?.dept ?? '—'}</td><td>{p?.manager ? nameOf(d.team, p.manager).split(' ')[0] : '—'}</td>
+            <tr key={m.id}><td><Link className="flex items-center gap-2 font-semibold hover:underline" href={`/app/people/${m.id}`}><Avatar id={m.id} name={m.name} size="sm" />{m.name}</Link></td><td className="text-muted">{m.role_title}</td><td>{p?.dept ?? '—'}</td><td>{p?.manager ? nameOf(d.team, p.manager).split(' ')[0] : '—'}</td>
               <td><Chip tone={p?.status === 'offboarding' ? 'warn' : 'ok'}>{p?.status === 'offboarding' ? `Çıkış ${fmtDate(p.end_date ?? '')}` : 'Aktif'}</Chip></td><td><Link className="btn btn-sm" href={`/app/people/${m.id}`}>360</Link></td></tr>); })}</Table></Card>;
         }
         if (t === 'archive') {
@@ -185,7 +186,7 @@ export function Employee360({ id, tab }: { id: string; tab?: string }) {
         const m = d.team.find((x) => x.id === id); const p = d.hr_profiles.find((x) => x.employee_id === id);
         if (!m) return <Empty>Çalışan bulunamadı.</Empty>;
         const mine = <K extends 'hr_docs' | 'hr_assets' | 'trainings' | 'perf_reviews' | 'leaves' | 'shifts' | 'checklists' | 'skills'>(k: K) => (d[k] as Records[K][]).filter((r) => (r as { employee_id?: string }).employee_id === id);
-        const head = <div className="mb-4 card flex flex-wrap items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-full bg-brand font-bold text-white">{m.name.split(' ').map((s) => s[0]).slice(0, 2).join('')}</div><div><div className="text-lg font-bold">{m.name}</div><div className="text-sm text-muted">{m.role_title} · {p?.dept ?? ''}</div></div><Chip tone={p?.status === 'offboarding' ? 'warn' : 'ok'}>{p?.status === 'offboarding' ? `Çıkış ${fmtDate(p.end_date ?? '')}` : 'Aktif'}</Chip></div>;
+        const head = <div className="mb-4 card flex flex-wrap items-center gap-3"><Avatar id={m.id} name={m.name} size="lg" /><div><div className="text-lg font-bold">{m.name}</div><div className="text-sm text-muted">{m.role_title} · {p?.dept ?? ''}</div></div><Chip tone={p?.status === 'offboarding' ? 'warn' : 'ok'}>{p?.status === 'offboarding' ? `Çıkış ${fmtDate(p.end_date ?? '')}` : 'Aktif'}</Chip></div>;
         let body: React.ReactNode;
         if (t === 'profile') body = <Card title="Profil"><dl className="grid gap-2 text-sm sm:grid-cols-2">{[['Unvan', m.role_title], ['Departman', p?.dept], ['Yönetici', p?.manager ? nameOf(d.team, p.manager) : '—'], ['Başlangıç', p ? fmtDate(p.start_date) : '—'], ['E-posta', p?.email], ['Telefon', p?.phone], ['İstihdam', p?.employment], ['Haftalık saat', m.weekly_hours]].map(([k, v]) => <div key={String(k)} className="flex justify-between gap-3 border-b border-line py-1"><dt className="text-muted">{k}</dt><dd>{String(v ?? '—')}</dd></div>)}</dl><div className="mt-3 flex flex-wrap gap-1.5">{mine('skills').map((s) => <Chip key={s.id}>{s.skill} {'★'.repeat(s.level)}</Chip>)}</div></Card>;
         else if (t === 'docs') body = !can.read('hr_docs') ? <StepUp what="Özlük belgeleri" /> : <Card title="Özlük belgeleri"><Table heads={['Belge', 'Durum', 'Bitiş', 'Saklama']}>{mine('hr_docs').map((x) => <tr key={x.id}><td>{x.doc_type}</td><td><Chip tone={DOC_TONE[x.status]}>{x.status}</Chip></td><td>{x.expires_at ? fmtDate(x.expires_at) : '—'}</td><td className="text-muted">{x.retention_until ? fmtDate(x.retention_until) : '—'}</td></tr>)}</Table></Card>;

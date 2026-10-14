@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useSession } from './session';
 import type { Repo } from '@/lib/repo/types';
@@ -17,12 +18,13 @@ export function useData<T>(fn: (repo: Repo) => Promise<T>, deps: unknown[] = [])
   return { ...state, reload: () => setLocal((n) => n + 1) };
 }
 
-export function PageHeader({ title, sub, actions }: { title: string; sub?: string; actions?: ReactNode }) {
+export function PageHeader({ title, sub, actions, eyebrow }: { title: string; sub?: string; actions?: ReactNode; eyebrow?: string }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <div className="page-head">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-        {sub && <p className="mt-1 text-sm text-muted">{sub}</p>}
+        {eyebrow && <div className="eyebrow">{eyebrow}</div>}
+        <h1>{title}</h1>
+        {sub && <p>{sub}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
@@ -52,15 +54,16 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: Array<
     </div>
   );
 }
-export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: string; tone?: 'warn' | 'bad' | 'ok' }) {
+export function Stat({ label, value, hint, tone, href, icon }: { label: string; value: ReactNode; hint?: string; tone?: 'warn' | 'bad' | 'ok'; href?: string; icon?: ReactNode }) {
   const c = tone === 'bad' ? 'text-magenta' : tone === 'warn' ? 'text-[#ffb020]' : tone === 'ok' ? 'text-[#3ddc97]' : '';
-  return (
-    <div className="card">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</div>
-      <div className={`mt-2 text-3xl font-bold ${c}`}>{value}</div>
-      {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
-    </div>
+  const body = (
+    <>
+      <div className="metric-top"><span>{label}</span>{icon}</div>
+      <div className={`metric-value ${c}`}>{value}</div>
+      {hint && <div className="metric-note">{hint}</div>}
+    </>
   );
+  return href ? <Link href={href} className="metric metric-link">{body}</Link> : <div className="metric">{body}</div>;
 }
 
 const TR_MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];

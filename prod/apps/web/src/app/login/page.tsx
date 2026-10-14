@@ -6,6 +6,8 @@ import { DEMO_ACCOUNTS } from '@/lib/demo-seed';
 import { DEMO_COOKIE, ORG_COOKIE, isSupabaseConfigured } from '@/lib/env';
 import { setCookie } from '@/lib/repo/client';
 import { createBrowser } from '@/lib/supabase/browser';
+import { Avatar } from '@/components/avatar';
+import { ChevronRight } from 'lucide-react';
 
 function LoginInner() {
   const router = useRouter();
@@ -38,16 +40,17 @@ function LoginInner() {
   const demo = (id: string) => { setCookie(DEMO_COOKIE, id); setCookie(ORG_COOKIE, 'org_jobs'); router.replace(next); };
 
   return (
-    <main className="mx-auto grid min-h-screen max-w-5xl content-center gap-8 p-6 lg:grid-cols-[1fr_1.2fr]">
-      <section>
-        <h1 className="text-4xl font-extrabold tracking-tight">JS <span className="text-accent">Ecosystem</span></h1>
-        <p className="mt-3 max-w-sm text-muted">Jobs Studio’nun ajans işletim sistemi: gelen talepten faturaya tek akış, rol bazlı erişim ve yapay zekâ destekli kurul.</p>
-      </section>
-      <section className="card">
+    <main className="login" id="main">
+      <div className="login-card">
+        <img className="orbit-art login-orbit" src="/brand/orbit-studio.svg" alt="" aria-hidden="true" />
+        <img className="logo" src="/brand/jobs-logo-light.svg" alt="Jobs Studio" width={180} height={35} />
+        <div className="eyebrow">{supa ? 'JS ECOSYSTEM · GİRİŞ' : 'JS ECOSYSTEM · DEMO GİRİŞ'}</div>
+        <h1>{supa ? 'Ajansın işletim sistemine hoş geldin.' : 'Bir rol seç, ajansı o gözle gör.'}</h1>
+        <p className="lead">{supa ? 'Gelen talepten faturaya tek akış, rol bazlı erişim ve yapay zekâ destekli kurul.' : 'Demo giriş — kimlik doğrulama değildir. Rol yalnızca menü, veri kapsamı ve ekran içeriğini değiştirir; veriler yalnızca bu tarayıcıda tutulur.'}</p>
         {supa ? (
-          <div className="grid gap-4">
+          <div className="mt-6 grid gap-4">
             <button className="btn btn-primary" onClick={google} disabled={busy}>Google ile devam et</button>
-            <div className="text-center text-xs text-muted">veya</div>
+            <div className="text-center text-xs text-[#9fa6cc]">veya</div>
             {!sent ? (
               <form onSubmit={sendOtp} className="grid gap-3">
                 <label className="label" htmlFor="em">E-posta</label>
@@ -63,20 +66,20 @@ function LoginInner() {
             )}
           </div>
         ) : (
-          <div>
-            <div role="status" className="mb-4 rounded-control border border-[#ffb020]/50 bg-[#ffb020]/10 p-3 text-xs text-[#ffb020]">Demo modu — veritabanı bağlı değil. Bir rol seçerek devam et; veriler yalnızca bu tarayıcıda tutulur.</div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {DEMO_ACCOUNTS.map((a) => (
-                <button key={a.id} className="nested text-left transition hover:brightness-125" onClick={() => demo(a.id)}>
-                  <div className="flex items-center justify-between gap-2"><strong>{a.name}</strong><span className="chip chip-brand">{ROLE_LABELS[a.role]}</span></div>
-                  <div className="mt-1 text-xs text-muted">{a.hint}</div>
-                </button>
-              ))}
-            </div>
+          <div className="login-roles">
+            {DEMO_ACCOUNTS.map((a) => (
+              <button key={a.id} className="role-card" onClick={() => demo(a.id)}>
+                <Avatar id={a.employee_id || a.id} name={a.name} size="md" />
+                <span className="rc-text"><strong>{a.name}</strong><small>{a.title}</small><small>{a.hint}</small></span>
+                <span className="chip chip-brand">{ROLE_LABELS[a.role]}</span>
+                <ChevronRight size={16} aria-hidden />
+              </button>
+            ))}
           </div>
         )}
         {msg && <p role="alert" className="mt-4 text-sm text-magenta">{msg}</p>}
-      </section>
+        {!supa && <p className="mt-5 text-xs text-[#9fa6cc]">Demo tarihi 14 Ekim 2026 · Tüm kayıtlar ve portreler kurgusaldır.</p>}
+      </div>
     </main>
   );
 }

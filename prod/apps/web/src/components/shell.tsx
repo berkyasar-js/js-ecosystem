@@ -2,11 +2,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, Menu, MessageSquare, Moon, Search, Sun, X } from 'lucide-react';
+import { Bell, ChevronRight, LogOut, Menu, MessageSquare, Moon, Search, Sun, X } from 'lucide-react';
 import { GROUP_LABELS, ROLE_LABELS, type ModuleGroup, type Project } from '@jscore/contracts';
 import { navModules } from '@/lib/nav';
 import { ICONS } from './icons';
 import { useSession } from './session';
+import { Avatar } from './avatar';
 import { Loading } from './ui';
 
 const GROUPS: ModuleGroup[] = ['main', 'work', 'creative', 'people', 'intel', 'manage'];
@@ -17,10 +18,19 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [pending, setPending] = useState(0);
   const [flags, setFlags] = useState<Record<string, boolean> | undefined>();
-  useEffect(() => setOpen(false), [path]);
+  useEffect(() => { setOpen(false); setSearchOpen(false); setQ(''); }, [path]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSearchOpen((v) => !v); }
+      else if (e.key === 'Escape') { setSearchOpen(false); setOpen(false); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   useEffect(() => {
     if (!repo) return;
     repo.listApprovals().then((a) => setPending(a.filter((x) => x.status === 'pending').length), () => setPending(0));
@@ -42,13 +52,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const currentOrg = orgs.find((o) => o.id === orgId);
 
   const nav = (
-    <nav aria-label="Ana gezinme" className="flex flex-col gap-4">
+    <nav aria-label="Ana gezinme" className="flex flex-col">
       {GROUPS.map((g) => {
         const items = visible.filter((m) => m.group === g && m.id !== 'apps');
         if (!items.length) return null;
         return (
           <div key={g}>
-            <div className="px-3 pb-1 text-[11px] font-bold tracking-widest text-muted">{GROUP_LABELS[g]}</div>
+            <div className="nav-label">{GROUP_LABELS[g]}</div>
             {items.map((m) => {
               const Icon = ICONS[m.icon] ?? ICONS.apps;
               const href = hrefOf(m.slug);
@@ -56,8 +66,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
               return (
                 <Link key={m.id} href={href} className="navitem" aria-current={active ? 'page' : undefined} title={m.name}>
                   <Icon size={17} aria-hidden /><span className="flex-1 truncate">{m.name}</span>
-                  {m.id === 'approvals' && pending > 0 && <span className="chip chip-warn">{pending}</span>}
-                  {!m.live && <span className="h-1.5 w-1.5 rounded-full bg-line" title="Prototipte mevcut, üretimde sırada" />}
+                  {m.id === 'approvals' && pending > 0 && <span className="nav-count">{pending}</span>}
+                  {!m.live && <span className="h-1.5 w-1.5 rounded-full bg-white/25" title="Prototipte mevcut, üretimde sırada" />}
                 </Link>
               );
             })}
@@ -67,50 +77,64 @@ export function Shell({ children }: { children: React.ReactNode }) {
     </nav>
   );
 
+  const orgName = currentOrg?.name ?? 'Jobs Studio';
+  const orgMark = orgName.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  const avatarId = me.employee_id || me.id;
+  const current = visible.find((m) => path === hrefOf(m.slug) || path.startsWith(hrefOf(m.slug) + '/'));
+  const crumb = current?.name ?? (path.startsWith('/app/profile') ? 'Profil' : 'Genel Bakış');
+
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[272px_1fr]">
-      <aside className={`${open ? 'fixed inset-0 z-40 block bg-canvas' : 'hidden'} overflow-y-auto border-r border-line p-4 lg:sticky lg:top-0 lg:block lg:h-screen`}>
-        <div className="mb-5 flex items-center justify-between px-2">
-          <Link href="/app/overview" className="text-lg font-extrabold tracking-tight">JS <span className="text-accent">Ecosystem</span></Link>
-          <button className="btn btn-ghost btn-sm lg:hidden" onClick={() => setOpen(false)} aria-label="Menüyü kapat"><X size={16} /></button>
+    <div className="min-h-screen lg:grid lg:grid-cols-[256px_1fr]">
+      <aside aria-label="Jobs Studio" className={`sidebar ${open ? 'fixed inset-0 z-40 flex' : 'hidden'} lg:sticky lg:top-0 lg:flex lg:h-screen`}>
+        <div className="flex items-start justify-between">
+          <Link href="/app/overview" aria-label="Genel Bakış"><img className="logo" src="/brand/jobs-logo-light.svg" alt="Jobs Studio" width={168} height={32} /></Link>
+          <button className="btn btn-ghost btn-sm text-white lg:hidden" onClick={() => setOpen(false)} aria-label="Menüyü kapat"><X size={16} /></button>
         </div>
+        <Link className="wordmark" href="/app/overview">JS Ecosystem<b>.</b></Link>
+        <div className="workspace"><div className="workspace-mark">{orgMark || 'JS'}</div><div>{orgName} · Ankara<small>{ROLE_LABELS[me.role]} görünümü</small></div></div>
         {nav}
+        <Link className="identity" href="/app/profile" aria-label="Profil">
+          <Avatar id={avatarId} name={me.name} />
+          <div>{me.name}<small>{me.title}</small></div>
+        </Link>
       </aside>
       <div className="min-w-0">
-        {mode === 'demo' && (
-          <div role="status" className="flex flex-wrap items-center justify-center gap-3 bg-[#ffb020] px-4 py-1.5 text-center text-xs font-semibold text-[#2a1b00]">
-            Demo modu — veritabanı bağlı değil
-            <button className="underline" onClick={resetDemo}>Demo verisini sıfırla</button>
-          </div>
-        )}
-        <header className="sticky top-0 z-30 flex flex-wrap items-center gap-2 border-b border-line bg-canvas/90 px-4 py-3 backdrop-blur sm:px-6">
-          <button className="btn btn-ghost btn-sm lg:hidden" onClick={() => setOpen(true)} aria-label="Menüyü aç"><Menu size={16} /></button>
-          <div className="relative min-w-[160px] flex-1 sm:max-w-md">
-            <Search size={15} className="pointer-events-none absolute left-3 top-3 text-muted" aria-hidden />
-            <input className="input pl-9" placeholder="Ara: modül, proje…" aria-label="Ara" value={q} onChange={(e) => setQ(e.target.value)} />
-            {results.length > 0 && (
-              <ul className="card absolute left-0 right-0 top-12 z-50 grid gap-1 p-2 shadow-xl">
-                {results.map((r) => (
-                  <li key={r.href}><Link href={r.href} onClick={() => setQ('')} className="navitem justify-between"><span>{r.label}</span><span className="chip">{r.kind}</span></Link></li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="ml-auto flex items-center gap-2">
+        <header className="topbar">
+          <button className="btn btn-ghost icon-btn lg:hidden" onClick={() => setOpen(true)} aria-label="Menüyü aç"><Menu size={18} /></button>
+          <div className="breadcrumb"><span className="hidden sm:inline">{orgName}</span><ChevronRight size={14} aria-hidden className="hidden sm:inline" /><strong>{crumb}</strong></div>
+          <div className="top-actions">
+            <div className="relative">
+              <button className="search-trigger" onClick={() => setSearchOpen((v) => !v)} aria-label="Ara (⌘K)" aria-expanded={searchOpen}>
+                <Search size={15} aria-hidden /><span className="hidden md:inline">Ara</span><kbd className="hidden md:inline">⌘ K</kbd>
+              </button>
+              {searchOpen && (
+                <div className="card search-pop fixed left-3 right-3 top-[72px] sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-[380px]" role="dialog" aria-label="Ara">
+                  <input className="input" autoFocus placeholder="Ara: modül, proje…" aria-label="Ara" value={q} onChange={(e) => setQ(e.target.value)} />
+                  {results.map((r) => (
+                    <Link key={r.href} href={r.href} onClick={() => { setQ(''); setSearchOpen(false); }} className="navitem justify-between !text-[var(--ink)]"><span>{r.label}</span><span className="chip">{r.kind}</span></Link>
+                  ))}
+                  {q.trim() && results.length === 0 && <p className="p-2 text-sm text-muted">Sonuç yok.</p>}
+                </div>
+              )}
+            </div>
             {orgs.length > 1 && (
-              <select className="input w-auto" aria-label="Organizasyon" value={orgId} onChange={(e) => setOrg(e.target.value)}>
+              <select className="input hidden w-auto md:block" aria-label="Organizasyon" value={orgId} onChange={(e) => setOrg(e.target.value)}>
                 {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             )}
-            {orgs.length === 1 && <span className="chip hidden sm:inline-flex">{currentOrg?.name}</span>}
-            <span className="chip chip-brand hidden sm:inline-flex" title={me.title}>{ROLE_LABELS[me.role]}</span>
-            <Link href="/app/approvals" className="btn btn-ghost btn-sm relative" aria-label={`Bildirimler (${pending} bekleyen onay)`}>
-              <Bell size={16} />{pending > 0 && <span className="absolute -right-1 -top-1 rounded-full bg-accent px-1.5 text-[10px] font-bold text-white">{pending}</span>}
+            <span className="role-chip hidden sm:inline-flex" title={me.title}><span className="dot" />{ROLE_LABELS[me.role]}</span>
+            {mode === 'demo' && (
+              <button className="demo-chip hidden md:inline-flex" title="Demo verisini sıfırla" aria-label="Demo modu, 14 Ekim 2026. Demo verisini sıfırla" onClick={() => { if (window.confirm('Demo verisi sıfırlansın mı?')) resetDemo(); }}>
+                <i className="demo-dot" />Demo · 14 Ekim 2026
+              </button>
+            )}
+            <Link href="/app/approvals" className="btn btn-ghost icon-btn" aria-label={`Bildirimler (${pending} bekleyen onay)`}>
+              <Bell size={17} />{pending > 0 && <span className="count-dot">{pending}</span>}
             </Link>
-            <Link href="/app/messages" className="btn btn-ghost btn-sm" aria-label="Mesajlar"><MessageSquare size={16} /></Link>
-            <button className="btn btn-ghost btn-sm" onClick={toggleTheme} aria-label="Temayı değiştir">{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
-            <Link href="/app/profile" className="grid h-9 w-9 place-items-center rounded-full bg-brand text-xs font-bold text-white" title={me.name}>{me.initials}</Link>
-            <button className="btn btn-ghost btn-sm" onClick={() => void logout()}>Çıkış</button>
+            <Link href="/app/messages" className="btn btn-ghost icon-btn hidden sm:inline-flex" aria-label="Mesajlar"><MessageSquare size={17} /></Link>
+            <button className="btn btn-ghost icon-btn" onClick={toggleTheme} aria-label="Temayı değiştir">{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button>
+            <Link href="/app/profile" className="avatar-link" aria-label="Profil" title={me.name}><Avatar id={avatarId} name={me.name} size="md" /></Link>
+            <button className="btn btn-ghost icon-btn hidden sm:inline-flex" onClick={() => void logout()} aria-label="Çıkış"><LogOut size={17} /></button>
           </div>
         </header>
         <main id="main" className="mx-auto w-full max-w-[1400px] p-4 sm:p-6">{children}</main>

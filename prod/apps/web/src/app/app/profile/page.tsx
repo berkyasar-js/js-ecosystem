@@ -1,4 +1,5 @@
 'use client';
+import { Avatar } from '@/components/avatar';
 import { MODULES, ROLE_LABELS, canAccessModule, hasPermission } from '@jscore/contracts';
 import { PageHeader } from '@/components/ui';
 import { useSession } from '@/components/session';
@@ -17,7 +18,7 @@ export default function Profile() {
       <PageHeader title="Profilim" sub="Kapsam, yetkiler ve tercihler" />
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="card">
-          <div className="flex items-center gap-4"><div className="grid h-14 w-14 place-items-center rounded-full bg-brand text-lg font-bold text-white">{me.initials}</div>
+          <div className="flex items-center gap-4"><Avatar id={me.employee_id || me.id} name={me.name} size="lg" />
             <div><h2 className="text-lg font-bold">{me.name}</h2><p className="text-sm text-muted">{me.title}</p><p className="text-xs text-muted">{me.email}</p></div></div>
           <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
             <div className="nested"><dt className="text-xs text-muted">Rol</dt><dd className="font-semibold">{ROLE_LABELS[me.role]}</dd></div>
