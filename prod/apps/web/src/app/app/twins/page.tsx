@@ -1,16 +1,21 @@
 'use client';
 import { useState } from 'react';
 import { Async, Empty, PageHeader, Tabs, fmtDate, money, useData } from '@/components/ui';
+import { TaskBids } from '@/components/modules/bids';
 
 export default function Twins() {
-  const q = useData(async (r) => ({ twins: await r.listTwins(), bids: await r.listTwinBids() }));
-  const [tab, setTab] = useState<'twins' | 'bids'>('twins');
+  const q = useData(async (r) => ({ twins: await r.listTwins(), bids: await r.listTwinBids(), tasks: (await r.listTasks().catch(() => [])).filter((t) => t.state !== 'archive' && !t.assignee_id).slice(0, 20) }));
+  const [tab, setTab] = useState<'twins' | 'bids' | 'tasks'>('twins');
   const [sent, setSent] = useState<Record<string, boolean>>({});
   return (
     <>
       <PageHeader title="Dijital İkizler" sub="Kişi ve rol ikizleri, kapasite ve iş ihaleleri" />
-      <Tabs<typeof tab> tabs={[['twins', 'İkizler'], ['bids', 'İş ihaleleri (demo)']]} value={tab} onChange={setTab} />
-      <Async q={q}>{({ twins, bids }) => tab === 'twins' ? (
+      <Tabs<typeof tab> tabs={[['twins', 'İkizler'], ['tasks', 'Görev ihaleleri'], ['bids', 'İş ihaleleri (demo)']]} value={tab} onChange={setTab} />
+      <Async q={q}>{({ twins, bids, tasks }) => tab === 'tasks' ? (
+        tasks.length === 0 ? <Empty>Atanmamış açık görev yok.</Empty> : (
+          <ul className="grid gap-4">{tasks.map((t) => <li key={t.id} className="card"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-bold">{t.title}</h2><span className="chip">{t.priority === 'high' ? 'Yüksek öncelik' : t.priority === 'low' ? 'Düşük' : 'Normal'}</span></div><TaskBids task={t} /></li>)}</ul>
+        )
+      ) : tab === 'twins' ? (
         twins.length === 0 ? <Empty>İkiz yok.</Empty> : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {twins.map((t) => (

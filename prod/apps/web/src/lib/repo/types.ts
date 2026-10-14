@@ -2,6 +2,7 @@ import type {
   AuditEvent, Checklist, CollKey, DealStage, Deal, Leave, Records, SaveInput,
   AgentPrompt, AgentRun, Approval, ApprovalCreate, BoardAnswer, BoardDecision, Brand, Channel, ConnectData, Integration, Me, Member,
   Message, Organization, OrgSettings, Project, Task, TaskCreate, TaskState, TaskType, TeamMember, Twin, TwinBid,
+  AccessToken, BidAssignResult, BidProposal, TaskAssignment, TaskBid, TokenCreate,
 } from '@jscore/contracts';
 
 export interface Repo {
@@ -34,15 +35,27 @@ export interface Repo {
   saveSettings(patch: Partial<OrgSettings>): Promise<OrgSettings>;
   getConnect(): Promise<ConnectData>;
   setIntegrationStatus(id: string, status: Integration['status']): Promise<void>;
+  /** API anahtarı: yalnızca sha256 özeti saklanır; düz token yalnızca bu çağrının dönüşünde bir kez bulunur. owner/org_admin/integration_admin. */
+  createToken(input: TokenCreate): Promise<{ token: AccessToken; plaintext: string }>;
+  revokeToken(id: string): Promise<void>;
   // agents & intel
   listAgentPrompts(): Promise<AgentPrompt[]>;
   getActivePrompt(agent: string): Promise<AgentPrompt | null>;
   listAgentRuns(): Promise<AgentRun[]>;
   logAgentRun(run: Omit<AgentRun, 'id' | 'org_id' | 'created_at'>): Promise<void>;
+  /** Ay içi ajan harcaması (USD, agent_runs.cost_usd toplamı). month = 'YYYY-MM'. */
+  monthlyAgentSpend(month: string): Promise<number>;
   listBoardDecisions(): Promise<BoardDecision[]>;
   decideBoard(id: string, answer: BoardAnswer): Promise<BoardDecision>;
   listTwins(): Promise<Twin[]>;
   listTwinBids(): Promise<TwinBid[]>;
+  // ihale (twins.bids): görev için ikiz teklifleri
+  listTaskBids(taskId?: string): Promise<TaskBid[]>;
+  listTaskAssignments(taskId?: string): Promise<TaskAssignment[]>;
+  /** Görevi ihaleye açar (önceki açık teklifler çekilir). Demo `proposed` yoksa kendi üretir; Supabase'de teklifler `twin_bid` ajanından (sunucu) gelir. */
+  openTaskForBids(taskId: string, proposed?: BidProposal[]): Promise<TaskBid[]>;
+  /** Tekliften atama. Görev önceliği 'high' ise onay kapısı: onay oluşur, karar 'approved' olunca atama yapılır. */
+  assignFromBid(bidId: string): Promise<BidAssignResult>;
   // modül koleksiyonları (kayıt + RLS: bkz. contracts COLLECTIONS)
   list<K extends CollKey>(kind: K): Promise<Records[K][]>;
   /** id yoksa oluşturur, varsa birleştirerek günceller; zod doğrular, audit yazar. */

@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
+import { CapExceededError } from './agents/cap';
 import { ForbiddenError, NotFoundError } from './repo/types';
 
 export const json = (data: unknown, status = 200) => NextResponse.json(data, { status });
 export function fail(e: unknown) {
   if (e instanceof ForbiddenError) return json({ error: e.message }, 403);
+  if (e instanceof CapExceededError) return json({ error: e.message, code: 'monthly_cap_exceeded', spent_try: e.cap.spentTry, cap_try: e.cap.capTry }, 402);
   if (e instanceof NotFoundError) return json({ error: e.message }, 404);
   if (e && typeof e === 'object' && 'issues' in e) return json({ error: 'Geçersiz istek', issues: (e as { issues: unknown }).issues }, 400);
   console.error(e);

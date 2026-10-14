@@ -2,13 +2,16 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   COLLECTIONS, DEAL_STAGES, LEAVE_DECIDERS, canWriteColl, type AuditEvent, type Checklist, type CollKey, type Deal, type DealStage, type Leave, type Records, type SaveInput, type TeamMember,
   approvalCreateSchema, canDecideApproval, orgSettingsPatchSchema, taskCreateSchema, type AgentRun, type Approval, type ApprovalCreate, type BoardAnswer,
+  TOKEN_ADMIN_ROLES, bidProposalSchema, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
   type BoardDecision, type ConnectData, type Integration, type Me, type Message, type OrgSettings, type Role, type Task, type TaskCreate, type TaskState,
 } from '@jscore/contracts';
 import { DEFAULT_SETTINGS } from './defaults';
+import { addDaysIso, generateToken, sha256Hex, tokenPrefix } from '../token';
 import { ForbiddenError, NotFoundError, type Repo } from './types';
 import { validateRecord } from './validate';
 
 type Row = Record<string, unknown>;
+const TOKEN_COLS = 'id,org_id,name,token_prefix,scopes,created_at,last_used_at,user_id,expires_at,revoked_at';
 /** RLS bilinçli: her sorgu kullanıcının JWT'si ile çalışır; ek filtre yalnızca aktif organizasyonu seçmek içindir. */
 export class SupabaseRepo implements Repo {
   readonly mode = 'supabase' as const;
@@ -109,11 +112,29 @@ export class SupabaseRepo implements Repo {
       this.ok<ConnectData['integrations']>(this.sb.from('integrations').select('id,org_id,provider,name,status,scopes,secret_ref').eq('org_id', org)),
       this.ok<ConnectData['mcp_servers']>(this.sb.from('mcp_servers').select('*').eq('org_id', org)),
       this.ok<ConnectData['webhooks']>(this.sb.from('webhooks').select('*').eq('org_id', org)),
-      this.ok<ConnectData['tokens']>(this.sb.from('access_tokens').select('id,org_id,name,token_prefix,scopes,created_at,last_used_at').eq('org_id', org).is('revoked_at', null)),
+      this.ok<ConnectData['tokens']>(this.sb.from('access_tokens').select(TOKEN_COLS).eq('org_id', org).is('revoked_at', null)),
     ]);
     return { integrations, mcp_servers, webhooks, tokens };
   }
   async setIntegrationStatus(id: string, status: Integration['status']) { await this.ok(this.sb.from('integrations').update({ status }).eq('id', id).select('id')); }
+  async createToken(input: TokenCreate) {
+    const me = await this.me();
+    if (!me || !TOKEN_ADMIN_ROLES.includes(me.role)) throw new ForbiddenError('API anahtarı yalnızca owner / org_admin / entegrasyon admin oluşturabilir');
+    const v = tokenCreateSchema.parse(input);
+    const plaintext = generateToken();
+    // Yalnızca sha256 özeti saklanır; düz token bu çağrının dönüşünden başka hiçbir yerde bulunmaz.
+    const token = await this.ok<AccessToken>(this.sb.from('access_tokens').insert({
+      org_id: me.org_id, name: v.name, scopes: v.scopes, token_prefix: tokenPrefix(plaintext), token_hash: await sha256Hex(plaintext), user_id: me.id,
+      expires_at: v.expires_in_days ? addDaysIso(new Date().toISOString(), v.expires_in_days) : null,
+    }).select(TOKEN_COLS).single());
+    await this.audit('token.create', `access_tokens/${token.id}`, { name: v.name, scopes: v.scopes });
+    return { token, plaintext };
+  }
+  async revokeToken(id: string) {
+    const rows = await this.ok<Row[]>(this.sb.from('access_tokens').update({ revoked_at: new Date().toISOString() }).eq('id', id).is('revoked_at', null).select('id'));
+    if (!rows.length) throw new NotFoundError('Anahtar');
+    await this.audit('token.revoke', `access_tokens/${id}`);
+  }
 
   async listAgentPrompts() { return this.ok(this.sb.from('agent_prompts').select('*').or(`org_id.is.null,org_id.eq.${await this.org()}`).order('agent')); }
   async getActivePrompt(agent: string) {
@@ -123,13 +144,51 @@ export class SupabaseRepo implements Repo {
   }
   async listAgentRuns() { return this.ok(this.sb.from('agent_runs').select('*').eq('org_id', await this.org()).order('created_at', { ascending: false }).limit(50)); }
   async logAgentRun(run: Omit<AgentRun, 'id' | 'org_id' | 'created_at'>) { await this.ok(this.sb.from('agent_runs').insert({ ...run, org_id: await this.org() }).select('id')); }
+  async monthlyAgentSpend(month: string) {
+    const [y, m] = month.split('-').map(Number);
+    const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+    const rows = await this.ok<Row[]>(this.sb.from('agent_runs').select('cost_usd').eq('org_id', await this.org()).gte('created_at', `${month}-01T00:00:00Z`).lt('created_at', `${next}-01T00:00:00Z`));
+    return rows.reduce((a, r) => a + Number(r.cost_usd), 0);
+  }
   async listBoardDecisions() { return this.ok<BoardDecision[]>(this.sb.from('board_decisions').select('*').eq('org_id', await this.org()).order('created_at', { ascending: false })); }
   async decideBoard(id: string, answer: BoardAnswer) {
     const status = answer === 'EVET' ? 'approved' : answer === 'HAYIR' ? 'rejected' : 'deferred';
     return this.ok<BoardDecision>(this.sb.from('board_decisions').update({ founder_answer: answer, status, decided_at: new Date().toISOString() }).eq('id', id).select().single());
   }
   async listTwins() { return this.ok(this.sb.from('employee_twins').select('*').eq('org_id', await this.org())); }
-  async listTwinBids() { return []; /* ihale akışı henüz tablo değil; üretimde sırada */ }
+  async listTwinBids() { return []; /* eski 'iş ihaleleri' demo listesi; gerçek teklifler: listTaskBids */ }
+
+  /* ───────── İhale (public.twin_bids = twins.bids) ───────── */
+  async listTaskBids(taskId?: string) {
+    let q = this.sb.from('twin_bids').select('*').eq('org_id', await this.org()).order('confidence', { ascending: false });
+    if (taskId) q = q.eq('task_id', taskId);
+    return this.ok<TaskBid[]>(q);
+  }
+  async listTaskAssignments(taskId?: string) {
+    let q = this.sb.from('task_assignments').select('*').eq('org_id', await this.org()).order('created_at', { ascending: false });
+    if (taskId) q = q.eq('task_id', taskId);
+    return this.ok<TaskAssignment[]>(q);
+  }
+  /** Teklifler `twin_bid` ajanından (POST /api/agents/run) gelir; burada doğrulanıp yazılır. */
+  async openTaskForBids(taskId: string, proposed?: BidProposal[]): Promise<TaskBid[]> {
+    if (!proposed) throw new Error('Teklifler yok: önce twin_bid ajanı çalıştırılmalı');
+    if (!proposed.length) throw new Error('Uygun ikiz teklif vermedi');
+    const props = proposed.map((p) => bidProposalSchema.parse(p));
+    const org = await this.org();
+    const twins = await this.ok<Array<{ id: string; employee_id: string | null }>>(this.sb.from('employee_twins').select('id,employee_id').eq('org_id', org).eq('kind', 'person').eq('opt_out', false).not('approved_by_owner_at', 'is', null).in('id', props.map((p) => p.twin_id)));
+    const emp = new Map(twins.map((t) => [t.id, t.employee_id]));
+    if (props.some((p) => !emp.get(p.twin_id))) throw new Error('Teklif yalnızca onaylı, opt-out olmayan kişi ikizlerinden gelebilir');
+    await this.ok(this.sb.from('twin_bids').update({ status: 'withdrawn' }).eq('task_id', taskId).eq('status', 'open').select('id'));
+    const rows = props.map((p) => ({ org_id: org, task_id: taskId, twin_id: p.twin_id, employee_id: emp.get(p.twin_id), confidence: Math.round(p.confidence), eta_hours: p.eta_hours, rationale: p.rationale, status: 'open' }));
+    return this.ok<TaskBid[]>(this.sb.from('twin_bids').insert(rows).select());
+  }
+  /** Yetki + yüksek öncelik onay kapısı SQL tarafında (assign_bid, security definer). */
+  async assignFromBid(bidId: string): Promise<BidAssignResult> {
+    const r = await this.ok<{ status: 'assigned' | 'pending_approval'; approval_id?: string; assignment_id?: string }>(this.sb.rpc('assign_bid', { p_bid: bidId }));
+    if (r.status === 'pending_approval') return { status: 'pending_approval', approval_id: r.approval_id as string };
+    const a = await this.ok<TaskAssignment>(this.sb.from('task_assignments').select('*').eq('id', r.assignment_id as string).single());
+    return { status: 'assigned', assignment: a };
+  }
 
   /* ───────── Modül koleksiyonları: {id, org_id, brand_id?, data jsonb, created_at} + COLLECTIONS.native kolonları ───────── */
   private native(kind: CollKey): string[] { return ((COLLECTIONS[kind] as { native?: string[] }).native ?? ['brand_id']); }

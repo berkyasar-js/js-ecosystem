@@ -6,6 +6,8 @@
 | `supabase/migrations/0002_work.sql` | clients, brands, projects, tasks, task_types, time_entries, approvals, channels/messages (Realtime), surveys, consents, screen_activity (rıza trigger'ı) |
 | `supabase/migrations/0003_events.sql` | events + `emit_event` trigger (tasks/approvals/invoices), notification_rules, integrations, mcp_servers, access_tokens (token_hash), webhooks, kpi_snapshots, system_health |
 | `supabase/migrations/0004_agents.sql` | employee_twins, agent_prompts, agent_runs, board_decisions, decision_rights |
+| `supabase/migrations/0005_modules.sql` | modül koleksiyonları (gen-0005.mjs ile üretilir) |
+| `supabase/migrations/0006_gaps.sql` | API anahtarı alanları (access_tokens.user_id/expires_at), `twin_bids` + `task_assignments` (ihale), `assign_bid()` onay kapısı, olay tetikleyicileri, `events.processed_at` |
 | `seed/*.csv`, `seed/seed.sql` | BBY ekibi (maaşsız), 24 marka, task_types, decision_rights, bildirim varsayılanları |
 
 ## Kurulum (`supabase db push`)

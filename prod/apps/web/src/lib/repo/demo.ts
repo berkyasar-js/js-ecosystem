@@ -2,8 +2,12 @@ import {
   COLLECTIONS, DEAL_STAGES, LEAVE_DECIDERS, canReadColl, canWriteColl, type AuditEvent, type Checklist, type CollKey, type Deal, type DealStage, type Leave, type Records, type SaveInput,
   approvalCreateSchema, canDecideApproval, isClientRole, orgSettingsPatchSchema, taskCreateSchema, boardAnswerSchema,
   type AgentRun, type Approval, type ApprovalCreate, type BoardAnswer, type ConnectData, type Integration, type Me, type Message,
-  type OrgSettings, type Task, type TaskCreate, type TaskState, type BoardDecision,
+  type OrgSettings, type Task, type TaskCreate, type TaskState, type BoardDecision, type Role,
+  BID_ROLES, TOKEN_ADMIN_ROLES, bidProposalSchema, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
 } from '@jscore/contracts';
+import { demoTwinBids, type TwinBidInput } from '../agents/demo';
+import { dispatchEvent, type AutomationEvent, type DispatchPorts } from '../automations/dispatch';
+import { addDaysIso, generateToken, tokenPrefix } from '../token';
 import { DEMO_ACCOUNTS, ORG_JOBS, accountToMe, makeDemoDb, type DemoAccount, type DemoDb } from '../demo-seed';
 import { makeModuleSeed } from '../demo-seed-modules';
 import { offerToEmployee } from '../domain';
@@ -15,6 +19,9 @@ export const DEMO_STORAGE_KEY = 'js_demo_db_v1';
 /** /apply/[job] başvuruları buraya düşer; hire sayfası açılınca `ingestApplications()` aday olarak alır. */
 export const APPLY_QUEUE_KEY = 'js_apply_queue_v1';
 const listeners = new Map<string, Set<(m: Message) => void>>();
+
+/** Otomasyon bildirimlerinin alıcıları (in-app). */
+const NOTIFY_ROLES: Role[] = ['owner', 'org_admin', 'operations'];
 
 export interface DemoOptions { accountId?: string; orgId?: string; storage?: KV | null; now?: () => string }
 
@@ -93,6 +100,7 @@ export class DemoRepo implements Repo {
     };
     db.tasks.push(task);
     this.log(db, 'task.create', `tasks/${task.id}`, { title: task.title });
+    await this.fire(db, 'tasks.insert', 'tasks', task);
     this.persist(db);
     return task;
   }
@@ -101,8 +109,10 @@ export class DemoRepo implements Repo {
     const db = this.db();
     const t = db.tasks.find((x) => x.id === id && x.org_id === this.orgId);
     if (!t) throw new NotFoundError('Görev');
+    const before = { ...t };
     t.state = state;
     this.log(db, 'task.move', `tasks/${id}`, { state });
+    await this.fire(db, 'tasks.update', 'tasks', t, before);
     this.persist(db);
     return { ...t };
   }
@@ -118,13 +128,18 @@ export class DemoRepo implements Repo {
     if (isClientRole(this.role)) throw new ForbiddenError();
     const v = approvalCreateSchema.parse(input);
     const db = this.db();
+    const a = await this.pushApproval(db, v);
+    this.persist(db);
+    return a;
+  }
+  private async pushApproval(db: DemoDb, v: ReturnType<typeof approvalCreateSchema.parse>): Promise<Approval> {
     const a: Approval = {
       id: this.nextId('a', db.approvals.map((x) => x.id)), org_id: this.orgId, action_type: v.action_type, title: v.title, subject: v.subject,
       required_role: v.required_role, status: 'pending', requested_by: this.account.employee_id || this.account.id, decided_by: null, decided_at: null,
       decision_note: null, due_at: v.due_at, created_at: this.now(),
     };
     db.approvals.push(a);
-    this.persist(db);
+    await this.fire(db, 'approvals.insert', 'approvals', a);
     return a;
   }
   async decideApproval(id: string, decision: 'approved' | 'rejected', note?: string): Promise<Approval> {
@@ -133,8 +148,15 @@ export class DemoRepo implements Repo {
     if (!a) throw new NotFoundError('Onay');
     if (a.status !== 'pending') throw new ForbiddenError('Bu onay zaten karara bağlanmış');
     if (!canDecideApproval(this.role, a.required_role)) throw new ForbiddenError(`Bu onay ${a.required_role} rolü içindir`);
+    const before = { ...a };
     a.status = decision; a.decided_by = `u_${this.account.id}`; a.decided_at = this.now(); a.decision_note = note ?? null;
     this.log(db, `approval.${decision}`, `approvals/${id}`, { note: note ?? null });
+    await this.fire(db, 'approvals.update', 'approvals', a, before);
+    // Onay kapısı: yüksek öncelikli ihale ataması onaylanınca gerçekleşir (SQL'de approvals tetikleyicisi).
+    if (decision === 'approved' && a.subject.bid_id) {
+      const bid = (db.taskBids ??= []).find((b) => b.id === a.subject.bid_id && b.status === 'open');
+      if (bid) await this.finalizeAssignment(db, bid);
+    }
     this.persist(db);
     return { ...a };
   }
@@ -180,7 +202,32 @@ export class DemoRepo implements Repo {
   }
   async getConnect(): Promise<ConnectData> {
     if (!['owner', 'org_admin', 'integration_admin', 'operations', 'account', 'pm', 'finance', 'auditor'].includes(this.role)) throw new ForbiddenError();
-    return this.db().connect;
+    const c = this.db().connect;
+    return { ...c, tokens: c.tokens.filter((t) => t.org_id === this.orgId && !t.revoked_at) };
+  }
+  async createToken(input: TokenCreate) {
+    if (!TOKEN_ADMIN_ROLES.includes(this.role)) throw new ForbiddenError('API anahtarı yalnızca owner / org_admin / entegrasyon admin oluşturabilir');
+    const v = tokenCreateSchema.parse(input);
+    const db = this.db();
+    const plaintext = generateToken();
+    const now = this.now();
+    const token: AccessToken = {
+      id: this.nextId('tok', db.connect.tokens.map((t) => t.id)), org_id: this.orgId, name: v.name, token_prefix: tokenPrefix(plaintext), scopes: v.scopes,
+      created_at: now, last_used_at: null, user_id: `u_${this.account.id}`, expires_at: v.expires_in_days ? addDaysIso(now, v.expires_in_days) : null, revoked_at: null,
+    };
+    db.connect.tokens.push(token); // demo: yalnızca meta; düz token ve özet bile tutulmaz
+    this.log(db, 'token.create', `access_tokens/${token.id}`, { name: v.name, scopes: v.scopes });
+    this.persist(db);
+    return { token: { ...token }, plaintext };
+  }
+  async revokeToken(id: string) {
+    if (!TOKEN_ADMIN_ROLES.includes(this.role)) throw new ForbiddenError();
+    const db = this.db();
+    const t = db.connect.tokens.find((x) => x.id === id && x.org_id === this.orgId && !x.revoked_at);
+    if (!t) throw new NotFoundError('Anahtar');
+    t.revoked_at = this.now();
+    this.log(db, 'token.revoke', `access_tokens/${id}`);
+    this.persist(db);
   }
   async setIntegrationStatus(id: string, status: Integration['status']) {
     if (!['owner', 'org_admin', 'integration_admin'].includes(this.role)) throw new ForbiddenError();
@@ -199,6 +246,9 @@ export class DemoRepo implements Repo {
     db.runs.push({ ...run, id: this.nextId('r', db.runs.map((x) => x.id)), org_id: this.orgId, created_at: this.now() });
     this.persist(db);
   }
+  async monthlyAgentSpend(month: string) {
+    return this.db().runs.filter((r) => r.org_id === this.orgId && r.created_at.startsWith(month)).reduce((a, r) => a + Number(r.cost_usd), 0);
+  }
   async listBoardDecisions(): Promise<BoardDecision[]> {
     if (!['owner', 'org_admin', 'auditor'].includes(this.role)) throw new ForbiddenError();
     return this.db().board.filter((b) => b.org_id === this.orgId);
@@ -215,6 +265,120 @@ export class DemoRepo implements Repo {
   }
   async listTwins() { return this.db().twins.filter((t) => t.org_id === this.orgId && (!t.opt_out || this.role === 'owner' || t.employee_id === this.account.employee_id)); }
   async listTwinBids() { return this.db().bids; }
+
+  /* ───────── İhale (twins.bids) ───────── */
+  async listTaskBids(taskId?: string) {
+    if (isClientRole(this.role)) throw new ForbiddenError();
+    return ((this.db().taskBids ??= []).filter((b) => b.org_id === this.orgId && (!taskId || b.task_id === taskId))).sort((a, b) => b.confidence - a.confidence);
+  }
+  async listTaskAssignments(taskId?: string) {
+    if (isClientRole(this.role)) throw new ForbiddenError();
+    return (this.db().assignments ??= []).filter((a) => a.org_id === this.orgId && (!taskId || a.task_id === taskId));
+  }
+  async openTaskForBids(taskId: string, proposed?: BidProposal[]): Promise<TaskBid[]> {
+    if (!BID_ROLES.includes(this.role)) throw new ForbiddenError('İhaleye açma yetkin yok');
+    const db = this.db();
+    const task = db.tasks.find((t) => t.id === taskId && t.org_id === this.orgId);
+    if (!task) throw new NotFoundError('Görev');
+    if (task.state === 'archive') throw new ForbiddenError('Arşivdeki görev ihaleye açılamaz');
+    const eligible = db.twins.filter((t) => t.org_id === this.orgId && t.kind === 'person' && !t.opt_out && t.employee_id && t.approved_by_owner_at);
+    const input: TwinBidInput = {
+      task: { id: task.id, title: task.title, task_type: task.task_type, priority: task.priority, planned_minutes: task.planned_minutes },
+      twins: eligible.map((t) => ({ id: t.id, employee_id: t.employee_id, name: t.name, skills: (t.profile.skills as string[]) ?? [], weekly_hours: Number(t.defaults.weekly_hours ?? 36) })),
+    };
+    const props = (proposed ?? demoTwinBids(input).bids).map((p) => bidProposalSchema.parse(p));
+    const byId = new Map(eligible.map((t) => [t.id, t]));
+    if (!props.length) throw new Error('Uygun ikiz teklif vermedi');
+    if (props.some((p) => !byId.has(p.twin_id))) throw new Error('Teklif yalnızca onaylı, opt-out olmayan kişi ikizlerinden gelebilir');
+    const bids = (db.taskBids ??= []);
+    bids.filter((b) => b.task_id === taskId && b.status === 'open').forEach((b) => { b.status = 'withdrawn'; });
+    const created: TaskBid[] = props.map((p) => {
+      const bid: TaskBid = {
+        id: this.nextId('bd', bids.map((b) => b.id)), org_id: this.orgId, task_id: taskId, twin_id: p.twin_id, employee_id: byId.get(p.twin_id)?.employee_id ?? null,
+        confidence: Math.round(p.confidence), eta_hours: p.eta_hours, rationale: p.rationale, status: 'open', created_at: this.now(),
+      };
+      bids.push(bid);
+      return bid;
+    });
+    this.log(db, 'twin_bid.open', `tasks/${taskId}`, { bids: created.length });
+    for (const b of created) await this.fire(db, 'twin_bids.insert', 'twin_bids', b);
+    this.persist(db);
+    return created.map((b) => ({ ...b }));
+  }
+  async assignFromBid(bidId: string): Promise<BidAssignResult> {
+    if (!BID_ROLES.includes(this.role)) throw new ForbiddenError('Atama yetkin yok');
+    const db = this.db();
+    const bid = (db.taskBids ??= []).find((b) => b.id === bidId && b.org_id === this.orgId);
+    if (!bid) throw new NotFoundError('Teklif');
+    if (bid.status !== 'open') throw new ForbiddenError('Bu teklif artık açık değil');
+    const task = db.tasks.find((t) => t.id === bid.task_id);
+    if (!task) throw new NotFoundError('Görev');
+    if (task.priority === 'high') {
+      const gate = db.approvals.filter((a) => a.subject.bid_id === bidId).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+      if (gate?.status === 'pending') return { status: 'pending_approval', approval_id: gate.id };
+      if (gate?.status !== 'approved') {
+        const who = db.team.find((m) => m.id === bid.employee_id)?.name ?? 'ikiz';
+        const a = await this.pushApproval(db, approvalCreateSchema.parse({
+          action_type: 'scope', title: `Yüksek öncelikli atama: ${task.title} → ${who}`, required_role: 'operations', due_at: task.due_at,
+          subject: { project_id: task.project_id, task_id: task.id, bid_id: bid.id, note: `Güven %${bid.confidence} · tahmini ${bid.eta_hours} sa` },
+        }));
+        this.log(db, 'twin_bid.approval_requested', `tasks/${task.id}`, { bid: bid.id, approval: a.id });
+        this.persist(db);
+        return { status: 'pending_approval', approval_id: a.id };
+      }
+    }
+    const assignment = await this.finalizeAssignment(db, bid);
+    this.persist(db);
+    return { status: 'assigned', assignment };
+  }
+  /** task_assignments yazar, görevi atar, teklifi 'won' / diğerlerini 'lost' yapar ve olay üretir. */
+  private async finalizeAssignment(db: DemoDb, bid: TaskBid): Promise<TaskAssignment> {
+    if (!bid.employee_id) throw new Error('Bu ikizin bağlı çalışanı yok');
+    const task = db.tasks.find((t) => t.id === bid.task_id);
+    if (!task) throw new NotFoundError('Görev');
+    const list = (db.assignments ??= []);
+    const a: TaskAssignment = { id: this.nextId('as', list.map((x) => x.id)), org_id: this.orgId, task_id: task.id, employee_id: bid.employee_id, bid_id: bid.id, assigned_by: `u_${this.account.id}`, created_at: this.now() };
+    list.push(a);
+    const before = { ...task };
+    task.assignee_id = bid.employee_id;
+    const losers = (db.taskBids ??= []).filter((b) => b.task_id === task.id && b.status === 'open' && b.id !== bid.id);
+    bid.status = 'won'; losers.forEach((b) => { b.status = 'lost'; });
+    this.log(db, 'twin_bid.assigned', `tasks/${task.id}`, { bid: bid.id, employee: bid.employee_id });
+    await this.fire(db, 'task_assignments.insert', 'task_assignments', a);
+    await this.fire(db, 'tasks.update', 'tasks', task, before);
+    return a;
+  }
+
+  /* ───────── Otomasyon: olay → dispatcher (senkron) ───────── */
+  /** Yazma olayı üretir (core.events muadili) ve yayımlanmış kuralları hemen değerlendirir. Otomasyon hataları yazmayı bozmaz. */
+  private async fire(db: DemoDb, type: string, aggregate: string, row: object, old?: object) {
+    const ev: AutomationEvent = { org_id: this.orgId, type, aggregate, aggregate_id: String((row as { id: string }).id), payload: { new: { ...row } as Record<string, unknown>, old: old ? { ...old } as Record<string, unknown> : null } };
+    try { await dispatchEvent(ev, this.ports(db)); } catch { /* otomasyon yazmayı engellemez */ }
+  }
+  private ports(db: DemoDb): DispatchPorts {
+    const now = this.now;
+    return {
+      now: () => now(),
+      rules: async (org) => this.col(db, 'automations').filter((a) => a.org_id === org),
+      logRun: async (org, run) => { const rows = this.col(db, 'automation_runs'); rows.push({ ...run, id: this.nextId('ar', rows.map((r) => r.id)), org_id: org, created_at: now() }); },
+      touchRule: async (_o, rule, at) => { const r = this.col(db, 'automations').find((x) => x.id === rule.id); if (r) { r.runs += 1; r.last_fired_at = at; } },
+      notify: async (org, n) => {
+        const rows = this.col(db, 'notifications');
+        for (const m of db.team.filter((t) => (t.org_id === org || t.org_id === ORG_JOBS) && NOTIFY_ROLES.includes(t.app_role as Role))) {
+          rows.push({ id: this.nextId('n', rows.map((r) => r.id)), org_id: org, created_at: now(), employee_id: m.id, kind: 'system', title: n.title, body: n.body, read: false, href: n.href });
+        }
+      },
+      createTask: async (org, input) => {
+        const v = taskCreateSchema.parse(input);
+        const t: Task = { id: this.nextId('t', db.tasks.map((x) => x.id)), org_id: org, project_id: v.project_id, title: v.title, assignee_id: null, state: v.state, priority: v.priority, due_at: v.due_at, planned_minutes: v.planned_minutes, task_type: v.task_type, qty: v.qty, source_ref: v.source_ref ?? null, labels: [], client_visible: false, created_at: now() };
+        if (!db.projects.some((p) => p.id === v.project_id && p.org_id === org)) throw new NotFoundError('Proje');
+        db.tasks.push(t);
+        return { id: t.id };
+      },
+      setTaskState: async (org, id, state) => { const t = db.tasks.find((x) => x.id === id && x.org_id === org); if (!t) throw new NotFoundError('Görev'); t.state = state; },
+      webhook: async () => { /* demo: ağ çağrısı yok (sunucuda gerçek HMAC imzalı çağrı yapılır) */ },
+    };
+  }
 
   /* ───────── Modül koleksiyonları ───────── */
   private log(db: DemoDb, action: string, resource: string, meta: Record<string, unknown> = {}) {
@@ -249,14 +413,18 @@ export class DemoRepo implements Repo {
     const merged = { ...(cur ?? {}), ...input } as Records[K];
     validateRecord(kind, merged);
     if (cur) {
+      const before = { ...cur };
       Object.assign(cur, input);
       this.log(db, `${kind}.update`, `${kind}/${cur.id}`);
+      if (kind !== 'automation_runs' && kind !== 'automations') await this.fire(db, `${COLLECTIONS[kind].table}.update`, COLLECTIONS[kind].table, cur, before);
       this.persist(db);
       return { ...cur };
     }
     const rec = { ...input, id: this.nextId(COLLECTIONS[kind].prefix, rows.map((r) => r.id)), org_id: this.orgId, created_at: this.now() } as Records[K];
     rows.push(rec);
     this.log(db, `${kind}.create`, `${kind}/${rec.id}`);
+    // Otomasyon çalıştırma günlüğü / otomasyonların kendisi olay üretmez (döngü önleme).
+    if (kind !== 'automation_runs' && kind !== 'automations') await this.fire(db, `${COLLECTIONS[kind].table}.insert`, COLLECTIONS[kind].table, rec);
     this.persist(db);
     return { ...rec };
   }
@@ -282,8 +450,9 @@ export class DemoRepo implements Repo {
     const db = this.db();
     const d = this.col(db, 'crm_deals').find((x) => x.id === id && x.org_id === this.orgId);
     if (!d) throw new NotFoundError('Fırsat');
-    const from = d.stage; d.stage = stage;
+    const from = d.stage; const before = { ...d }; d.stage = stage;
     this.log(db, 'crm.deal.move', `crm_deals/${id}`, { from, to: stage });
+    await this.fire(db, 'crm_deals.update', 'crm_deals', d, before);
     this.persist(db);
     return { ...d };
   }
@@ -294,8 +463,10 @@ export class DemoRepo implements Repo {
     if (!l) throw new NotFoundError('İzin');
     if (l.status !== 'pending') throw new ForbiddenError('İzin zaten karara bağlanmış');
     if (l.employee_id === this.account.employee_id && this.role !== 'owner') throw new ForbiddenError('Kendi iznini onaylayamazsın');
+    const before = { ...l };
     l.status = decision;
     this.log(db, `leave.${decision}`, `leaves/${id}`, { employee: l.employee_id, days: l.days });
+    await this.fire(db, 'leaves.update', 'leaves', l, before);
     this.persist(db);
     return { ...l };
   }

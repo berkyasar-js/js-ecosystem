@@ -8,6 +8,7 @@ import { Await, Bar, Card, Chip, Crud, FormCard, Grid, Metric, ModulePage, Table
 import { Funnel } from '../charts';
 import { addDays, fmtTimecode, parseTimecode } from '@/lib/domain';
 import { buildPdf } from '@/lib/pdf';
+import { agentRunBody } from '@/lib/agents/client';
 
 const gb = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${mb} MB`);
 const brandOpts = (b: Array<{ id: string; name: string }>): Array<[string, string]> => b.map((x) => [x.id, x.name]);
@@ -192,7 +193,7 @@ export function StudioView({ tab }: { tab?: string }) {
         const run = async () => {
           setLoading(true); setAiErr(null); setRes(null);
           try {
-            const r = await fetch('/api/agents/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'studio_draft', input: { brand: d.brands.find((x) => x.id === b)?.name, goal, memory: memory?.body ?? '', brief: d.studio_items.find((x) => x.kind === 'brief' && x.brand_id === b)?.body ?? '' } }) });
+            const r = await fetch('/api/agents/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(await agentRunBody(repo, todayFor(mode), { agent: 'studio_draft', input: { brand: d.brands.find((x) => x.id === b)?.name, goal, memory: memory?.body ?? '', brief: d.studio_items.find((x) => x.kind === 'brief' && x.brand_id === b)?.body ?? '' } })) });
             const j = await r.json() as { output?: typeof res; error?: string };
             if (!r.ok || !j.output) throw new Error(j.error ?? 'Taslak üretilemedi');
             setRes(j.output); await repo!.audit('studio.draft_generated', `brands/${b}`, { mode: r.headers.get('x-mode') ?? 'demo' });

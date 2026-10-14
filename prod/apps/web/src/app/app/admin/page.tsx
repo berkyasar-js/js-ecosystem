@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { ROLE_LABELS, type OrgSettings } from '@jscore/contracts';
 import { Async, PageHeader, Tabs, fmtTime, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
+import { CapMeter } from '@/components/cap-meter';
+import { DEFAULT_USD_TRY, fmtTry } from '@/lib/agents/cap';
 
 type Tab = 'genel' | 'bildirimler' | 'yapi' | 'ai' | 'kullanicilar' | 'guvenlik';
 
@@ -52,8 +54,11 @@ export default function Admin() {
           )}
           {tab === 'ai' && (
             <div className="grid gap-4">
+              <CapMeter />
               <div className="grid gap-4 sm:grid-cols-2">
-                <div><label className="label" htmlFor="cap">Aylık maliyet tavanı (USD)</label><input id="cap" type="number" min={0} className="input" value={s.ai.monthly_cap_usd} onChange={(e) => setS({ ...s, ai: { ...s.ai, monthly_cap_usd: Number(e.target.value) } })} /></div>
+                <div><label className="label" htmlFor="cap">Aylık maliyet tavanı (USD) · 0 = tavan yok</label><input id="cap" type="number" min={0} className="input" value={s.ai.monthly_cap_usd} onChange={(e) => setS({ ...s, ai: { ...s.ai, monthly_cap_usd: Number(e.target.value) } })} />
+                  <p className="mt-1 text-xs text-muted">≈ {fmtTry(s.ai.monthly_cap_usd * (s.ai.usd_try ?? DEFAULT_USD_TRY))} — tavan aşılırsa ajan çalıştırmaları 402 ile reddedilir.</p></div>
+                <div><label className="label" htmlFor="fx">Kur (₺ / USD)</label><input id="fx" type="number" min={1} step="0.01" className="input" value={s.ai.usd_try ?? DEFAULT_USD_TRY} onChange={(e) => setS({ ...s, ai: { ...s.ai, usd_try: Number(e.target.value) || DEFAULT_USD_TRY } })} /></div>
                 <div><label className="label" htmlFor="mdl">Varsayılan model</label><input id="mdl" className="input" value={s.ai.default_model} onChange={(e) => setS({ ...s, ai: { ...s.ai, default_model: e.target.value } })} /></div>
               </div>
               <label className="flex items-center gap-2"><input type="checkbox" checked={s.ai.board_enabled} onChange={(e) => setS({ ...s, ai: { ...s.ai, board_enabled: e.target.checked } })} /> Haftalık kurul açık</label>

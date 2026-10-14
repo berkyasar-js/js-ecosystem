@@ -8,6 +8,7 @@ const schemas = {
   board_proposal: { type: 'object', required: ['summary', 'proposals'], properties: { summary: { type: 'string' }, proposals: { type: 'array', items: { type: 'object', required: ['action', 'rationale', 'level', 'risk'] } } } },
   inbox_drafts: { type: 'object', required: ['summary', 'drafts'], properties: { summary: { type: 'string' }, drafts: { type: 'array', items: { type: 'object', required: ['title', 'task_type', 'qty', 'priority', 'due_at'] } } } },
   studio_draft: { type: 'object', required: ['summary', 'concepts'], properties: { summary: { type: 'string' }, concepts: { type: 'array', items: { type: 'object', required: ['title', 'idea', 'tone'] } } } },
+  twin_bid: { type: 'object', required: ['summary', 'bids'], properties: { summary: { type: 'string' }, bids: { type: 'array', items: { type: 'object', required: ['twin_id', 'confidence', 'eta_hours', 'rationale'] } } } },
   twin: { type: 'object', required: ['summary'], properties: { summary: { type: 'string' }, fit: { type: 'number' }, notes: { type: 'array', items: { type: 'string' } } } },
 };
 const q = (s) => `$prompt$${s}$prompt$`;

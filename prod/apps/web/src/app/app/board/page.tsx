@@ -1,14 +1,16 @@
 'use client';
 import { useState } from 'react';
 import { BOARD_AGENTS, type BoardAnswer, type BoardProposalOutput } from '@jscore/contracts';
-import { Async, Empty, PageHeader, APPROVAL_STATUS, useData } from '@/components/ui';
+import { Async, Empty, PageHeader, APPROVAL_STATUS, todayFor, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
+import { CapMeter } from '@/components/cap-meter';
+import { agentRunBody } from '@/lib/agents/client';
 
 const RISK: Record<string, string> = { low: 'chip-ok', medium: 'chip-warn', high: 'chip-bad' };
 const VOTE: Record<string, string> = { yes: 'chip-ok', no: 'chip-bad', abstain: '' };
 
 export default function Board() {
-  const { repo, me, bump } = useSession();
+  const { repo, me, bump, mode } = useSession();
   const q = useData((r) => r.listBoardDecisions());
   const [err, setErr] = useState<string | null>(null);
   const [pack, setPack] = useState<{ summary: string; proposals: BoardProposalOutput['proposals'] } | null>(null);
@@ -23,7 +25,7 @@ export default function Board() {
     try {
       const p = await fetch('/api/board/pack');
       if (!p.ok) throw new Error('Veri paketi alınamadı');
-      const res = await fetch('/api/agents/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'chair', input: await p.json() }) });
+      const res = await fetch('/api/agents/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(await agentRunBody(repo, todayFor(mode), { agent: 'chair', input: await p.json() })) });
       const j = (await res.json()) as { output?: BoardProposalOutput; error?: string };
       if (!res.ok || !j.output) throw new Error(j.error ?? 'CHAIR çalışmadı');
       setPack(j.output);
@@ -33,6 +35,7 @@ export default function Board() {
   return (
     <>
       <PageHeader title="Yönetim Kurulu" sub="Dokuz ajan, haftalık kurul ve kurucu kararları" actions={<button className="btn btn-accent" disabled={busy} onClick={convene}>{busy ? 'Toplanıyor…' : 'Kurulu şimdi topla'}</button>} />
+      <CapMeter className="mb-4 max-w-xl" />
       <p className="mb-4 flex flex-wrap gap-2">{BOARD_AGENTS.map((a) => <span key={a} className="chip">{a.toUpperCase()}</span>)}</p>
       {err && <p role="alert" className="mb-3 text-sm text-magenta">{err}</p>}
       {pack && (

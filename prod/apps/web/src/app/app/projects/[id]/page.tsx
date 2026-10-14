@@ -1,11 +1,16 @@
 'use client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { TASK_STATE_LABELS } from '@jscore/contracts';
+import { useState } from 'react';
+import { TASK_STATE_LABELS, isClientRole } from '@jscore/contracts';
+import { TaskBids } from '@/components/modules/bids';
+import { useSession } from '@/components/session';
 import { Async, Empty, PageHeader, PRIORITY, fmtDate, money, useData } from '@/components/ui';
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
+  const { me } = useSession();
+  const [bidOpen, setBidOpen] = useState<string | null>(null);
   const q = useData(async (r) => {
     const project = await r.getProject(id);
     if (!project) return null;
@@ -36,9 +41,13 @@ export default function ProjectDetail() {
           {d.tasks.length === 0 ? <Empty>Bu projede görev yok.</Empty> : (
             <ul className="grid gap-2">
               {d.tasks.map((t) => (
-                <li key={t.id} className="nested flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium">{t.title}</span>
-                  <span className="flex gap-2"><span className="chip">{TASK_STATE_LABELS[t.state]}</span><span className={`chip ${PRIORITY[t.priority][1]}`}>{PRIORITY[t.priority][0]}</span><span className="chip">{fmtDate(t.due_at)}</span></span>
+                <li key={t.id} className="nested">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{t.title}{t.assignee_id && <span className="ml-2 text-xs text-muted">· {d.team.find((m) => m.id === t.assignee_id)?.name ?? t.assignee_id}</span>}</span>
+                    <span className="flex flex-wrap items-center gap-2"><span className="chip">{TASK_STATE_LABELS[t.state]}</span><span className={`chip ${PRIORITY[t.priority][1]}`}>{PRIORITY[t.priority][0]}</span><span className="chip">{fmtDate(t.due_at)}</span>
+                      {me && !isClientRole(me.role) && <button className="btn btn-sm" aria-expanded={bidOpen === t.id} onClick={() => setBidOpen(bidOpen === t.id ? null : t.id)}>İhale</button>}</span>
+                  </div>
+                  {bidOpen === t.id && <TaskBids task={t} />}
                 </li>
               ))}
             </ul>

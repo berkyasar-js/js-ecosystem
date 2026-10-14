@@ -171,8 +171,17 @@ export interface EventItem extends Base { event: string; kind: 'portfolio' | 'sh
 export interface Automation extends Base {
   name: string; trigger: string; condition: string; action: string; status: 'draft' | 'published'; version: number; template: string | null; runs: number;
   history: Array<{ version: number; at: string; status: 'draft' | 'published' }>;
+  /** Olay türü (core.events.type): tasks.update, approvals.insert, invoices.update … Boşsa `trigger` metninden türetilir. */
+  event?: string;
+  /** Eşitlik filtresi: noktalı yol → değer (ör. {"new.state":"delivery"}); `new.x` bulunamazsa `new.data.x` denenir. */
+  filter?: Record<string, string>;
+  action_kind?: AutomationActionKind;
+  action_config?: { title?: string; message?: string; state?: string; url?: string; project_id?: string; task_type?: string };
+  last_fired_at?: string | null;
 }
-export interface AutomationRun extends Base { automation_id: string; status: 'ok' | 'error' | 'pending_approval'; error: string | null; payload: string }
+export const AUTOMATION_ACTION_KINDS = ['create_task', 'notify', 'set_status', 'webhook'] as const;
+export type AutomationActionKind = (typeof AUTOMATION_ACTION_KINDS)[number];
+export interface AutomationRun extends Base { automation_id: string; status: 'ok' | 'error' | 'pending_approval'; error: string | null; payload: string; event_type?: string | null; event_id?: string | null }
 
 export interface Records {
   crm_deals: Deal; crm_contacts: Contact; crm_proposals: Proposal; crm_contracts: Contract; time_entries: TimeEntry; notifications: Notification;
@@ -224,6 +233,11 @@ export const automationSchema = z.object({
   name: z.string().trim().min(3).max(120), trigger: z.string().min(1), condition: z.string().max(300), action: z.string().min(1),
   status: z.enum(['draft', 'published']), version: z.number().int().min(1), template: z.string().nullable(), runs: z.number().int().min(0),
   history: z.array(z.object({ version: z.number(), at: z.string(), status: z.enum(['draft', 'published']) })),
+  event: z.string().optional(),
+  filter: z.record(z.string(), z.string()).optional(),
+  action_kind: z.enum(AUTOMATION_ACTION_KINDS).optional(),
+  action_config: z.object({ title: z.string().max(200), message: z.string().max(500), state: z.string(), url: z.string().url(), project_id: z.string(), task_type: z.string() }).partial().optional(),
+  last_fired_at: z.string().nullable().optional(),
 });
 export const studioDraftOutputSchema = z.object({ summary: z.string(), concepts: z.array(z.object({ title: z.string(), idea: z.string(), tone: z.string() })).min(1).max(6) });
 

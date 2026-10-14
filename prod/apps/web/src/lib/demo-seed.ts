@@ -1,6 +1,6 @@
 import type {
   AuditEvent, AccessToken, AgentPrompt, AgentRun, Approval, BoardDecision, Brand, Channel, Integration, McpServer, Me, Member, Message,
-  Organization, OrgSettings, Project, Role, StagePlanItem, Task, TaskState, TaskType, TeamMember, Twin, TwinBid, Webhook,
+  Organization, OrgSettings, Project, Role, StagePlanItem, Task, TaskAssignment, TaskBid, TaskState, TaskType, TeamMember, Twin, TwinBid, Webhook,
 } from '@jscore/contracts';
 import { TASK_STATES } from '@jscore/contracts';
 import { makeModuleSeed, type ModuleCols } from './demo-seed-modules';
@@ -187,6 +187,7 @@ const twins: Twin[] = [
   twin('tw1', 'person', 'Seda Karabacak · ikiz', 'SK', { skills: ['Ana görsel', 'Sosyal set', 'Sunum tasarımı'], hours: 38 }),
   twin('tw2', 'person', 'Hulusi Melih Özbay · ikiz', 'HO', { skills: ['Offline kurgu', 'Çekim', 'Motion'], hours: 40 }),
   twin('tw3', 'person', 'Öykü Erelmalı · ikiz', 'OE', { skills: ['Marka planı', 'Müşteri yönetimi', 'Teklif'], hours: 34 }, true),
+  twin('tw5', 'person', 'Duygu Öztürk · ikiz', 'DO', { skills: ['Ana görsel', 'Banner', 'Sosyal set'], hours: 31 }),
   twin('tw4', 'role', 'Art Director · rol ikizi', null, { skills: ['Ana görsel', 'Sosyal set', 'Banner'], hours: 32 }),
 ];
 const bids: TwinBid[] = [
@@ -195,8 +196,8 @@ const bids: TwinBid[] = [
   { id: 'bid3', title: 'Lumio ürün katalog tasarımı', brand: 'Lumio', budget_minor: 9500000, due_at: '2026-11-03', matches: [{ twin_id: 'tw4', score: 76 }, { twin_id: 'tw1', score: 70 }] },
 ];
 
-const prompts: AgentPrompt[] = (['chair', 'ceo', 'cfo', 'coo', 'cmo', 'cto', 'chro', 'cco', 'clo', 'inbox_drafts', 'twin_person', 'twin_role', 'studio_draft'] as const).map((agent, i) => ({
-  id: `ap${i}`, agent, version: 1, model: agent === 'inbox_drafts' ? 'claude-haiku-4-5' : 'claude-sonnet-4-5', is_active: true, output_schema: {},
+const prompts: AgentPrompt[] = (['chair', 'ceo', 'cfo', 'coo', 'cmo', 'cto', 'chro', 'cco', 'clo', 'inbox_drafts', 'twin_person', 'twin_role', 'twin_bid', 'studio_draft'] as const).map((agent, i) => ({
+  id: `ap${i}`, agent, version: 1, model: agent === 'inbox_drafts' || agent === 'twin_bid' ? 'claude-haiku-4-5' : 'claude-sonnet-4-5', is_active: true, output_schema: {},
   system_prompt: `Demo prompt · ${agent.toUpperCase()} — gerçek metin packages/prompts/prompts/${agent}.md dosyasındadır.`,
 }));
 const runs: AgentRun[] = [
@@ -240,6 +241,8 @@ export interface DemoDb {
   orgs: Organization[]; team: TeamMember[]; brands: Brand[]; projects: Project[]; tasks: Task[]; taskTypes: TaskType[]; approvals: Approval[];
   channels: Channel[]; messages: Message[]; settings: Record<string, OrgSettings>; members: Member[]; prompts: AgentPrompt[]; runs: AgentRun[];
   cols: ModuleCols; audit: AuditEvent[];
+  /** İhale teklifleri / atamalar: eski localStorage kayıtlarında yoktur → DemoRepo `??=` ile açar. */
+  taskBids?: TaskBid[]; assignments?: TaskAssignment[];
   board: BoardDecision[]; twins: Twin[]; bids: TwinBid[]; connect: { integrations: Integration[]; mcp_servers: McpServer[]; webhooks: Webhook[]; tokens: AccessToken[] };
 }
 export const makeDemoDb = (): DemoDb => structuredClone({

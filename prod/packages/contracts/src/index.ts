@@ -125,7 +125,7 @@ export const TASK_STATE_LABELS: Record<TaskState, string> = {
   brief: 'Brief', scope: 'Kapsam', plan: 'Plan', production: 'Üretim', internal_review: 'İç revize', approval: 'Onay', delivery: 'Teslim', archive: 'Arşiv',
 };
 export type Priority = 'low' | 'normal' | 'high';
-export const AGENTS = ['chair', 'ceo', 'cfo', 'coo', 'cmo', 'cto', 'chro', 'cco', 'clo', 'inbox_drafts', 'twin_person', 'twin_role', 'studio_draft'] as const;
+export const AGENTS = ['chair', 'ceo', 'cfo', 'coo', 'cmo', 'cto', 'chro', 'cco', 'clo', 'inbox_drafts', 'twin_person', 'twin_role', 'twin_bid', 'studio_draft'] as const;
 export type AgentName = (typeof AGENTS)[number];
 export const BOARD_AGENTS = AGENTS.slice(0, 9) as readonly AgentName[];
 
@@ -155,7 +155,7 @@ export interface TaskType { key: string; label: string; sla_hours: number; defau
 export type ApprovalAction = 'content' | 'budget' | 'scope' | 'client_decision' | 'access';
 export interface Approval {
   id: string; org_id: string; action_type: ApprovalAction; title: string;
-  subject: { project_id?: string; brand_id?: string; amount_minor?: number; version?: string; note?: string };
+  subject: { project_id?: string; brand_id?: string; amount_minor?: number; version?: string; note?: string; bid_id?: string; task_id?: string };
   required_role: Role; status: 'pending' | 'approved' | 'rejected'; requested_by: string; decided_by: string | null; decided_at: string | null;
   decision_note: string | null; due_at: string; created_at: string;
 }
@@ -166,7 +166,22 @@ export interface Message {
 }
 export interface Integration { id: string; org_id: string; provider: string; name: string; status: 'connected' | 'available' | 'error'; scopes: string[]; secret_ref: string | null }
 export interface McpServer { id: string; org_id: string; name: string; url: string; status: 'connected' | 'available'; tools: string[] }
-export interface AccessToken { id: string; org_id: string; name: string; token_prefix: string; scopes: string[]; created_at: string; last_used_at: string | null }
+export interface AccessToken {
+  id: string; org_id: string; name: string; token_prefix: string; scopes: string[]; created_at: string; last_used_at: string | null;
+  user_id?: string | null; expires_at?: string | null; revoked_at?: string | null;
+}
+/** API anahtarı kapsamları: 'mcp' (/api/mcp), 'webhooks' (/api/webhooks) ve ürün bazlı okuma izinleri (ROLE_GRANTS ürünleri). */
+export const API_TOKEN_PRODUCTS = ['work', 'crm', 'resources', 'finance', 'intel', 'comms'] as const;
+export const API_TOKEN_SCOPES = ['mcp', 'webhooks', ...API_TOKEN_PRODUCTS.map((p) => `${p}:read`)] as readonly string[];
+/** Anahtar oluşturabilen roller (RLS tok_w ile aynı). */
+export const TOKEN_ADMIN_ROLES: Role[] = ['owner', 'org_admin', 'integration_admin'];
+export const tokenCreateSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  scopes: z.array(z.string().refine((s) => API_TOKEN_SCOPES.includes(s), 'Geçersiz kapsam')).min(1).max(API_TOKEN_SCOPES.length),
+  /** null/yok = süresiz. */
+  expires_in_days: z.number().int().min(1).max(730).nullable().optional(),
+});
+export type TokenCreate = z.input<typeof tokenCreateSchema>;
 export interface Webhook { id: string; org_id: string; provider: string; url: string; events: string[]; active: boolean }
 export interface ConnectData { integrations: Integration[]; mcp_servers: McpServer[]; webhooks: Webhook[]; tokens: AccessToken[] }
 export interface Member { user_id: string; name: string; email: string; role: Role; status: 'active' | 'invited' }
@@ -185,6 +200,22 @@ export interface Twin {
   id: string; org_id: string; employee_id: string | null; kind: 'person' | 'role'; name: string; profile: Record<string, unknown>;
   defaults: Record<string, unknown>; preferences: Record<string, unknown>; opt_out: boolean; approved_by_owner_at: string | null;
 }
+/** Teklif atama / ihaleye açma yetkisi (RLS assign_bid ile aynı). */
+export const BID_ROLES: Role[] = ['owner', 'org_admin', 'operations', 'account', 'pm'];
+export type BidStatus = 'open' | 'won' | 'lost' | 'withdrawn';
+/** twins.bids: bir görev için ikiz teklifi. */
+export interface TaskBid {
+  id: string; org_id: string; task_id: string; twin_id: string; employee_id: string | null; confidence: number; eta_hours: number;
+  rationale: string; status: BidStatus; created_at: string;
+}
+export interface TaskAssignment { id: string; org_id: string; task_id: string; employee_id: string; bid_id: string | null; assigned_by: string; created_at: string }
+export type BidAssignResult = { status: 'assigned'; assignment: TaskAssignment } | { status: 'pending_approval'; approval_id: string };
+export const bidProposalSchema = z.object({
+  twin_id: z.string().min(1), confidence: z.number().min(0).max(100), eta_hours: z.number().min(0.5).max(2000), rationale: z.string().max(600).default(''),
+});
+export type BidProposal = z.infer<typeof bidProposalSchema>;
+export const twinBidOutputSchema = z.object({ summary: z.string(), bids: z.array(bidProposalSchema).max(5) });
+export type TwinBidOutput = z.infer<typeof twinBidOutputSchema>;
 export interface TwinBid { id: string; title: string; brand: string; budget_minor: number; due_at: string; matches: Array<{ twin_id: string; score: number }> }
 
 /* ───────── zod şemaları ───────── */
@@ -207,7 +238,7 @@ export const taskMoveSchema = z.object({ id: z.string().min(1), state: taskState
 export const approvalCreateSchema = z.object({
   action_type: z.enum(['content', 'budget', 'scope', 'client_decision', 'access']),
   title: z.string().trim().min(2).max(200),
-  subject: z.object({ project_id: z.string().optional(), brand_id: z.string().optional(), amount_minor: z.number().int().optional(), version: z.string().optional(), note: z.string().optional() }).default({}),
+  subject: z.object({ project_id: z.string().optional(), brand_id: z.string().optional(), amount_minor: z.number().int().optional(), version: z.string().optional(), note: z.string().optional(), bid_id: z.string().optional(), task_id: z.string().optional() }).default({}),
   required_role: roleSchema,
   due_at: z.string().min(8),
 });
@@ -216,7 +247,9 @@ export const approvalDecisionSchema = z.object({ decision: z.enum(['approved', '
 export const boardAnswerSchema = z.enum(['EVET', 'HAYIR', 'ERTELE']);
 
 export const agentNameSchema = z.enum(AGENTS);
-export const agentRunRequestSchema = z.object({ agent: agentNameSchema, input: z.record(z.string(), z.unknown()).default({}) });
+export const agentRunRequestSchema = z.object({ agent: agentNameSchema, input: z.record(z.string(), z.unknown()).default({}),
+  /** Yalnızca demo: sunucu durumsuz olduğundan istemci ay içi harcamasını bildirir (Supabase'de yok sayılır). */
+  demo_spend_usd: z.number().min(0).optional(), demo_cap_usd: z.number().min(0).optional() });
 export const inboxDraftSchema = z.object({
   title: z.string().min(2).max(200),
   task_type: z.string().min(1),
@@ -241,6 +274,7 @@ export const AGENT_OUTPUT_SCHEMAS = {
   inbox_drafts: inboxDraftsOutputSchema,
   twin_person: twinOutputSchema,
   twin_role: twinOutputSchema,
+  twin_bid: twinBidOutputSchema,
 } as const;
 export const outputSchemaFor = (a: AgentName) => (a in AGENT_OUTPUT_SCHEMAS ? AGENT_OUTPUT_SCHEMAS[a as keyof typeof AGENT_OUTPUT_SCHEMAS] : boardProposalOutputSchema);
 
@@ -248,7 +282,8 @@ export const orgSettingsSchema = z.object({
   general: z.object({ name: z.string().min(1), locale: z.string().default('tr-TR'), timezone: z.string().default('Europe/Istanbul'), currency: z.string().default('TRY') }),
   notifications: z.object({ rules: z.array(z.object({ event: z.string(), channel: z.enum(['in_app', 'email', 'slack']), enabled: z.boolean() })) }),
   structure: z.object({ flow_stages: z.array(z.string()), work_hours: z.string().default('09:00-18:00') }),
-  ai: z.object({ monthly_cap_usd: z.number().min(0), default_model: z.string(), board_enabled: z.boolean() }),
+  /** monthly_cap_usd: 0 = tavan yok. usd_try: ₺ gösterimi için kur (varsayılan 40). */
+  ai: z.object({ monthly_cap_usd: z.number().min(0), default_model: z.string(), board_enabled: z.boolean(), usd_try: z.number().positive().optional() }),
   security: z.object({ mfa_required: z.boolean(), session_hours: z.number().int().min(1).max(720), ip_allowlist: z.array(z.string()) }),
   /** Ürün paketi yetkilendirmesi: false → ilgili modül menüden düşer (marketplace). */
   feature_flags: z.record(z.string(), z.boolean()).optional(),

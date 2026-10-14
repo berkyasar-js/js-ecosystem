@@ -4,6 +4,7 @@ import { TASK_STATE_LABELS, type InboxDraftsOutput, type Message } from '@jscore
 import { annotateDrafts, usedThisMonth } from '@/lib/quota';
 import { Async, Empty, PageHeader, fmtTime, money, todayFor, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
+import { agentRunBody } from '@/lib/agents/client';
 
 type Annotated = ReturnType<typeof annotateDrafts>;
 
@@ -19,7 +20,7 @@ export default function Inbox() {
   const generate = async (m: Message, ctx: NonNullable<typeof q.data>) => {
     setBusy(true); setMsg(null); setDrafts(null); setDone({});
     try {
-      const res = await fetch('/api/agents/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'inbox_drafts', input: { message_id: m.id, subject: m.meta.subject, body: m.body, brand_id: m.meta.brand_id } }) });
+      const res = await fetch('/api/agents/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(await agentRunBody(repo, todayFor(mode), { agent: 'inbox_drafts', input: { message_id: m.id, subject: m.meta.subject, body: m.body, brand_id: m.meta.brand_id } })) });
       const j = (await res.json()) as { output?: InboxDraftsOutput; error?: string; mode?: string };
       if (!res.ok || !j.output) throw new Error(j.error ?? 'Ajan çalışmadı');
       const brand = ctx.brands.find((b) => b.id === m.meta.brand_id);
