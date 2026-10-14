@@ -1,4 +1,4 @@
-/* JS Ecosystem · i18n (v0.7). Varsayılan Türkçe; İngilizce sözlükte olmayan anahtarlar Türkçeye düşer.
+/* JS Ecosystem · i18n (v0.8). Varsayılan Türkçe; İngilizce sözlükte olmayan anahtarlar Türkçeye düşer.
    t('anahtar')  → kabuk (chrome) metinleri   |   tx('Türkçe metin') → modül başlığı / sekme / rozet / düğme / toast eşlemesi. */
 (function(){
 var LS='js-ecosystem-lang';
@@ -8,7 +8,7 @@ var TR={
 'search':'Her yerde ara','search.aria':'Komut menüsünü aç','role.change':'Rolü değiştir','role.view':'görünümü','menu.open':'Menüyü aç',
 'notifs':'Bildirimler','notifs.unread':'okunmamış','theme.light':'Açık temaya geç','theme.dark':'Koyu temaya geç','profile':'Profilim',
 'tab.home':'Ana Sayfa','tab.tasks':'Görevler','tab.inbox':'Gelen Kutusu','tab.apps':'Uygulamalar','tab.account':'Hesabım','tab.approvals':'Onaylar',
-'chip':'v0.7 · prototip','lang':'Dil','lang.tr':'Türkçe','lang.en':'English','lang.hint':'Arayüz dili bu tarayıcıda saklanır. Tohum verideki cümleler Türkçe kalır.',
+'chip':'v0.8 · prototip','lang':'Dil','lang.tr':'Türkçe','lang.en':'English','lang.hint':'Arayüz dili bu tarayıcıda saklanır. Tohum verideki cümleler Türkçe kalır.',
 'close':'Kapat','dialog.close':'Pencereyi kapat','move.to':'kolonuna taşı','kb.moved':'taşındı','kb.hint':'Boşluk ile kartı seç, sol ve sağ ok tuşlarıyla kolon değiştir, Enter ile bırak, Esc ile vazgeç.','kb.picked':'Kart seçildi, kolon:','kb.cancel':'Taşıma iptal.','kb.locked':'Görev düzenleme yetkin yok.',
 'footer.proto':'Prototip, tüm veriler örnektir.','footer.log':'İşlem kaydı','footer.demo':'Demo giriş — kimlik doğrulama değildir','footer.local':'Yerel kayıt açık','footer.nolocal':'Yerel kayıt kapalı',
 'offline':'Çevrimdışısın. Kayıtlar bu cihazda tutulur; bağlantı gelince devam edebilirsin.','lang.set':'Dil değiştirildi.'
@@ -18,7 +18,7 @@ var EN={
 'search':'Search everywhere','search.aria':'Open command menu','role.change':'Switch role','role.view':'view','menu.open':'Open menu',
 'notifs':'Notifications','notifs.unread':'unread','theme.light':'Switch to light theme','theme.dark':'Switch to dark theme','profile':'My profile',
 'tab.home':'Home','tab.tasks':'Tasks','tab.inbox':'Inbox','tab.apps':'Apps','tab.account':'Account','tab.approvals':'Approvals',
-'chip':'v0.7 · prototype','lang':'Language','lang.hint':'The interface language is stored in this browser. Seed-data sentences stay in Turkish.',
+'chip':'v0.8 · prototype','lang':'Language','lang.hint':'The interface language is stored in this browser. Seed-data sentences stay in Turkish.',
 'close':'Close','dialog.close':'Close dialog','move.to':'move to column','kb.moved':'moved','kb.hint':'Press Space to pick up the card, Left and Right arrows to change column, Enter to drop, Escape to cancel.','kb.picked':'Card picked up, column:','kb.cancel':'Move cancelled.','kb.locked':'You do not have task edit permission.',
 'footer.proto':'Prototype, all data is sample data.','footer.log':'Audit log','footer.demo':'Demo sign-in — not authentication','footer.local':'Local save on','footer.nolocal':'Local save off',
 'offline':'You are offline. Records stay on this device; carry on when the connection returns.','lang.set':'Language changed.'
@@ -54,7 +54,7 @@ var A={
 // düğme / rozet / durum / toast
 'Bekliyor':'Pending','Onaylandı':'Approved','Revizyon':'Revision','Tamamlandı':'Done','Ödendi':'Paid','Aktif':'Active','Gecikmiş':'Overdue','Yeni':'New','Taslak':'Draft','Yayında':'Live','Kapalı':'Closed','Açık':'Open','Hata':'Error','Başarılı':'Success','Yüksek':'High','Orta':'Medium','Düşük':'Low','Riskli':'At risk','Planlama':'Planning','Devam ediyor':'In progress','Gönderildi':'Sent','Reddedildi':'Rejected','Kazanıldı':'Won','Kaybedildi':'Lost','Görüşme':'Interview','Teklif':'Offer','Başvuru':'Applied','Tümü':'All','Bekleyen':'Pending','İptal':'Cancel','Kaydet':'Save','Kapat':'Close','Sil':'Delete','Düzenle':'Edit','Oluştur':'Create','Gönder':'Send','Onayla':'Approve','Revize':'Revise','Kopyala':'Copy','İndir':'Download','Ekle':'Add','Kaydedildi.':'Saved.','Eklendi.':'Added.','Kaldırıldı.':'Removed.','Yorum eklendi.':'Comment added.','Görev eklendi.':'Task added.','Panoya kopyalandı.':'Copied to clipboard.','Link iptal edildi.':'Link revoked.','Dil değiştirildi.':'Language changed.','Yetki gerekli':'Permission required','Brief':'Brief','Üretim':'Production','Teslim':'Delivery','Arşiv':'Archive','İç onay':'Internal approval','Müşteri onayı':'Client approval','Müşteri kararı':'Client decision','Kapsam dışı':'Out of scope','Bütçe':'Budget','Aktif link':'Active link','Link yok':'No link','Süresi doldu':'Expired','İptal edildi':'Revoked',
 'Yeni görev':'New task','Yeni proje':'New project','Demo giriş':'Demo sign-in','Bir rol seç, ajansı o gözle gör.':'Pick a role and see the agency through its eyes.','Demo giriş — kimlik doğrulama değildir.':'Demo sign-in — not authentication.','Rolü değiştir (demo)':'Switch role (demo)','Kapsamım':'My scope','Güvenlik':'Security','Görünüm':'Appearance','Genel':'General','Dil':'Language','Türkçe':'Turkish','Link oluştur':'Create link','Dış inceleme linki oluştur':'Create external review link','İptal et':'Revoke','Önizle':'Preview','Linki kopyala':'Copy link','Yayınla':'Publish',
-'Yetkisiz':'Unauthorized','Kolon':'Column','Yeni lead':'New lead','Tümünü okundu say':'Mark all as read','Kanban':'Kanban'
+'Yetkisiz':'Unauthorized','Mesajlar':'Messages','Ekip kanalları':'Team channels','Doğrudan mesajlar':'Direct messages','Kayıt konuşmaları':'Record threads','Konuşma':'Thread','İç not':'Internal note','Müşteriye açık':'Client-visible','Mesajdan görev oluştur':'Create task from message','Memnuniyet':'Satisfaction','Anketler':'Surveys','Nabız anketi':'Pulse survey','Push bildirimi':'Push notifications','Test bildirimi gönder':'Send test notification','İzin iste':'Request permission','WhatsApp Business':'WhatsApp Business','Kanal':'Channel','Teslim sonrası CSAT':'Post-delivery CSAT','Anket şablonları':'Survey templates','Sessiz saatler (kişisel)':'Quiet hours (personal)','Mesajlar · yeni':'Messages · new','Kolon':'Column','Yeni lead':'New lead','Tümünü okundu say':'Mark all as read','Kanban':'Kanban'
 };
 function t(k){var d=lang==='en'?EN:TR;return d[k]!=null?d[k]:(TR[k]!=null?TR[k]:k)}
 function tx(s){if(lang!=='en'||s==null)return s;var k=String(s);return A[k]!=null?A[k]:s}

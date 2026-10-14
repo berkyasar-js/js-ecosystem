@@ -1,6 +1,6 @@
 /* JS Ecosystem · dış sayfalar (v0.7): watch.html (JS Review), apply.html (JS Hire), portal.html (Client Portal).
-   Oturum yok; token URL'de. Durum: localStorage 'js-ecosystem-v7' varsa oradan okunur, yoksa gömülü tohum kullanılır.
-   Yazma: 'js-ecosystem-v7-queue' kuyruğuna eklenir; ana uygulama açılışta içe alır (yorum, karar, başvuru). Tüm veri kurgusaldır. */
+   Oturum yok; token URL'de. Durum: localStorage 'js-ecosystem-v8' varsa oradan okunur, yoksa gömülü tohum kullanılır.
+   Yazma: 'js-ecosystem-v8-queue' kuyruğuna eklenir; ana uygulama açılışta içe alır (yorum, karar, başvuru). Tüm veri kurgusaldır. */
 (function(){
 'use strict';
 var KEY=JSE.KEY,QKEY=JSE.QKEY,TODAY=JSE.TODAY;
@@ -197,6 +197,35 @@ function pagePortal(){
   shell(TAG,body);
 }
 
+/* ===================== survey.html (v0.8) ===================== */
+var SV_DEF={csat:['Teslim edilen işten ne kadar memnunsunuz?','Eklemek istediğiniz bir yorum var mı?'],nps:['Jobs Studio’yu bir meslektaşınıza tavsiye etme olasılığınız nedir?','Puanınızın nedeni nedir?'],pulse:['İş yükümü sürdürülebilir buluyorum.','Ekibimle iletişimden memnunum.','Yöneticimden yeterli geri bildirim alıyorum.','Burada öğrenmeye ve gelişmeye devam ediyorum.','Jobs Studio’yu iyi bir işyeri olarak tavsiye ederim.']};
+function pageSurvey(){
+  var tok=param('s')||param('t'),TAG='Memnuniyet anketi';
+  var bad=function(k,t,m,c){return stateView(TAG,k,t,m,c||'bad')};
+  if(!validTok(tok))return bad('GEÇERSİZ BAĞLANTI','Bağlantı geçersiz veya süresi dolmuş','Adreste geçerli bir anket kodu yok. Size gönderilen bağlantıyı eksiksiz açın.');
+  var st=readState(),list=(st&&Array.isArray(st.surveyReq)&&st.surveyReq.length)?st.surveyReq:JSE.SURVEYS;
+  var req=list.find(function(x){return x.token===tok});
+  if(!req)return bad('GEÇERSİZ BAĞLANTI','Bağlantı geçersiz veya süresi dolmuş','Bu koda ait bir anket bulunamadı.');
+  var kind=req.kind,done=false;
+  try{done=kind!=='pulse'&&(req.status==='Yanıtlandı'||localStorage.getItem('js-survey-done-'+tok)||readQ().some(function(q){return q.type==='survey-response'&&q.token===tok}))}catch(e){}
+  if(done)return bad('TEŞEKKÜRLER','Bu anket zaten yanıtlandı','Yanıtınız kaydedildi. Aynı bağlantıyla ikinci kez yanıt verilemez.','warn');
+  var qs=((st&&st.surveyTemplates||[]).find(function(t){return t.id===kind})||{}).questions||SV_DEF[kind];
+  var name=(st&&st.clients||[]).find(function(c){return c.id===req.brand});
+  var scale=function(nm,from,to,lo,hi){var o='';for(var i=from;i<=to;i++)o+='<label class="sv-opt"><input type="radio" name="'+nm+'" value="'+i+'" required><span>'+i+'</span></label>';return '<div class="sv-scale" role="radiogroup" aria-label="'+esc(nm)+'">'+o+'</div><div class="sv-ends"><small>'+esc(lo)+'</small><small>'+esc(hi)+'</small></div>'};
+  var body='<div class="eyebrow">'+(kind==='pulse'?'EKİP NABZI · ANONİM':kind==='nps'?'TAVSİYE ANKETİ (NPS)':'MEMNUNİYET ANKETİ (CSAT)')+'</div><h1>'+esc(req.title||'Anket')+'</h1><p class="ext-lead">'+(kind==='pulse'?'5 kısa soru. Adınız, e-postanız ve kimliğiniz kaydedilmez; sonuçlar yalnızca en az 5 yanıt olduğunda toplu gösterilir.':'Yanıtınız Jobs Studio ekibine iletilir ve hesap sağlığı skoruna yansır.')+'</p><div class="banner">'+ic('info')+'<span>Demo bağlantı — kimlik doğrulama değildir.'+(kind==='pulse'?' Anonimlik eşiği: 5 yanıt.':'')+'</span></div><form id="sv-form" class="panel" style="padding:20px">';
+  if(kind==='pulse'){qs.slice(0,5).forEach(function(q,i){body+='<fieldset class="sv-q"><legend>'+(i+1)+'. '+esc(q)+'</legend>'+scale('q'+i,1,5,'Hiç katılmıyorum','Tamamen katılıyorum')+'</fieldset>'})}
+  else{body+='<fieldset class="sv-q"><legend>'+esc(qs[0])+'</legend>'+(kind==='nps'?scale('score',0,10,'Hiç olası değil','Kesinlikle'):scale('score',1,5,'Çok memnuniyetsizim','Çok memnunum'))+'</fieldset>'}
+  if(kind!=='pulse')body+='<label class="form-field full">'+esc(qs[1]||'Yorum')+'<textarea name="comment" maxlength="500"></textarea></label><label class="form-field">Adınız (isteğe bağlı)<input name="who" maxlength="60" placeholder="'+esc(name?name.name+' ekibi':'')+'"></label>';
+  else body+='<label class="form-field full">Eklemek istediğin bir şey var mı? (isteğe bağlı, anonim)<textarea name="comment" maxlength="300"></textarea></label>';
+  body+='<p id="sv-err" class="ext-err" role="alert"></p><div class="form-actions"><button class="button primary" type="submit"><span>Yanıtı gönder</span>'+ic('check')+'</button></div></form>';
+  shell(TAG,body);
+  $('#sv-form').addEventListener('submit',function(e){e.preventDefault();var f=e.target,fd=new FormData(f),it={type:'survey-response',token:tok,kind:kind,brand:req.brand||'',comment:String(fd.get('comment')||'').trim().slice(0,500)};
+    if(kind==='pulse'){var a=[];for(var i=0;i<5;i++){var v=fd.get('q'+i);if(v==null){$('#sv-err').textContent='Lütfen 5 soruyu da yanıtlayın.';return}a.push(Number(v))}it.answers=a}
+    else{var sc=fd.get('score');if(sc==null){$('#sv-err').textContent='Lütfen bir puan seçin.';return}it.score=Number(sc);it.who=String(fd.get('who')||'').trim().slice(0,60)}
+    pushQ(it);try{if(kind!=='pulse')localStorage.setItem('js-survey-done-'+tok,'1')}catch(x){}
+    $('#main').innerHTML='<section class="ext-state"><div class="eyebrow">TEŞEKKÜRLER</div><h1 id="sv-thanks">Yanıtınız kaydedildi</h1><p>'+(kind==='pulse'?'Anonim yanıtınız toplu sonuca eklenecek.':'Geri bildiriminiz Jobs Studio ekibine iletildi.')+'</p><a class="button primary" href="index.html"><span>JS Ecosystem’e git</span>'+ic('arrow')+'</a></section>'})
+}
+
 var P=document.body.dataset.page;
-document.addEventListener('DOMContentLoaded',function(){try{if(P==='watch')pageWatch();else if(P==='careers'||P==='apply')pageCareers();else if(P==='portal')pagePortal()}catch(e){console.error(e);var a=document.getElementById('ext-app');if(a)a.textContent='Sayfa yüklenemedi.'}});
+document.addEventListener('DOMContentLoaded',function(){try{if(P==='watch')pageWatch();else if(P==='careers'||P==='apply')pageCareers();else if(P==='portal')pagePortal();else if(P==='survey')pageSurvey()}catch(e){console.error(e);var a=document.getElementById('ext-app');if(a)a.textContent='Sayfa yüklenemedi.'}});
 })();

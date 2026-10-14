@@ -30,9 +30,10 @@ function applyQueueItem(it){
   if(it.type==='application'){const p=state.positions.find(x=>x.id===it.position);if(!p||state.candidates.some(c=>c.appToken===it.code))return false;
     state.candidates.unshift({id:it.id||uid('cd'),name:it.name,position:p.id,stage:'Başvuru',source:'Kariyer sayfası',cv:it.cv||'',portfolio:it.portfolio||'',email:it.email,note:it.note||'',appToken:it.code,appliedAt:it.date,kvkk:it.kvkk,score:{portfolio:0,interview:0,case:0,fit:0},next:''});
     p.applicants=(p.applicants||0)+1;addNotification(`Yeni başvuru: ${it.name} → ${p.title}`,'hire');extAudit(`Aday başvurusu (KVKK onaylı): ${it.name} → ${p.title}`,it.name);return true}
+  if(it.type==='survey-response')return typeof commsIngestSurvey==='function'&&commsIngestSurvey(it);
   return false}
 function ingestQueue(live){const q=JSE.readQ();let n=0;q.forEach(it=>{if(it.ingested)return;try{if(applyQueueItem(it))n++}catch(e){console.error('kuyruk',e)}it.ingested=true});if(q.length){JSE.writeQ(q)}if(n||live){save();if(live)render()}return n}
-function v7Boot(){try{ensureV7();ingestQueue(false);save()}catch(e){console.error('v7Boot',e)}
+function v7Boot(){try{ensureV7();if(typeof commsBoot==='function')commsBoot();ingestQueue(false);save()}catch(e){console.error('v7Boot',e)}
   window.addEventListener('storage',e=>{if(e.key===JSE.QKEY&&state.session.loggedIn)ingestQueue(true)});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.session.loggedIn)ingestQueue(true)});
   const m=$('#modal');m.setAttribute('role','dialog');m.setAttribute('aria-modal','true');m.addEventListener('close',()=>m.removeAttribute('aria-labelledby'))}

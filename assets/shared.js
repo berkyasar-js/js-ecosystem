@@ -3,9 +3,9 @@
    ana uygulama açılışta ve 'storage' olayında kuyruğu içe alır. Demo bağlantı — kimlik doğrulama değildir. */
 (function(){
 'use strict';
-var KEY='js-ecosystem-v7',QKEY='js-ecosystem-v7-queue';
+var KEY='js-ecosystem-v8',QKEY='js-ecosystem-v8-queue';
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
-function readState(){try{var s=JSON.parse(localStorage.getItem(KEY));if(s&&s.version===7&&Array.isArray(s.reviews))return s}catch(e){}return null}
+function readState(){try{var s=JSON.parse(localStorage.getItem(KEY));if(s&&s.version===8&&Array.isArray(s.reviews))return s}catch(e){}return null}
 function readQ(){try{var q=JSON.parse(localStorage.getItem(QKEY));return Array.isArray(q)?q:[]}catch(e){return []}}
 function writeQ(q){try{localStorage.setItem(QKEY,JSON.stringify(q))}catch(e){}}
 function pushQ(item){var q=readQ();item.qid=uid('q');item.at=new Date().toISOString();item.ingested=false;q.push(item);writeQ(q);return item}
@@ -19,5 +19,6 @@ var LINKS=[
  {token:'anova-v02',kind:'review',ref:'rv1',created:'2026-10-13',expires:'2026-10-20',revoked:false,download:true},
  {token:'eski0001',kind:'review',ref:'rv1',created:'2026-09-30',expires:'2026-10-07',revoked:false,download:false},
  {token:'anova-demo',kind:'portal',ref:'c_anova',created:'2026-10-14',expires:'2026-10-21',revoked:false,email:'marketing@anova.example'}];
-window.JSE={KEY:KEY,QKEY:QKEY,TODAY:'2026-10-14',uid:uid,readState:readState,readQ:readQ,writeQ:writeQ,pushQ:pushQ,RV3:RV3,LINKS:LINKS};
+var SURVEYS=[{token:'csat-anova-01',kind:'csat',brand:'c_anova',title:'Anova · Lansman filmi teslimi'},{token:'csat-wellana-01',kind:'csat',brand:'c_wellana',title:'Wellana · Sonbahar filmi v3 teslimi'},{token:'nps-anova-q4',kind:'nps',brand:'c_anova',title:'Anova · 2026 Q4 tavsiye anketi'},{token:'nabiz-2026q4',kind:'pulse',brand:'',title:'Ekip nabız anketi · 2026 Q4'}];
+window.JSE={SURVEYS:SURVEYS,KEY:KEY,QKEY:QKEY,TODAY:'2026-10-14',uid:uid,readState:readState,readQ:readQ,writeQ:writeQ,pushQ:pushQ,RV3:RV3,LINKS:LINKS};
 })();
