@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Message } from '@jscore/contracts';
 import { Async, Empty, PageHeader, fmtTime, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
+import { DEMO_STORAGE_KEY } from '@/lib/repo/demo';
 
 export default function Messages() {
   const { repo, mode } = useSession();
@@ -22,6 +23,17 @@ export default function Messages() {
     return () => { alive = false; off(); };
   }, [repo, active]);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [msgs]);
+  // Realtime yedeği: demo'da (BroadcastChannel yok) diğer sekmelerden gelen yazımlar için localStorage'ı yokla;
+  // Supabase'de kanal bağlantısı düşerse 15 sn'de bir yeniden çek.
+  useEffect(() => {
+    if (!repo || !active) return;
+    let alive = true;
+    const pull = () => repo.listMessages(active).then((m) => alive && setMsgs((cur) => (m.length === cur.length && m.at(-1)?.id === cur.at(-1)?.id ? cur : m)), () => undefined);
+    const timer = setInterval(pull, mode === 'demo' ? 3000 : 15000);
+    const onStorage = (e: StorageEvent) => { if (e.key === DEMO_STORAGE_KEY) void pull(); };
+    if (mode === 'demo') window.addEventListener('storage', onStorage);
+    return () => { alive = false; clearInterval(timer); window.removeEventListener('storage', onStorage); };
+  }, [repo, active, mode]);
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +47,7 @@ export default function Messages() {
 
   return (
     <>
-      <PageHeader title="Mesajlar" sub={mode === 'supabase' ? 'Canlı (Supabase Realtime)' : 'Demo — yerel kanallar'} />
+      <PageHeader title="Mesajlar" sub={mode === 'supabase' ? 'Canlı (Supabase Realtime + yoklama yedeği)' : 'Demo — yerel kanallar, 3 sn yoklama'} />
       <Async q={chans}>{(list) => list.length === 0 ? <Empty>Erişebildiğin kanal yok.</Empty> : (
         <div className="grid gap-4 md:grid-cols-[240px_1fr]">
           <ul className="card grid content-start gap-1 p-2" aria-label="Kanallar">

@@ -33,5 +33,16 @@ npm test && npm run lint && npm run build
 - **Ajanlar**: `/api/agents/run` → aktif `agent_prompts` → Anthropic → zod doğrulama → `agent_runs` (token/maliyet). Demo/anahtarsız modda deterministik çıktı. Kota kuralı (`lib/quota.ts`): sözleşme kotası aşan taslak "kapsam dışı" onayına gider.
 - **Webhook**: `POST /api/webhooks/:provider`, ham gövde üzerinde HMAC-SHA256 (`x-jscore-signature: sha256=…`). **MCP**: `POST /api/mcp` JSON-RPC (`tools/list`, `tools/call`: `project_status`, `create_task_draft`), `Authorization: Bearer` → `access_tokens.token_hash`.
 
+## Modül durumu
+Tüm modüller `apps/web/src/app/app/<slug>` altında; bileşenler `components/modules/*`. Veri `Repo` genel koleksiyon katmanından (`list/save/remove/audit`) geçer; izinler `packages/contracts/src/modules.ts` içindeki `COLLECTIONS` tablosundan gelir (Repo, demo, test ve RLS SQL tek kaynak).
+
+| Modül | Durum |
+|---|---|
+| mywork, crm (kanban, Account 360, teklif + PDF), resources, finance, people (HRIS, Employee 360, arşiv, Kolay İK), hire (+ /apply/[job]), portal, insights, automations, marketplace, media, review, transfer, studio, social, present, marketing, events | Canlı (DemoRepo + SupabaseRepo) |
+| messages | Canlı, Realtime yedeği olarak polling |
+
+- Migration `packages/schema/supabase/migrations/0005_modules.sql` `packages/schema/gen-0005.mjs` ile contracts'tan üretilir (`node --experimental-strip-types packages/schema/gen-0005.mjs`); küçük katalog seed: `packages/schema/seed/seed_modules.sql`.
+- PDF: `lib/pdf.ts` (bağımsız yazıcı) + `/api/pdf/proposal`. Yeni ajan: `studio_draft`.
+
 ## Bilinen eksikler
-Bkz. ana rapor: kalan modüller scaffold sayfası, Supabase uçtan uca doğrulama yapılmadı (instance yok), aylık ajan maliyet tavanı henüz zorlanmıyor, token oluşturma UI'ı yok, ihale (bids) tablosu yok.
+Supabase uçtan uca doğrulanmadı (instance yok; jsonb katman, RPC ve RLS canlı DB'de test edilmedi), tarayıcıda görsel test yapılmadı, otomasyonlar olaylarda tetiklenmiyor, dosya yükleme/Vimeo/MinIO simüle, aylık ajan maliyet tavanı zorlanmıyor, token oluşturma UI'ı yok, ihale (bids) tablosu yok.

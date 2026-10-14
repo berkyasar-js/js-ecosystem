@@ -1,8 +1,9 @@
 import type {
-  AccessToken, AgentPrompt, AgentRun, Approval, BoardDecision, Brand, Channel, Integration, McpServer, Me, Member, Message,
+  AuditEvent, AccessToken, AgentPrompt, AgentRun, Approval, BoardDecision, Brand, Channel, Integration, McpServer, Me, Member, Message,
   Organization, OrgSettings, Project, Role, StagePlanItem, Task, TaskState, TaskType, TeamMember, Twin, TwinBid, Webhook,
 } from '@jscore/contracts';
 import { TASK_STATES } from '@jscore/contracts';
+import { makeModuleSeed, type ModuleCols } from './demo-seed-modules';
 
 export const ORG_JOBS = 'org_jobs';
 export const ORG_EDIT = 'org_edit';
@@ -128,6 +129,7 @@ const team: TeamMember[] = ([
   ['SK', 'Seda Karabacak', 'Senior Art Director', 'creative', 38], ['DO', 'Duygu Öztürk', 'Art Director', 'creative', 31],
   ['RV', 'Raif Vural', 'Art Director', 'creative', 28], ['HO', 'Hulusi Melih Özbay', 'Video & Kurgu', 'creative', 40],
   ['BA', 'Bengisu Arda', 'İK & Mali İşler', 'finance', 24], ['FA', 'Fatma Ş.', 'Account Executive', 'account', 32],
+  ['ST', 'Selin Tekin', 'Account Executive', 'account', 30], ['BK', 'Berke A.', 'Junior Designer', 'creative', 40],
 ] as Array<[string, string, string, Role, number]>).map(([id, name, role_title, app_role, weekly_hours]) => ({ id, org_id: ORG_JOBS, name, role_title, app_role, status: 'active' as const, weekly_hours }));
 
 /* [id, başlık, tür, durum, tutar(TL), proje, marka, kim, required_role, due, versiyon/not] */
@@ -193,7 +195,7 @@ const bids: TwinBid[] = [
   { id: 'bid3', title: 'Lumio ürün katalog tasarımı', brand: 'Lumio', budget_minor: 9500000, due_at: '2026-11-03', matches: [{ twin_id: 'tw4', score: 76 }, { twin_id: 'tw1', score: 70 }] },
 ];
 
-const prompts: AgentPrompt[] = (['chair', 'ceo', 'cfo', 'coo', 'cmo', 'cto', 'chro', 'cco', 'clo', 'inbox_drafts', 'twin_person', 'twin_role'] as const).map((agent, i) => ({
+const prompts: AgentPrompt[] = (['chair', 'ceo', 'cfo', 'coo', 'cmo', 'cto', 'chro', 'cco', 'clo', 'inbox_drafts', 'twin_person', 'twin_role', 'studio_draft'] as const).map((agent, i) => ({
   id: `ap${i}`, agent, version: 1, model: agent === 'inbox_drafts' ? 'claude-haiku-4-5' : 'claude-sonnet-4-5', is_active: true, output_schema: {},
   system_prompt: `Demo prompt · ${agent.toUpperCase()} — gerçek metin packages/prompts/prompts/${agent}.md dosyasındadır.`,
 }));
@@ -237,10 +239,11 @@ const settings = (name: string): OrgSettings => ({
 export interface DemoDb {
   orgs: Organization[]; team: TeamMember[]; brands: Brand[]; projects: Project[]; tasks: Task[]; taskTypes: TaskType[]; approvals: Approval[];
   channels: Channel[]; messages: Message[]; settings: Record<string, OrgSettings>; members: Member[]; prompts: AgentPrompt[]; runs: AgentRun[];
+  cols: ModuleCols; audit: AuditEvent[];
   board: BoardDecision[]; twins: Twin[]; bids: TwinBid[]; connect: { integrations: Integration[]; mcp_servers: McpServer[]; webhooks: Webhook[]; tokens: AccessToken[] };
 }
 export const makeDemoDb = (): DemoDb => structuredClone({
   orgs, team, brands, projects, tasks, taskTypes: TASK_TYPES, approvals, channels, messages,
   settings: { [ORG_JOBS]: settings('Jobs Studio'), [ORG_EDIT]: settings('Edit Culture & Events') },
-  members, prompts, runs, board, twins, bids, connect: { integrations, mcp_servers, webhooks, tokens },
+  members, prompts, runs, board, twins, bids, cols: makeModuleSeed(), audit: [], connect: { integrations, mcp_servers, webhooks, tokens },
 });

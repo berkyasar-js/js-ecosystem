@@ -29,6 +29,15 @@ export function demoBoardOutput(agent: AgentName): BoardProposalOutput {
 
 export function demoAgentOutput(agent: AgentName, input: Record<string, unknown>): unknown {
   if (agent === 'inbox_drafts') return demoInboxDrafts(input as { subject?: string; body?: string });
+  if (agent === 'studio_draft') {
+    const brand = String(input.brand ?? 'Marka');
+    const goal = String(input.goal ?? 'bilinirlik');
+    return { summary: `${brand} için ${goal} odaklı 3 konsept (demo, model çağrısı yok).`, concepts: [
+      { title: 'Gündelik an', idea: `${brand} ürününü günlük rutinin içinde, abartısız bir an olarak göster.`, tone: 'samimi' },
+      { title: 'Önce / sonra', idea: 'Tek karede fark yaratan sade bir karşılaştırma serisi; beyan içermeden.', tone: 'güven veren' },
+      { title: 'Ekip hikâyesi', idea: 'Üretimin arkasındaki insanlar; kısa dikey video serisi.', tone: 'sıcak' },
+    ] };
+  }
   if (agent === 'twin_person' || agent === 'twin_role') return { summary: 'Demo ikiz değerlendirmesi', fit: 80, notes: ['Kapasite uygun', 'Beceri eşleşmesi yüksek'] };
   return demoBoardOutput(agent);
 }

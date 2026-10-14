@@ -1,4 +1,5 @@
 import type {
+  AuditEvent, Checklist, CollKey, DealStage, Deal, Leave, Records, SaveInput,
   AgentPrompt, AgentRun, Approval, ApprovalCreate, BoardAnswer, BoardDecision, Brand, Channel, ConnectData, Integration, Me, Member,
   Message, Organization, OrgSettings, Project, Task, TaskCreate, TaskState, TaskType, TeamMember, Twin, TwinBid,
 } from '@jscore/contracts';
@@ -42,6 +43,23 @@ export interface Repo {
   decideBoard(id: string, answer: BoardAnswer): Promise<BoardDecision>;
   listTwins(): Promise<Twin[]>;
   listTwinBids(): Promise<TwinBid[]>;
+  // modül koleksiyonları (kayıt + RLS: bkz. contracts COLLECTIONS)
+  list<K extends CollKey>(kind: K): Promise<Records[K][]>;
+  /** id yoksa oluşturur, varsa birleştirerek günceller; zod doğrular, audit yazar. */
+  save<K extends CollKey>(kind: K, input: SaveInput<K>): Promise<Records[K]>;
+  remove(kind: CollKey, id: string): Promise<void>;
+  audit(action: string, resource: string, meta?: Record<string, unknown>): Promise<void>;
+  listAudit(): Promise<AuditEvent[]>;
+  // alan kuralı olan işlemler
+  moveDeal(id: string, stage: DealStage): Promise<Deal>;
+  decideLeave(id: string, decision: 'approved' | 'rejected'): Promise<Leave>;
+  /** Teklif (offer) → çalışan + onboarding checklist + ilk görev. */
+  hireCandidate(candidateId: string): Promise<{ member: TeamMember; checklist: Checklist[] }>;
+  approveSocialBatch(brandId: string): Promise<number>;
+  /** Herkese açık başvuru (/apply/[job]). Demo: localStorage kuyruğu. */
+  submitApplication(jobSlug: string, input: { name: string; email: string; portfolio?: string; note?: string }): Promise<void>;
+  /** Demo kuyruğundaki başvuruları aday olarak içeri alır; Supabase'de 0 döner (doğrudan yazılır). */
+  ingestApplications(): Promise<number>;
 }
 
 export class ForbiddenError extends Error {

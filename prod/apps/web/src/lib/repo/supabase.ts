@@ -1,10 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  COLLECTIONS, DEAL_STAGES, LEAVE_DECIDERS, canWriteColl, type AuditEvent, type Checklist, type CollKey, type Deal, type DealStage, type Leave, type Records, type SaveInput, type TeamMember,
   approvalCreateSchema, canDecideApproval, orgSettingsPatchSchema, taskCreateSchema, type AgentRun, type Approval, type ApprovalCreate, type BoardAnswer,
   type BoardDecision, type ConnectData, type Integration, type Me, type Message, type OrgSettings, type Role, type Task, type TaskCreate, type TaskState,
 } from '@jscore/contracts';
 import { DEFAULT_SETTINGS } from './defaults';
 import { ForbiddenError, NotFoundError, type Repo } from './types';
+import { validateRecord } from './validate';
 
 type Row = Record<string, unknown>;
 /** RLS bilinçli: her sorgu kullanıcının JWT'si ile çalışır; ek filtre yalnızca aktif organizasyonu seçmek içindir. */
@@ -128,4 +130,82 @@ export class SupabaseRepo implements Repo {
   }
   async listTwins() { return this.ok(this.sb.from('employee_twins').select('*').eq('org_id', await this.org())); }
   async listTwinBids() { return []; /* ihale akışı henüz tablo değil; üretimde sırada */ }
+
+  /* ───────── Modül koleksiyonları: {id, org_id, brand_id?, data jsonb, created_at} + COLLECTIONS.native kolonları ───────── */
+  private native(kind: CollKey): string[] { return ((COLLECTIONS[kind] as { native?: string[] }).native ?? ['brand_id']); }
+  private fromRow<K extends CollKey>(row: Row): Records[K] {
+    const { data, ...rest } = row;
+    return { ...rest, ...((data as Row | null) ?? {}) } as unknown as Records[K];
+  }
+  private toRow(kind: CollKey, rec: Row): Row {
+    const nat = new Set(this.native(kind));
+    const col: Row = {}; const data: Row = {};
+    for (const [k, v] of Object.entries(rec)) {
+      if (k === 'id' || k === 'org_id' || k === 'created_at') continue;
+      (nat.has(k) ? col : data)[k] = v;
+    }
+    return { ...col, data };
+  }
+  async list<K extends CollKey>(kind: K): Promise<Records[K][]> {
+    const rows = await this.ok<Row[]>(this.sb.from(COLLECTIONS[kind].table).select('*').eq('org_id', await this.org()).order('created_at'));
+    return rows.map((r) => this.fromRow<K>(r));
+  }
+  async save<K extends CollKey>(kind: K, input: SaveInput<K>): Promise<Records[K]> {
+    const table = COLLECTIONS[kind].table;
+    let merged: Row = input as Row;
+    if (input.id) {
+      const cur = await this.ok<Row | null>(this.sb.from(table).select('*').eq('id', input.id).maybeSingle());
+      if (!cur) throw new NotFoundError('Kayıt');
+      merged = { ...this.fromRow(cur), ...input };
+    }
+    validateRecord(kind, merged);
+    const row = this.toRow(kind, merged);
+    const saved = input.id
+      ? await this.ok<Row>(this.sb.from(table).update(row).eq('id', input.id).select().single())
+      : await this.ok<Row>(this.sb.from(table).insert({ ...row, org_id: await this.org() }).select().single());
+    await this.audit(`${kind}.${input.id ? 'update' : 'create'}`, `${kind}/${saved.id as string}`);
+    return this.fromRow<K>(saved);
+  }
+  async remove(kind: CollKey, id: string) {
+    const me = await this.me();
+    if (!me || !canWriteColl(me.role, kind)) throw new ForbiddenError();
+    await this.ok(this.sb.from(COLLECTIONS[kind].table).delete().eq('id', id).select('id'));
+    await this.audit(`${kind}.delete`, `${kind}/${id}`);
+  }
+  async audit(action: string, resource: string, meta: Record<string, unknown> = {}) {
+    const { data: { user } } = await this.sb.auth.getUser();
+    await this.ok(this.sb.from('audit_events').insert({ org_id: await this.org(), actor: user?.id ?? null, action, resource, meta }).select('id'));
+  }
+  async listAudit(): Promise<AuditEvent[]> {
+    const rows = await this.ok<Row[]>(this.sb.from('audit_events').select('*').eq('org_id', await this.org()).order('occurred_at', { ascending: false }).limit(200));
+    return rows.map((r) => ({ id: r.id as string, org_id: r.org_id as string, actor: (r.actor as string) ?? '', actor_name: (r.actor as string)?.slice(0, 8) ?? 'sistem', action: r.action as string, resource: r.resource as string, meta: (r.meta as Record<string, unknown>) ?? {}, occurred_at: r.occurred_at as string }));
+  }
+  async moveDeal(id: string, stage: DealStage): Promise<Deal> {
+    if (!(DEAL_STAGES as readonly string[]).includes(stage)) throw new Error('Geçersiz aşama');
+    const me = await this.me();
+    if (!me || !canWriteColl(me.role, 'crm_deals')) throw new ForbiddenError('Pipeline kartını taşıma yetkin yok');
+    return this.save('crm_deals', { id, stage } as SaveInput<'crm_deals'>);
+  }
+  async decideLeave(id: string, decision: 'approved' | 'rejected'): Promise<Leave> {
+    const me = await this.me();
+    if (!me || !LEAVE_DECIDERS.includes(me.role)) throw new ForbiddenError('İzin kararı için yetkin yok');
+    return this.save('leaves', { id, status: decision } as SaveInput<'leaves'>);
+  }
+  async hireCandidate(candidateId: string): Promise<{ member: TeamMember; checklist: Checklist[] }> {
+    const r = await this.ok<{ employee_id: string }>(this.sb.rpc('hire_candidate', { p_candidate: candidateId }));
+    const org = await this.org();
+    const [team, checklist] = await Promise.all([this.team(), this.list('checklists')]);
+    const member = (team as TeamMember[]).find((t) => t.id === r.employee_id);
+    if (!member) throw new NotFoundError('Çalışan');
+    return { member: { ...member, org_id: org }, checklist: checklist.filter((c) => c.employee_id === r.employee_id) };
+  }
+  async approveSocialBatch(brandId: string) { return this.ok<number>(this.sb.rpc('approve_social_batch', { p_brand: brandId })); }
+  async submitApplication(jobSlug: string, input: { name: string; email: string; portfolio?: string; note?: string }) {
+    const job = await this.ok<Row | null>(this.sb.from('jobs').select('id,org_id').filter('data->>slug', 'eq', jobSlug).maybeSingle());
+    if (!job) throw new NotFoundError('Pozisyon');
+    await this.ok(this.sb.from('candidates').insert({
+      org_id: job.org_id, data: { job_id: job.id, name: input.name, email: input.email, portfolio: input.portfolio ?? '', note: input.note ?? '', stage: 'applied', score: 0, source: 'apply', talent_pool: false, employee_id: null },
+    }));
+  }
+  async ingestApplications() { return 0; /* Supabase'de başvuru doğrudan candidates'a yazılır */ }
 }

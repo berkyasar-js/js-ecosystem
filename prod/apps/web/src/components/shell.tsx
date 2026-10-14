@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Bell, Menu, MessageSquare, Moon, Search, Sun, X } from 'lucide-react';
-import { GROUP_LABELS, MODULES, ROLE_LABELS, canAccessModule, type ModuleGroup, type Project } from '@jscore/contracts';
+import { GROUP_LABELS, ROLE_LABELS, type ModuleGroup, type Project } from '@jscore/contracts';
+import { navModules } from '@/lib/nav';
 import { ICONS } from './icons';
 import { useSession } from './session';
 import { Loading } from './ui';
@@ -18,14 +19,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [q, setQ] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [pending, setPending] = useState(0);
+  const [flags, setFlags] = useState<Record<string, boolean> | undefined>();
   useEffect(() => setOpen(false), [path]);
   useEffect(() => {
     if (!repo) return;
     repo.listApprovals().then((a) => setPending(a.filter((x) => x.status === 'pending').length), () => setPending(0));
     repo.listProjects().then(setProjects, () => setProjects([]));
+    repo.getSettings().then((s) => setFlags(s.feature_flags), () => setFlags(undefined));
   }, [repo, rev]);
 
-  const visible = useMemo(() => (me ? MODULES.filter((m) => canAccessModule(me.role, m.id)) : []), [me]);
+  const visible = useMemo(() => (me ? navModules(me.role, flags) : []), [me, flags]);
   const results = useMemo(() => {
     const t = q.trim().toLocaleLowerCase('tr');
     if (!t) return [];

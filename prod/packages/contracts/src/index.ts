@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { studioDraftOutputSchema } from './modules';
 
 /* ───────── Roller & izinler ───────── */
 export const ROLES = [
@@ -66,33 +67,33 @@ const M = (id: string, name: string, group: ModuleGroup, icon: string, desc: str
 export const MODULES: ModuleDef[] = [
   M('overview', 'Genel Bakış', 'main', 'dashboard', 'Role göre KPI, bugünün odağı ve AI önerisi.', true),
   M('inbox', 'Akıllı Gelen Kutusu', 'main', 'inbox', 'Gmail → CRM eşleştirme → AI görev taslağı → onay.', true),
-  M('mywork', 'Benim İşlerim', 'main', 'mywork', 'Görevlerim, zaman girişi, odak modu ve günlük plan.'),
+  M('mywork', 'Benim İşlerim', 'main', 'mywork', 'Görevlerim, zaman girişi, odak modu ve günlük plan.', true),
   M('messages', 'Mesajlar', 'main', 'messages', 'Kanallar ve proje konuşmaları.', true),
-  M('crm', 'JS CRM', 'work', 'crm', 'Hesaplar, markalar, kişiler, lead’ler, teklif ve sözleşmeler.'),
+  M('crm', 'JS CRM', 'work', 'crm', 'Hesaplar, markalar, kişiler, lead’ler, teklif ve sözleşmeler.', true),
   M('projects', 'JS Work · Projeler', 'work', 'projects', 'Proje şablonları, kilometre taşları ve kapsam değişikliği.', true),
   M('tasks', 'JS Work · Görevler', 'work', 'tasks', '8 kolonlu Kanban, etiket, yorum, SLA ve zaman.', true),
   M('flow', 'JS Flow', 'work', 'flow', 'Aşama planı, sahipler ve akış darboğazları.', true),
-  M('resources', 'JS Resources', 'work', 'resources', 'Kapasite ısı haritası, izin, beceri, ekipman ve zimmet.'),
-  M('finance', 'JS Finance', 'work', 'finance', 'Teklif, bütçe, gider, tedarikçi, fatura, tahsilat ve marj.'),
-  M('studio', 'JS Studio', 'creative', 'studio', 'Brand Memory, brief, AI konsept taslağı ve sürümler.'),
-  M('social', 'JS Social', 'creative', 'social', 'Marka × ay içerik takvimi, pipeline ve kota takibi.'),
-  M('media', 'JS Media', 'creative', 'media', 'Vimeo metadata, MinIO/S3 dosyaları, saklama süreleri.'),
-  M('review', 'JS Review', 'creative', 'review', 'Zaman kodlu yorum, sürüm, revize turu ve onay.'),
-  M('transfer', 'JS Transfer', 'creative', 'transfer', 'Yükleme, süreli paylaşım linki, indirme logu, dosya isteme.'),
-  M('present', 'JS Present', 'creative', 'present', 'Teklif belgesi, sunum taslağı, aylık rapor ve şablonlar.'),
-  M('marketing', 'JS Marketing', 'creative', 'marketing', 'Segmentler, mailing, otomatik diziler, bülten ve huni.'),
-  M('events', 'JS Events', 'creative', 'events', 'Run-of-show, tedarikçi, saha kontrolü, LCV ve bütçe.'),
-  M('people', 'JS People', 'people', 'people', 'Personel kartı, izin, zimmet, imza seti, onboarding ve devir.'),
-  M('hire', 'JS Hire', 'people', 'hire', 'Açık pozisyonlar, aday kanbanı, puan formu ve teklif.'),
-  M('portal', 'JS Client Portal', 'people', 'portal', 'Müşteri gözünden açık işler, onaylar, talep ve dosyalar.'),
+  M('resources', 'JS Resources', 'work', 'resources', 'Kapasite ısı haritası, izin, beceri, ekipman ve zimmet.', true),
+  M('finance', 'JS Finance', 'work', 'finance', 'Teklif, bütçe, gider, tedarikçi, fatura, tahsilat ve marj.', true),
+  M('studio', 'JS Studio', 'creative', 'studio', 'Brand Memory, brief, AI konsept taslağı ve sürümler.', true),
+  M('social', 'JS Social', 'creative', 'social', 'Marka × ay içerik takvimi, pipeline ve kota takibi.', true),
+  M('media', 'JS Media', 'creative', 'media', 'Vimeo metadata, MinIO/S3 dosyaları, saklama süreleri.', true),
+  M('review', 'JS Review', 'creative', 'review', 'Zaman kodlu yorum, sürüm, revize turu ve onay.', true),
+  M('transfer', 'JS Transfer', 'creative', 'transfer', 'Yükleme, süreli paylaşım linki, indirme logu, dosya isteme.', true),
+  M('present', 'JS Present', 'creative', 'present', 'Teklif belgesi, sunum taslağı, aylık rapor ve şablonlar.', true),
+  M('marketing', 'JS Marketing', 'creative', 'marketing', 'Segmentler, mailing, otomatik diziler, bülten ve huni.', true),
+  M('events', 'JS Events', 'creative', 'events', 'Run-of-show, tedarikçi, saha kontrolü, LCV ve bütçe.', true),
+  M('people', 'JS People', 'people', 'people', 'Personel kartı, izin, zimmet, imza seti, onboarding ve devir.', true),
+  M('hire', 'JS Hire', 'people', 'hire', 'Açık pozisyonlar, aday kanbanı, puan formu ve teklif.', true),
+  M('portal', 'JS Client Portal', 'people', 'portal', 'Müşteri gözünden açık işler, onaylar, talep ve dosyalar.', true),
   M('board', 'Yönetim Kurulu', 'intel', 'board', 'Dokuz ajan, haftalık kurul ve kurucu kararları.', true),
   M('twins', 'Dijital İkizler', 'intel', 'twins', 'Kişi ve rol ikizleri, kapasite ve iş ihaleleri.', true),
-  M('insights', 'JS Insights', 'intel', 'insights', 'Satış hunisi, kapasite, marj, müşteri sağlığı, veri kalitesi.'),
-  M('automations', 'JS Automation', 'manage', 'automation', 'Olay akışı, ajan çalıştırmaları ve maliyet tavanı.'),
+  M('insights', 'JS Insights', 'intel', 'insights', 'Satış hunisi, kapasite, marj, müşteri sağlığı, veri kalitesi.', true),
+  M('automations', 'JS Automation', 'manage', 'automation', 'Olay akışı, ajan çalıştırmaları ve maliyet tavanı.', true),
   M('integrations', 'JS Connect', 'manage', 'connect', 'Entegrasyonlar, MCP sunucuları, API ve webhook’lar.', true, 'connect'),
   M('approvals', 'Onay Merkezi', 'manage', 'approvals', 'İçerik, bütçe, kapsam dışı iş, müşteri kararı, yetki.', true),
   M('admin', 'JS Core · Admin', 'manage', 'admin', 'Admin Control Center: erişim, güvenlik, faturalama, veri.', true),
-  M('marketplace', 'Ürünler & Paketler', 'manage', 'marketplace', 'Ürün paketleri, feature flag ve yetkilendirme.'),
+  M('marketplace', 'Ürünler & Paketler', 'manage', 'marketplace', 'Ürün paketleri, feature flag ve yetkilendirme.', true),
   M('profile', 'Profilim', 'manage', 'profile', 'Kapsam, ikiz ayarları, bildirim ve güvenlik.', true),
   M('apps', 'Uygulamalar', 'hidden', 'apps', 'Tüm modüller tek ekranda.', true),
 ];
@@ -124,7 +125,7 @@ export const TASK_STATE_LABELS: Record<TaskState, string> = {
   brief: 'Brief', scope: 'Kapsam', plan: 'Plan', production: 'Üretim', internal_review: 'İç revize', approval: 'Onay', delivery: 'Teslim', archive: 'Arşiv',
 };
 export type Priority = 'low' | 'normal' | 'high';
-export const AGENTS = ['chair', 'ceo', 'cfo', 'coo', 'cmo', 'cto', 'chro', 'cco', 'clo', 'inbox_drafts', 'twin_person', 'twin_role'] as const;
+export const AGENTS = ['chair', 'ceo', 'cfo', 'coo', 'cmo', 'cto', 'chro', 'cco', 'clo', 'inbox_drafts', 'twin_person', 'twin_role', 'studio_draft'] as const;
 export type AgentName = (typeof AGENTS)[number];
 export const BOARD_AGENTS = AGENTS.slice(0, 9) as readonly AgentName[];
 
@@ -236,6 +237,7 @@ export const boardProposalOutputSchema = z.object({
 export type BoardProposalOutput = z.infer<typeof boardProposalOutputSchema>;
 export const twinOutputSchema = z.object({ summary: z.string(), fit: z.number().min(0).max(100).optional(), notes: z.array(z.string()).default([]) });
 export const AGENT_OUTPUT_SCHEMAS = {
+  studio_draft: studioDraftOutputSchema,
   inbox_drafts: inboxDraftsOutputSchema,
   twin_person: twinOutputSchema,
   twin_role: twinOutputSchema,
@@ -248,6 +250,11 @@ export const orgSettingsSchema = z.object({
   structure: z.object({ flow_stages: z.array(z.string()), work_hours: z.string().default('09:00-18:00') }),
   ai: z.object({ monthly_cap_usd: z.number().min(0), default_model: z.string(), board_enabled: z.boolean() }),
   security: z.object({ mfa_required: z.boolean(), session_hours: z.number().int().min(1).max(720), ip_allowlist: z.array(z.string()) }),
+  /** Ürün paketi yetkilendirmesi: false → ilgili modül menüden düşer (marketplace). */
+  feature_flags: z.record(z.string(), z.boolean()).optional(),
+  plan: z.object({ name: z.string(), seats: z.number().int().min(1), period: z.enum(['monthly', 'yearly']) }).optional(),
+  industry_packs: z.array(z.string()).optional(),
+  white_label: z.object({ enabled: z.boolean(), name: z.string(), color: z.string(), domain: z.string() }).optional(),
 });
 export type OrgSettings = z.infer<typeof orgSettingsSchema>;
 export const orgSettingsPatchSchema = orgSettingsSchema.partial();
@@ -273,3 +280,5 @@ export const mcpCreateTaskDraftArgs = z.object({
   task_type: z.string().optional(), priority: z.enum(['low', 'normal', 'high']).optional(), due_at: z.string().optional(),
 });
 export const mcpProjectStatusArgs = z.object({ project_id: z.string().optional() });
+
+export * from './modules';
