@@ -1,0 +1,7 @@
+event_type,channel,roles,enabled
+approval.created,in_app,"owner;account;pm",true
+approval.decided,email,"owner;account",true
+task.overdue,in_app,"pm;account;creative",true
+task.updated,in_app,"pm",false
+invoice.overdue,email,"owner;finance",true
+board.weekly,slack,"owner",false

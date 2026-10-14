@@ -1,0 +1,9 @@
+key,label,sla_hours,default_minutes,unit_price_minor
+main_visual,Ana görsel,120,480,1800000
+social_visual,Sosyal görsel,72,240,725000
+social_copy,Sosyal metin seti,48,120,350000
+reels,Reels / kısa video,168,480,1450000
+video_edit,Video kurgu,168,1200,4500000
+proposal_deck,Teklif / sunum,96,360,1200000
+status_report,Müşteri status raporu,24,60,0
+general,Genel,72,120,0

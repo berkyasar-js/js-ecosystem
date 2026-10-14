@@ -1,0 +1,10 @@
+action,level,decider,limit_minor,notes
+budget_extra,1,pm,2500000,5-25k TL arası ek bütçe: PM onayı
+budget_extra,2,owner,,25k TL üstü: kurucu onayı
+out_of_scope_work,1,account,,Sözleşme kotası aşımı: ek teklif ile
+content_publish,1,account,,İç içerik onayı
+client_decision,1,client_admin,,Müşteri nihai onayı
+role_change,2,owner,,MFA + owner onayı zorunlu
+tool_integration,2,owner,,Yeni entegrasyon bağlama
+board_strategy,3,founder,,Kurul önerisi + kurucu EVET/HAYIR/ERTELE
+payroll_publish,2,payroll,,Bordro yayını (owner/admin dahil değil)

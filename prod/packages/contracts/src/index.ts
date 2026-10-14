@@ -1,0 +1,275 @@
+import { z } from 'zod';
+
+/* ───────── Roller & izinler ───────── */
+export const ROLES = [
+  'owner', 'org_admin', 'operations', 'account', 'pm', 'creative', 'hr', 'payroll',
+  'finance', 'client_admin', 'client_viewer', 'freelancer', 'auditor', 'integration_admin',
+] as const;
+export type Role = (typeof ROLES)[number];
+
+export const ROLE_LABELS: Record<Role, string> = {
+  owner: 'Owner', org_admin: 'Org Admin', operations: 'Operasyon', account: 'Account', pm: 'PM',
+  creative: 'Creative', hr: 'İK', payroll: 'Bordro', finance: 'Finans', client_admin: 'Client Admin',
+  client_viewer: 'Client Viewer', freelancer: 'Freelancer', auditor: 'Denetçi', integration_admin: 'Entegrasyon Admin',
+};
+export const isClientRole = (r: Role) => r === 'client_admin' || r === 'client_viewer';
+
+export type Scope = 'own' | 'team' | 'brand' | 'org';
+/** Permission = organization + product + resource + action + scope */
+export interface Permission { organization: string; product: string; resource: string; action: string; scope: Scope }
+
+/** 'product:resource:action' kalıpları; '*' joker. */
+export const ROLE_GRANTS: Record<Role, string[]> = {
+  owner: ['*:*:*'],
+  org_admin: ['*:*:*'],
+  operations: ['work:*:*', 'crm:*:*', 'resources:*:*', 'core:approval:*', 'intel:*:read', 'comms:*:*'],
+  account: ['work:*:*', 'crm:*:*', 'core:approval:decide', 'core:approval:read', 'comms:*:*', 'intel:*:read'],
+  pm: ['work:*:*', 'core:approval:decide', 'core:approval:read', 'comms:*:*'],
+  creative: ['work:task:*', 'work:project:read', 'creative:*:*', 'core:approval:read', 'comms:*:*'],
+  hr: ['people:*:*', 'hr:hr_archive:*', 'work:project:read', 'core:approval:decide'],
+  payroll: ['payroll:*:*', 'people:employee:read', 'finance:invoice:read'],
+  finance: ['finance:*:*', 'crm:*:read', 'work:project:read', 'core:approval:decide'],
+  client_admin: ['portal:*:*', 'work:project:read', 'work:task:read', 'core:approval:decide', 'comms:message:*'],
+  client_viewer: ['portal:*:read', 'work:project:read', 'work:task:read', 'comms:message:read'],
+  freelancer: ['work:task:read', 'work:task:update', 'creative:*:read', 'comms:message:*'],
+  auditor: ['*:*:read'],
+  integration_admin: ['connect:*:*', 'core:audit:read'],
+};
+/** Owner/Org-admin için varsayılan olarak kapalı alanlar (açık grant gerekir). */
+const DEFAULT_DENY: Array<{ product?: string; resource?: string }> = [{ product: 'payroll' }, { resource: 'hr_archive' }];
+
+const match = (pat: string, v: string) => pat === '*' || pat === v;
+export function hasPermission(role: Role, product: string, resource: string, action: string, extraGrants: string[] = []): boolean {
+  const ok = (grants: string[]) => grants.some((g) => {
+    const [p, r, a] = g.split(':');
+    return match(p, product) && match(r, resource) && match(a, action);
+  });
+  if (ok(extraGrants)) return true;
+  if ((role === 'owner' || role === 'org_admin') && DEFAULT_DENY.some((d) => (!d.product || d.product === product) && (!d.resource || d.resource === resource))) return false;
+  return ok(ROLE_GRANTS[role]);
+}
+
+/** Onay kararı: kim hangi required_role'ü karara bağlayabilir. */
+export function canDecideApproval(role: Role, required: Role): boolean {
+  if (role === 'owner') return true;
+  if (role === 'org_admin') return required !== 'owner';
+  if (role === required) return true;
+  if (required === 'pm') return role === 'operations' || role === 'account';
+  if (required === 'account') return role === 'operations';
+  return false;
+}
+
+/* ───────── Modül kataloğu (prototip ile aynı id'ler) ───────── */
+export type ModuleGroup = 'main' | 'work' | 'creative' | 'people' | 'intel' | 'manage' | 'hidden';
+export interface ModuleDef { id: string; name: string; group: ModuleGroup; icon: string; desc: string; slug: string; live: boolean }
+const M = (id: string, name: string, group: ModuleGroup, icon: string, desc: string, live = false, slug = id): ModuleDef => ({ id, name, group, icon, desc, live, slug });
+export const MODULES: ModuleDef[] = [
+  M('overview', 'Genel Bakış', 'main', 'dashboard', 'Role göre KPI, bugünün odağı ve AI önerisi.', true),
+  M('inbox', 'Akıllı Gelen Kutusu', 'main', 'inbox', 'Gmail → CRM eşleştirme → AI görev taslağı → onay.', true),
+  M('mywork', 'Benim İşlerim', 'main', 'mywork', 'Görevlerim, zaman girişi, odak modu ve günlük plan.'),
+  M('messages', 'Mesajlar', 'main', 'messages', 'Kanallar ve proje konuşmaları.', true),
+  M('crm', 'JS CRM', 'work', 'crm', 'Hesaplar, markalar, kişiler, lead’ler, teklif ve sözleşmeler.'),
+  M('projects', 'JS Work · Projeler', 'work', 'projects', 'Proje şablonları, kilometre taşları ve kapsam değişikliği.', true),
+  M('tasks', 'JS Work · Görevler', 'work', 'tasks', '8 kolonlu Kanban, etiket, yorum, SLA ve zaman.', true),
+  M('flow', 'JS Flow', 'work', 'flow', 'Aşama planı, sahipler ve akış darboğazları.', true),
+  M('resources', 'JS Resources', 'work', 'resources', 'Kapasite ısı haritası, izin, beceri, ekipman ve zimmet.'),
+  M('finance', 'JS Finance', 'work', 'finance', 'Teklif, bütçe, gider, tedarikçi, fatura, tahsilat ve marj.'),
+  M('studio', 'JS Studio', 'creative', 'studio', 'Brand Memory, brief, AI konsept taslağı ve sürümler.'),
+  M('social', 'JS Social', 'creative', 'social', 'Marka × ay içerik takvimi, pipeline ve kota takibi.'),
+  M('media', 'JS Media', 'creative', 'media', 'Vimeo metadata, MinIO/S3 dosyaları, saklama süreleri.'),
+  M('review', 'JS Review', 'creative', 'review', 'Zaman kodlu yorum, sürüm, revize turu ve onay.'),
+  M('transfer', 'JS Transfer', 'creative', 'transfer', 'Yükleme, süreli paylaşım linki, indirme logu, dosya isteme.'),
+  M('present', 'JS Present', 'creative', 'present', 'Teklif belgesi, sunum taslağı, aylık rapor ve şablonlar.'),
+  M('marketing', 'JS Marketing', 'creative', 'marketing', 'Segmentler, mailing, otomatik diziler, bülten ve huni.'),
+  M('events', 'JS Events', 'creative', 'events', 'Run-of-show, tedarikçi, saha kontrolü, LCV ve bütçe.'),
+  M('people', 'JS People', 'people', 'people', 'Personel kartı, izin, zimmet, imza seti, onboarding ve devir.'),
+  M('hire', 'JS Hire', 'people', 'hire', 'Açık pozisyonlar, aday kanbanı, puan formu ve teklif.'),
+  M('portal', 'JS Client Portal', 'people', 'portal', 'Müşteri gözünden açık işler, onaylar, talep ve dosyalar.'),
+  M('board', 'Yönetim Kurulu', 'intel', 'board', 'Dokuz ajan, haftalık kurul ve kurucu kararları.', true),
+  M('twins', 'Dijital İkizler', 'intel', 'twins', 'Kişi ve rol ikizleri, kapasite ve iş ihaleleri.', true),
+  M('insights', 'JS Insights', 'intel', 'insights', 'Satış hunisi, kapasite, marj, müşteri sağlığı, veri kalitesi.'),
+  M('automations', 'JS Automation', 'manage', 'automation', 'Olay akışı, ajan çalıştırmaları ve maliyet tavanı.'),
+  M('integrations', 'JS Connect', 'manage', 'connect', 'Entegrasyonlar, MCP sunucuları, API ve webhook’lar.', true, 'connect'),
+  M('approvals', 'Onay Merkezi', 'manage', 'approvals', 'İçerik, bütçe, kapsam dışı iş, müşteri kararı, yetki.', true),
+  M('admin', 'JS Core · Admin', 'manage', 'admin', 'Admin Control Center: erişim, güvenlik, faturalama, veri.', true),
+  M('marketplace', 'Ürünler & Paketler', 'manage', 'marketplace', 'Ürün paketleri, feature flag ve yetkilendirme.'),
+  M('profile', 'Profilim', 'manage', 'profile', 'Kapsam, ikiz ayarları, bildirim ve güvenlik.', true),
+  M('apps', 'Uygulamalar', 'hidden', 'apps', 'Tüm modüller tek ekranda.', true),
+];
+export const GROUP_LABELS: Record<ModuleGroup, string> = {
+  main: 'ANA MENÜ', work: 'AJANS OPERASYONU', creative: 'ÜRETİM & MEDYA', people: 'İNSAN & MÜŞTERİ', intel: 'ZEKÂ', manage: 'YÖNETİM & SİSTEM', hidden: '',
+};
+const ALL_IDS = MODULES.map((m) => m.id);
+const MANAGER = ['overview', 'inbox', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'flow', 'resources', 'people', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events', 'portal', 'board', 'twins', 'insights', 'automations', 'integrations', 'approvals', 'marketplace', 'profile', 'apps'].filter((x) => x !== 'board');
+const CLIENT = ['overview', 'mywork', 'messages', 'projects', 'tasks', 'media', 'review', 'transfer', 'portal', 'approvals', 'profile', 'apps'];
+export const ROLE_MODULES: Record<Role, string[]> = {
+  owner: ALL_IDS, org_admin: ALL_IDS, operations: MANAGER, account: MANAGER,
+  pm: MANAGER.filter((x) => !['board', 'marketplace'].includes(x)),
+  creative: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'flow', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'events', 'twins', 'approvals', 'profile', 'apps'],
+  finance: ['overview', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'finance', 'insights', 'approvals', 'integrations', 'profile', 'apps'],
+  hr: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'resources', 'people', 'hire', 'insights', 'approvals', 'profile', 'apps'],
+  payroll: ['overview', 'mywork', 'people', 'finance', 'insights', 'approvals', 'profile', 'apps'],
+  client_admin: CLIENT,
+  client_viewer: CLIENT.filter((x) => x !== 'approvals'),
+  freelancer: ['overview', 'mywork', 'messages', 'tasks', 'review', 'transfer', 'profile', 'apps'],
+  auditor: ['overview', 'insights', 'approvals', 'automations', 'admin', 'profile', 'apps'],
+  integration_admin: ['overview', 'integrations', 'automations', 'admin', 'profile', 'apps'],
+};
+export const canAccessModule = (role: Role, id: string) => ROLE_MODULES[role].includes(id);
+
+/* ───────── Domain sabitleri ───────── */
+export const TASK_STATES = ['brief', 'scope', 'plan', 'production', 'internal_review', 'approval', 'delivery', 'archive'] as const;
+export type TaskState = (typeof TASK_STATES)[number];
+export const TASK_STATE_LABELS: Record<TaskState, string> = {
+  brief: 'Brief', scope: 'Kapsam', plan: 'Plan', production: 'Üretim', internal_review: 'İç revize', approval: 'Onay', delivery: 'Teslim', archive: 'Arşiv',
+};
+export type Priority = 'low' | 'normal' | 'high';
+export const AGENTS = ['chair', 'ceo', 'cfo', 'coo', 'cmo', 'cto', 'chro', 'cco', 'clo', 'inbox_drafts', 'twin_person', 'twin_role'] as const;
+export type AgentName = (typeof AGENTS)[number];
+export const BOARD_AGENTS = AGENTS.slice(0, 9) as readonly AgentName[];
+
+/* ───────── Tablo tipleri (snake_case = DB kolonları) ───────── */
+export interface Organization { id: string; name: string; slug: string }
+export interface Membership { id: string; user_id: string; org_id: string; role: Role; scopes: Record<string, unknown> }
+export interface Me {
+  id: string; name: string; email: string; initials: string; title: string; role: Role; org_id: string;
+  employee_id?: string; client_id?: string; brand_ids: string[]; scopes: string[];
+}
+export interface TeamMember { id: string; org_id: string; name: string; role_title: string; app_role: Role; status: 'active' | 'left'; weekly_hours: number }
+export interface Brand {
+  id: string; org_id: string; client_id: string; name: string; sector: string; status: 'active' | 'risky' | 'prospect';
+  account_owner: string; art_director: string; copywriter: string; compliance_flags: string[]; monthly_quota: Record<string, number>;
+  health: number; internal: boolean; contact?: string; email?: string;
+}
+export interface StagePlanItem { stage: TaskState; owner: string; due_at: string; done: boolean }
+export interface Project {
+  id: string; org_id: string; brand_id: string; name: string; type: string; status: 'planning' | 'active' | 'done' | 'paused';
+  flow_stage: TaskState; flow_owner: string; stage_plan: StagePlanItem[]; due_at: string; budget_minor: number; summary: string; client_visible: boolean;
+}
+export interface Task {
+  id: string; org_id: string; project_id: string; title: string; assignee_id: string | null; state: TaskState; priority: Priority;
+  due_at: string; planned_minutes: number; task_type: string; qty: number; source_ref: string | null; labels: string[]; client_visible: boolean; created_at: string;
+}
+export interface TaskType { key: string; label: string; sla_hours: number; default_minutes: number; unit_price_minor: number }
+export type ApprovalAction = 'content' | 'budget' | 'scope' | 'client_decision' | 'access';
+export interface Approval {
+  id: string; org_id: string; action_type: ApprovalAction; title: string;
+  subject: { project_id?: string; brand_id?: string; amount_minor?: number; version?: string; note?: string };
+  required_role: Role; status: 'pending' | 'approved' | 'rejected'; requested_by: string; decided_by: string | null; decided_at: string | null;
+  decision_note: string | null; due_at: string; created_at: string;
+}
+export interface Channel { id: string; org_id: string; name: string; kind: 'channel' | 'dm' | 'inbox'; brand_id: string | null }
+export interface Message {
+  id: string; org_id: string; channel_id: string; author_id: string; author_name: string; body: string;
+  meta: { from?: string; subject?: string; brand_id?: string } & Record<string, unknown>; created_at: string;
+}
+export interface Integration { id: string; org_id: string; provider: string; name: string; status: 'connected' | 'available' | 'error'; scopes: string[]; secret_ref: string | null }
+export interface McpServer { id: string; org_id: string; name: string; url: string; status: 'connected' | 'available'; tools: string[] }
+export interface AccessToken { id: string; org_id: string; name: string; token_prefix: string; scopes: string[]; created_at: string; last_used_at: string | null }
+export interface Webhook { id: string; org_id: string; provider: string; url: string; events: string[]; active: boolean }
+export interface ConnectData { integrations: Integration[]; mcp_servers: McpServer[]; webhooks: Webhook[]; tokens: AccessToken[] }
+export interface Member { user_id: string; name: string; email: string; role: Role; status: 'active' | 'invited' }
+export interface AgentPrompt { id: string; agent: AgentName; version: number; system_prompt: string; model: string; output_schema: Record<string, unknown>; is_active: boolean }
+export interface AgentRun {
+  id: string; org_id: string; agent: AgentName; trigger: string; input: unknown; output: unknown; model: string;
+  tokens_in: number; tokens_out: number; cost_usd: number; latency_ms: number; status: 'ok' | 'error' | 'demo'; created_at: string;
+}
+export type BoardAnswer = 'EVET' | 'HAYIR' | 'ERTELE';
+export interface BoardDecision {
+  id: string; org_id: string; proposal_id: string; proposed_by: AgentName; level: 1 | 2 | 3; action: string; rationale: string;
+  risk: 'low' | 'medium' | 'high'; votes: Record<string, 'yes' | 'no' | 'abstain'>; status: 'pending' | 'approved' | 'rejected' | 'deferred';
+  founder_answer: BoardAnswer | null; created_at: string; decided_at: string | null;
+}
+export interface Twin {
+  id: string; org_id: string; employee_id: string | null; kind: 'person' | 'role'; name: string; profile: Record<string, unknown>;
+  defaults: Record<string, unknown>; preferences: Record<string, unknown>; opt_out: boolean; approved_by_owner_at: string | null;
+}
+export interface TwinBid { id: string; title: string; brand: string; budget_minor: number; due_at: string; matches: Array<{ twin_id: string; score: number }> }
+
+/* ───────── zod şemaları ───────── */
+export const roleSchema = z.enum(ROLES);
+export const taskStateSchema = z.enum(TASK_STATES);
+export const taskCreateSchema = z.object({
+  project_id: z.string().min(1),
+  title: z.string().trim().min(2).max(200),
+  assignee_id: z.string().nullable().optional(),
+  priority: z.enum(['low', 'normal', 'high']).default('normal'),
+  due_at: z.string().min(8),
+  planned_minutes: z.number().int().min(0).max(100000).default(0),
+  task_type: z.string().min(1).default('general'),
+  qty: z.number().int().min(1).max(500).default(1),
+  source_ref: z.string().nullable().optional(),
+  state: taskStateSchema.default('brief'),
+});
+export type TaskCreate = z.input<typeof taskCreateSchema>;
+export const taskMoveSchema = z.object({ id: z.string().min(1), state: taskStateSchema });
+export const approvalCreateSchema = z.object({
+  action_type: z.enum(['content', 'budget', 'scope', 'client_decision', 'access']),
+  title: z.string().trim().min(2).max(200),
+  subject: z.object({ project_id: z.string().optional(), brand_id: z.string().optional(), amount_minor: z.number().int().optional(), version: z.string().optional(), note: z.string().optional() }).default({}),
+  required_role: roleSchema,
+  due_at: z.string().min(8),
+});
+export type ApprovalCreate = z.input<typeof approvalCreateSchema>;
+export const approvalDecisionSchema = z.object({ decision: z.enum(['approved', 'rejected']), note: z.string().max(1000).optional() });
+export const boardAnswerSchema = z.enum(['EVET', 'HAYIR', 'ERTELE']);
+
+export const agentNameSchema = z.enum(AGENTS);
+export const agentRunRequestSchema = z.object({ agent: agentNameSchema, input: z.record(z.string(), z.unknown()).default({}) });
+export const inboxDraftSchema = z.object({
+  title: z.string().min(2).max(200),
+  task_type: z.string().min(1),
+  qty: z.number().int().min(1).max(500).default(1),
+  priority: z.enum(['low', 'normal', 'high']).default('normal'),
+  due_at: z.string().min(8),
+  rationale: z.string().default(''),
+});
+export type InboxDraft = z.infer<typeof inboxDraftSchema>;
+export const inboxDraftsOutputSchema = z.object({ summary: z.string(), drafts: z.array(inboxDraftSchema).max(10) });
+export type InboxDraftsOutput = z.infer<typeof inboxDraftsOutputSchema>;
+export const boardProposalOutputSchema = z.object({
+  summary: z.string(),
+  proposals: z.array(z.object({
+    action: z.string(), rationale: z.string(), level: z.number().int().min(1).max(3), risk: z.enum(['low', 'medium', 'high']),
+  })).max(10),
+});
+export type BoardProposalOutput = z.infer<typeof boardProposalOutputSchema>;
+export const twinOutputSchema = z.object({ summary: z.string(), fit: z.number().min(0).max(100).optional(), notes: z.array(z.string()).default([]) });
+export const AGENT_OUTPUT_SCHEMAS = {
+  inbox_drafts: inboxDraftsOutputSchema,
+  twin_person: twinOutputSchema,
+  twin_role: twinOutputSchema,
+} as const;
+export const outputSchemaFor = (a: AgentName) => (a in AGENT_OUTPUT_SCHEMAS ? AGENT_OUTPUT_SCHEMAS[a as keyof typeof AGENT_OUTPUT_SCHEMAS] : boardProposalOutputSchema);
+
+export const orgSettingsSchema = z.object({
+  general: z.object({ name: z.string().min(1), locale: z.string().default('tr-TR'), timezone: z.string().default('Europe/Istanbul'), currency: z.string().default('TRY') }),
+  notifications: z.object({ rules: z.array(z.object({ event: z.string(), channel: z.enum(['in_app', 'email', 'slack']), enabled: z.boolean() })) }),
+  structure: z.object({ flow_stages: z.array(z.string()), work_hours: z.string().default('09:00-18:00') }),
+  ai: z.object({ monthly_cap_usd: z.number().min(0), default_model: z.string(), board_enabled: z.boolean() }),
+  security: z.object({ mfa_required: z.boolean(), session_hours: z.number().int().min(1).max(720), ip_allowlist: z.array(z.string()) }),
+});
+export type OrgSettings = z.infer<typeof orgSettingsSchema>;
+export const orgSettingsPatchSchema = orgSettingsSchema.partial();
+
+export const applySchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  email: z.string().email(),
+  portfolio: z.string().url().optional().or(z.literal('')),
+  note: z.string().max(2000).optional(),
+  consent: z.literal(true),
+});
+
+/* MCP / JSON-RPC */
+export const jsonRpcRequestSchema = z.object({
+  jsonrpc: z.literal('2.0'),
+  id: z.union([z.string(), z.number(), z.null()]).optional(),
+  method: z.string(),
+  params: z.record(z.string(), z.unknown()).optional(),
+});
+export type JsonRpcRequest = z.infer<typeof jsonRpcRequestSchema>;
+export const mcpCreateTaskDraftArgs = z.object({
+  project_id: z.string().min(1), title: z.string().trim().min(2).max(200),
+  task_type: z.string().optional(), priority: z.enum(['low', 'normal', 'high']).optional(), due_at: z.string().optional(),
+});
+export const mcpProjectStatusArgs = z.object({ project_id: z.string().optional() });

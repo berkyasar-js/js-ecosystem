@@ -1,0 +1,7 @@
+{
+  "name": "@jscore/prompts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "emit-sql": "node scripts/emit-sql.mjs" }
+}

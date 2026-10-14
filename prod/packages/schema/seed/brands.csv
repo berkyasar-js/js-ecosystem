@@ -1,0 +1,25 @@
+code,name,sector,status,account_owner_code,art_director_code,copywriter_code,health,internal,monthly_quota
+c_badem,Badem Pınarı,FMCG · Su,active,SO,SK,SO,82,false,"{""social_visual"":8,""reels"":2}"
+c_anova,Anova,Savunma & Havacılık,active,OE,DO,SO,78,false,"{""social_visual"":2,""reels"":1}"
+c_alimar,Alimar,Gıda,active,SO,RV,SO,74,false,{}
+c_dora,Dora,Mobilya,active,OE,SK,SO,88,false,{}
+c_dogruer,Doğruer,İnşaat,active,SO,DO,SO,70,false,{}
+c_noche,Noche,Yaşam & tasarım,active,OE,RV,SO,76,false,{}
+c_paintfield,Paintfield,Boya,active,SO,SK,SO,80,false,{}
+c_numesys,Numesys,Mühendislik yazılımı,active,OE,DO,SO,84,false,{}
+c_wellana,Wellana,Sağlık & wellness,risky,OE,SK,SO,52,false,"{""social_visual"":12}"
+c_sensortek,Sensörtek,Endüstriyel sensör,active,SO,RV,SO,72,false,{}
+c_edsis,Edsis,Eğitim teknolojisi,active,OE,DO,SO,79,false,{}
+c_esen,Esen,Perakende,active,SO,SK,SO,81,false,{}
+c_ozkaramete,Özkaramete,Gıda,active,OE,RV,SO,77,false,{}
+c_batubaha,Batu Baha,Tekstil,active,SO,DO,SO,75,false,{}
+c_premium,Premium İşitme,Sağlık,active,OE,SK,SO,83,false,{}
+c_edit,Edit Culture & Events,Etkinlik (grup şirketi),active,OE,RV,SO,90,true,{}
+c_jobs,Jobs Studio,Ajans (kendi markası),active,OE,SK,SO,95,true,{}
+c_opsin,Opsin,Optik,risky,SO,DO,SO,48,false,{}
+c_marinbase,Marinbase,Denizcilik,active,SO,RV,SO,73,false,{}
+c_clayton,Clayton,Gayrimenkul,prospect,OE,DO,SO,60,false,{}
+c_globmac,Globmac,Makine,prospect,SO,SK,SO,55,false,{}
+c_kuzey,Kuzey Enerji,Enerji,active,SO,RV,SO,71,false,{}
+c_lumio,Lumio,Aydınlatma,active,OE,DO,SO,69,false,{}
+c_tarla,Tarla Sofrası,Gıda,prospect,SO,SK,SO,58,false,{}
