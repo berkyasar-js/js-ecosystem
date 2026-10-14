@@ -1,0 +1,41 @@
+/* Jobs Studio Agency OS · Glass Gradient mini update 1.0
+   Load AFTER assets/evolution.css (prototype) or jobs-ui.css (React kit).
+   Scoped: prototype dark mode + .jobs-ui React workspace. No JS/data changes. */
+.os-v2.dark,.jobs-ui{--jg-edge:rgba(255,255,255,.12);--jg-inner:inset 0 1px 0 rgba(255,255,255,.11);--jg-surface:rgba(20,23,36,.88);--jg-blur:16px;--jg-glow:0 0 24px rgba(0,240,255,.06)}
+/* Solid base is the fallback. Blur is enabled only where supported. */
+.os-v2.dark :is(.sidebar,.topbar,.toolbar,.conversation-toolbar,.tabs,.search-trigger),
+.os-v2.dark #modal,.jobs-ui .jobs-glass-toolbar,.jobs-ui .jobs-glass-popover{
+ background:linear-gradient(125deg,rgba(144,108,255,.08),rgba(0,240,255,.025) 62%,transparent),#141724;
+ border-color:var(--jg-edge);box-shadow:var(--jg-inner)}
+.os-v2.dark .sidebar{background:radial-gradient(ellipse at 0 15%,rgba(27,37,224,.16),transparent 60%),#101320}
+.os-v2.dark .topbar{background:linear-gradient(110deg,rgba(144,108,255,.08),rgba(0,240,255,.035)),#101320}
+.os-v2.dark :is(.toolbar,.conversation-toolbar){border:1px solid var(--jg-edge);border-radius:18px;padding:12px;gap:12px}
+.os-v2.dark .nav-item.active{background:linear-gradient(110deg,rgba(27,37,224,.38),rgba(144,108,255,.20),rgba(0,240,255,.065));box-shadow:inset 0 0 0 1px rgba(144,108,255,.32),var(--jg-inner),0 0 20px rgba(27,37,224,.10)}
+.os-v2.dark .nav-item:not(.active):hover{background:linear-gradient(110deg,rgba(144,108,255,.12),rgba(0,240,255,.045))}
+.os-v2.dark :is(.panel,.metric,.mini-project,.signal-card),.jobs-ui .jobs-card{
+ background:radial-gradient(ellipse at 100% 0,rgba(144,108,255,.10),transparent 60%),linear-gradient(145deg,rgba(255,255,255,.025),transparent),#151827;
+ border-color:var(--jg-edge);box-shadow:var(--jg-inner),0 8px 28px rgba(1,4,30,.12)}
+/* Colored glow stays behind content; no overlay or pointer interception. */
+.jobs-ui .jobs-card--lime{background:radial-gradient(ellipse at 100% 0,rgba(204,255,0,.08),transparent 65%),#151827}
+.jobs-ui .jobs-card--cyan{background:radial-gradient(ellipse at 100% 0,rgba(0,240,255,.08),transparent 65%),#151827}
+.os-v2.dark :is(.button:not(.primary):not(.danger),.icon-button,.flow-dossiers button),.jobs-ui .jobs-button--glass{
+ background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(144,108,255,.055));border:1px solid var(--jg-edge);box-shadow:var(--jg-inner);transition:background .2s,border-color .2s,box-shadow .2s}
+.os-v2.dark :is(.button:not(.primary):not(.danger),.icon-button):hover:not(:disabled),.jobs-ui .jobs-button--glass:hover:not(:disabled){border-color:rgba(0,240,255,.35);box-shadow:var(--jg-inner),var(--jg-glow)}
+.os-v2.dark :is(.timeline-stage.is-current,.lane.active),.jobs-ui .jobs-stage--current{
+ background:linear-gradient(135deg,rgba(204,255,0,.09),rgba(0,240,255,.07) 65%,rgba(144,108,255,.08)),#171b29;
+ border-color:rgba(204,255,0,.36);box-shadow:var(--jg-inner),0 0 24px rgba(0,240,255,.07)}
+.os-v2.dark .timeline-owner .profile-photo,.jobs-ui .jobs-stage--current .jobs-avatar{border-color:rgba(0,240,255,.6);box-shadow:0 0 0 4px rgba(0,240,255,.06),0 0 18px rgba(0,240,255,.12)}
+.os-v2.dark #modal{border:1px solid var(--jg-edge);box-shadow:var(--jg-inner),0 24px 80px rgba(0,0,0,.5)}
+.os-v2.dark #modal::backdrop{background:rgba(3,5,14,.72)}
+.os-v2.dark :is(.command-result:hover,.command-result:focus-visible){background:linear-gradient(100deg,rgba(144,108,255,.15),rgba(0,240,255,.06))}
+.jobs-ui .jobs-glass-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border:1px solid var(--jg-edge);border-radius:18px}
+.jobs-ui .jobs-glass-popover{padding:20px;border:1px solid var(--jg-edge);border-radius:24px;box-shadow:var(--jg-inner),0 20px 60px rgba(0,0,0,.32)}
+@supports(backdrop-filter:blur(16px)){
+ .os-v2.dark :is(.sidebar,.topbar,.toolbar,.conversation-toolbar,.tabs,.search-trigger),.os-v2.dark #modal,.jobs-ui :is(.jobs-glass-toolbar,.jobs-glass-popover){background-color:var(--jg-surface);backdrop-filter:blur(var(--jg-blur));-webkit-backdrop-filter:blur(var(--jg-blur))}
+ /* Avoid applying costly blur to every repeated timeline/card item. */
+ .jobs-ui .jobs-card{background-color:var(--jg-surface);backdrop-filter:blur(12px)}
+}
+@media(max-width:650px){.os-v2.dark .sidebar{background-color:rgba(16,19,32,.97)}.os-v2.dark .toolbar{flex-wrap:wrap}.os-v2.dark,.jobs-ui{--jg-blur:10px}}
+@media(prefers-reduced-motion:reduce){.os-v2.dark :is(.button,.icon-button,.nav-item),.jobs-ui :is(.jobs-button,.jobs-card){transition:none}}
+@media(prefers-contrast:more){.os-v2.dark,.jobs-ui{--jg-edge:rgba(255,255,255,.5);--jg-surface:#141724}}
+@media(forced-colors:active){.os-v2.dark :is(.panel,.sidebar,.topbar,#modal,.nav-item.active),.jobs-ui :is(.jobs-card,.jobs-glass-toolbar,.jobs-glass-popover){background:Canvas;color:CanvasText;border:1px solid CanvasText;box-shadow:none;backdrop-filter:none}}

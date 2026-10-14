@@ -1,0 +1,36 @@
+/* JS Ecosystem · V6 tasarım tabanı (Jobs Studio Agency OS Güncel Teslim, 14.10.2026)
+   Plus Jakarta Sans (OFL, assets/fonts), bento yüzeyler, cam kenarlar, lime/cyan/magenta süreç vurguları.
+   Marka mavisi #1B25E0 birincil aksiyon olarak korunur; neon yalnızca seçili aşama ve vurgu yüzeylerinde. */
+@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/PlusJakartaSans-Regular.ttf') format('truetype')}
+@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/PlusJakartaSans-Medium.ttf') format('truetype')}
+@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/PlusJakartaSans-SemiBold.ttf') format('truetype')}
+@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/PlusJakartaSans-Bold.ttf') format('truetype')}
+
+:root{font-family:'Plus Jakarta Sans',"Inter",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;--radius:22px;--canvas:#eef0f6;--line:#dfe2ed;--soft:#e9ecf5;--card:#fff;--ink:#10132a;--muted:#666b83;--lime:#ccff00;--cyan:#00f0ff;--magenta:#ff3366;--lime-ink:#2a3300;--cyan-ink:#003a40;--glass:#ffffff66;--shadow:0 18px 60px #10132a12}
+.dark{--canvas:#080a17;--card:#151827;--ink:#f0f0f7;--muted:#a2a6bc;--line:#292d40;--soft:#202438;--green:#98dd4e;--glass:#ffffff14;--shadow:0 24px 70px #00000066;color-scheme:dark}
+
+h1{font-weight:700;letter-spacing:-1.4px}h2{font-weight:600}h3{font-weight:600}.eyebrow{font-weight:600;letter-spacing:1.6px}
+.panel,.metric{border-radius:var(--radius);box-shadow:inset 0 1px 0 var(--glass)}
+.metric{padding:22px 24px}
+.dark .panel,.dark .metric{background:linear-gradient(180deg,#171a2c,#151827);border-color:#2a2e44}
+.hero{border-radius:24px}
+.sidebar{background:#080a17}
+.dark .sidebar{border-right:1px solid #1d2135}
+.nav-item.active{background:linear-gradient(145deg,#434bfa,#1b25e0);box-shadow:inset 0 1px 1px #c0c5ff44}
+.button{border-radius:12px;font-weight:600}
+.button.primary{background:linear-gradient(145deg,#434bfa,#1b25e0);border:1px solid #6c72ff80;box-shadow:inset 0 1px 1px #c0c5ff44,0 5px 15px #1b25e023}
+.button.lime,.button.process{background:var(--lime);color:var(--lime-ink);border-color:var(--lime)}
+.button.cyan,.button.decision{background:var(--cyan);color:var(--cyan-ink);border-color:var(--cyan)}
+.button.pending{background:#9aa822;color:#1b1f00;opacity:.85;cursor:progress}
+.button.locked{opacity:.5;cursor:not-allowed}
+.badge{border-radius:999px;padding:5px 9px;font-weight:600;letter-spacing:.2px}
+.dark .badge{background:#202438;color:#c9cdf0}
+.badge.lime{background:var(--lime);color:var(--lime-ink)}.badge.cyan{background:var(--cyan);color:var(--cyan-ink)}.badge.magenta{background:var(--magenta);color:#fff}
+.tab.active{background:var(--ink);color:var(--canvas)}
+.dark .tab.active{background:#f0f0f7;color:#080a17}
+.stage-active,.kanban-col.active,.selected-stage{background:linear-gradient(135deg,#1b25e0,#7b3fe4 55%,#e5326e);color:#fff;border-color:transparent}
+.glass-label{display:inline-flex;align-items:center;gap:7px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+input,select,textarea{border-radius:12px}
+.dark input,.dark select,.dark textarea{background:#0f1222;border-color:#2a2e44;color:var(--ink)}
+.dark .project-row,.dark .task-row{border-color:#232739}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
