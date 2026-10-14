@@ -34,3 +34,80 @@ input,select,textarea{border-radius:12px}
 .dark input,.dark select,.dark textarea{background:#0f1222;border-color:#2a2e44;color:var(--ink)}
 .dark .project-row,.dark .task-row{border-color:#232739}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ===== v0.6 · V4–V6 bileşen kuralları (evolution.css'ten uyarlandı) ===== */
+/* Portre avatarları: <img> sprite; baş harfler yedek olarak altta kalır */
+.avatar.pt{position:relative;overflow:hidden;padding:0;background:#1b25e0;color:#fff;border:2px solid #ffffff24;box-shadow:0 0 0 3px #906cff0a}
+.avatar.pt .ini{font-weight:600}
+.avatar.pt img{position:absolute;max-width:none;display:block;object-fit:cover}
+.avatar.xs{width:20px;height:20px;font-size:8px;border-width:1px;display:inline-grid;vertical-align:middle}
+.avatar-link{display:inline-flex;text-decoration:none;border-radius:50%}.avatar-link:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.top-actions .avatar{width:38px;height:38px}
+.identity .avatar.pt{background:#1b25e0}
+.ap-by{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.fl-av.pt{border-color:var(--card)}.fl-now .fl-av.pt{border-color:var(--cyan)}
+.role-card .avatar{width:42px;height:42px}
+/* Orbit Studio: hero nesnesi (dekoratif) */
+.orbit-art{pointer-events:none;user-select:none;-webkit-user-drag:none}
+.focus-card{position:relative;overflow:hidden}
+.focus-card .orbit-art{position:absolute;right:-14px;top:50%;width:min(320px,40%);transform:translateY(-50%);z-index:0}
+.focus-card .focus-content{position:relative;z-index:1;max-width:64%}
+.login-card{position:relative;overflow:hidden}
+.login-card>*:not(.orbit-art){position:relative;z-index:1}
+.login-orbit{position:absolute;right:-24px;top:-8px;width:250px;opacity:.9;z-index:0}
+.login-card>.logo,.login-card>.eyebrow,.login-card>h1,.login-card>p{max-width:calc(100% - 190px)}
+@media(prefers-reduced-motion:no-preference){.focus-card .orbit-art{animation:orbit-float 9s ease-in-out infinite}.login-orbit{animation:orbit-drift 10s ease-in-out infinite}}
+@keyframes orbit-float{0%,100%{transform:translateY(-50%) rotate(0)}50%{transform:translateY(calc(-50% - 8px)) rotate(2deg)}}
+@keyframes orbit-drift{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+@media(max-width:650px){.focus-card .orbit-art{width:140px;top:10px;transform:none;opacity:.55;animation:none}.focus-card .focus-content{max-width:none}.login-orbit{width:130px;right:-18px;top:-10px;opacity:.55;animation:none}.login-card>.logo,.login-card>.eyebrow,.login-card>h1,.login-card>p{max-width:none}}
+/* Signal card + cam araç çubukları */
+.signal-card{position:relative;overflow:hidden}
+.dark .signal-card{background:linear-gradient(160deg,#1b25e033,#906cff14 55%,transparent),var(--card);border-color:#3a3f66;box-shadow:inset 0 1px 0 var(--glass)}
+body:not(.dark) .signal-card{background:linear-gradient(160deg,#eceaff,#fff 60%);border-color:#d8d5f5}
+.signal-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:#906cff26;color:#7a52f0}.dark .signal-icon{color:#b9a3ff}
+.toolbar,.conversation-toolbar{border:1px solid var(--line);border-radius:16px;background:color-mix(in srgb,var(--card) 82%,transparent);backdrop-filter:blur(10px)}
+.toolbar{padding:10px 12px}
+.conversation-toolbar{display:flex;align-items:center;gap:9px;padding:16px 20px;font-size:11px;color:var(--muted)}
+/* Akış: dossier kısayolları */
+.flow-dossiers,.fl-dossiers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 20px}
+.fl-dossiers a{display:block;border:1px solid var(--line);background:linear-gradient(145deg,#906cff12,transparent),var(--soft);color:var(--ink);border-radius:14px;padding:16px;text-decoration:none;transition:transform .2s,border-color .2s}
+.fl-dossiers a:hover{transform:translateY(-3px);border-color:#906cff}.fl-dossiers a:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.fl-dossiers strong,.fl-dossiers small{display:block;margin-top:8px}.fl-dossiers small{color:var(--muted);font-size:12px}.fl-dossiers .icon{color:#7a52f0}.dark .fl-dossiers .icon{color:#999fff}
+/* Akış: seçili aşama gradyanı (yalnız vurgu yüzeyi) */
+.fl-stage.is-cur{background:linear-gradient(135deg,#1b25e0,#7b3fe4 55%,#e5326e);border-color:transparent;box-shadow:0 10px 30px #1b25e035;color:#fff}
+.fl-stage.is-cur .fl-dates,.fl-stage.is-cur em,.fl-stage.is-cur .fl-who small{color:#ffffffd9}
+.fl-stage.is-cur .fl-active small{color:#dffaff}
+.fl-stage.is-cur .fl-av{border-color:#ffffff66}
+.fl-stage.is-cur .fl-num{background:var(--lime);color:var(--lime-ink);border-color:var(--lime)}
+.fl-bl{margin:8px 0 0 18px;padding:0;font-size:13px;color:var(--ink)}.fl-bl li{margin:3px 0}
+.fl-check.bad .fl-bl b{color:var(--magenta)}
+/* Neon düğme durumları */
+.button.pending{background:#9aa822;color:#1b1f00;border-color:#9aa822;opacity:.9;cursor:progress;pointer-events:none}
+.button.locked,.button[aria-disabled=true]{opacity:.55;cursor:not-allowed;background:transparent;border:1px dashed var(--line);color:var(--muted);box-shadow:none}
+.button.locked:hover{transform:none}
+.button.lime:hover,.button.cyan:hover{filter:brightness(1.06)}
+.button.cyan.pending,.button.lime.pending{color:#1b1f00}
+.mail-done{margin-top:4px;font-size:10px}
+.mail-note{margin:14px 0 4px}.mail-note textarea{min-height:70px}
+/* Çevrimdışı banner + PWA kartı */
+.offline-banner{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:90;max-width:min(560px,calc(100vw - 32px));padding:10px 16px;border-radius:14px;background:var(--magenta);color:#fff;font-size:13px;font-weight:600;box-shadow:0 10px 30px #0006}
+.offline-banner[hidden]{display:none}
+.pwa-card{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 20px;margin-bottom:16px}.pwa-card small{display:block;color:var(--muted);margin-top:3px}
+.mobile-only{display:none}
+@media(max-width:650px){.mobile-only{display:flex}.fl-dossiers{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.fl-dossiers a{padding:12px 10px}.fl-dossiers small{display:none}}
+/* Akış mobil: 2 sütunlu aşama düzeni */
+@media (max-width:560px){.fl-card .fl-stages,.fl-card .fl-lanes{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.fl-stage{padding:12px}.fl-stage b{font-size:14px}.fl-who{font-size:12px}.fl-lanes{padding:8px 12px 14px}.fl-dates{overflow-wrap:anywhere}}
+
+/* ===== v0.6 · tema denetimi düzeltmeleri (koyu + açık) ===== */
+.fl-stages .fl-stage.is-cur{background:linear-gradient(135deg,#1b25e0,#7b3fe4 55%,#e5326e);border-color:transparent;box-shadow:0 10px 30px #1b25e035;color:#fff;opacity:1}
+.fl-stages .fl-stage.is-cur b,.fl-stages .fl-stage.is-cur .fl-who>span:last-child{color:#fff}
+.fl-stages .fl-stage.is-cur .fl-dates,.fl-stages .fl-stage.is-cur em,.fl-stages .fl-stage.is-cur .fl-who small{color:#fff;opacity:.92}
+.fl-stages .fl-stage.is-cur .fl-active small{color:#e4fbff;opacity:1}
+.heat-cell small{color:inherit;opacity:1}
+.h2,.h4{color:#01041e}.h3,.h5{color:#fff}
+.heat-cell.h2,.heat-cell.h4{color:#01041e}
+.skill-dot.l1,.skill-dot.l2,.skill-dot.l3{color:#01041e}
+.cal-item.st-0,.cal-item.st-1,.cal-item.st-3{color:#01041e}
+.doc-page,.dark .doc-page{color:#01041e}.doc-page .muted,.doc-page small,.doc-page .small{color:#4a4f6a}
+.approval-art span{color:#fff}
+.nav-label.app-group{color:var(--muted)}body:not(.dark) .nav-label{color:#6b6f8c}
