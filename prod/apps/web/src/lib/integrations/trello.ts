@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { trelloConfigSchema, type TrelloConfig, type TrelloImportResult } from '@jscore/contracts';
+import { trelloConfigSchema, type SyncLogEntry, type TrelloConfig, type TrelloImportResult } from '@jscore/contracts';
 import {
-  memberKey, runImport,
-  type StoreTask, type TaskDraft, type TrelloBoard, type TrelloCard, type TrelloList, type TrelloMember, type TrelloSnapshot, type TrelloStore,
+  buildListMap, buildMemberIds, memberKey, runImport,
+  type StoreTask, type SyncLogDraft, type TaskDraft, type TrelloBoard, type TrelloCard, type TrelloList, type TrelloMember, type TrelloSnapshot, type TrelloStore,
 } from './trello-map';
 
 export * from './trello-map';
@@ -41,7 +41,7 @@ export async function trelloFetch<T>(c: TrelloCreds, path: string, opts: { param
 export const verifyCredentials = (c: TrelloCreds) => trelloFetch<{ id: string; fullName: string; username: string }>(c, '/members/me', { params: { fields: 'fullName,username' } });
 export const listBoards = (c: TrelloCreds) => trelloFetch<Array<TrelloBoard & { closed?: boolean }>>(c, '/members/me/boards', { params: { filter: 'open', fields: 'name,closed' } });
 
-const CARD_FIELDS = 'name,idList,idBoard,due,dueComplete,labels,idMembers,dateLastActivity,desc,shortLink,badges,idChecklists,closed';
+export const CARD_FIELDS = 'name,idList,idBoard,due,dueComplete,labels,idMembers,dateLastActivity,desc,shortLink,badges,idChecklists,closed';
 export async function fetchBoard(c: TrelloCreds, board: TrelloBoard): Promise<TrelloSnapshot> {
   const lists = await trelloFetch<TrelloList[]>(c, `/boards/${board.id}/lists`, { params: { filter: 'all', fields: 'name,closed,idBoard' } });
   const cards = await trelloFetch<TrelloCard[]>(c, `/boards/${board.id}/cards`, { params: { filter: 'open', fields: CARD_FIELDS } });
@@ -73,7 +73,7 @@ export async function saveTrelloConfig(admin: SupabaseClient, orgId: string, pat
   const cur = ((data as Row | null)?.config ?? {}) as Partial<TrelloConfig>;
   const next = { ...cur, ...patch };
   const parsed = trelloConfigSchema.parse(next);
-  const row = { config: parsed, status, last_sync_at: parsed.last_sync_at ?? null, scopes: ['boards:read', 'cards:read'] };
+  const row = { config: parsed, status, last_sync_at: parsed.last_sync_at ?? null, scopes: ['boards:read', 'cards:read', 'cards:write'] };
   const q = data
     ? admin.from('integrations').update(row).eq('id', (data as Row).id as string)
     : admin.from('integrations').insert({ ...row, org_id: orgId, provider: 'trello', name: 'Trello' });
@@ -103,9 +103,9 @@ export class SupabaseTrelloStore implements TrelloStore {
     const [employees, brands, projects, tasks] = await Promise.all([
       this.all<{ id: string; name: string }>('employees', 'id,name'),
       this.all<{ id: string; name: string }>('brands', 'id,name'),
-      this.all<{ id: string; name: string }>('projects', 'id,name'),
+      this.all<{ id: string; name: string; source_ref: string | null }>('projects', 'id,name,source_ref'),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.all<StoreTask>('tasks', 'id,source_ref,project_id,title,assignee_id,state,priority,due_at,planned_minutes,task_type,labels', (q: any) => q.like('source_ref', 'trello:%')),
+      this.all<StoreTask & { sync_origin?: string | null }>('tasks', 'id,source_ref,project_id,title,assignee_id,state,priority,due_at,planned_minutes,task_type,labels,updated_at,sync_origin', (q: any) => q.like('source_ref', 'trello:%')),
     ]);
     return { employees, brands, projects, tasks };
   }
@@ -116,19 +116,35 @@ export class SupabaseTrelloStore implements TrelloStore {
     if (b.error) throw new Error(b.error.message);
     return b.data as { id: string; name: string };
   }
-  async createProject(p: { brand_id: string; name: string; type: string }) {
+  async createProject(p: { brand_id: string; name: string; type: string; source_ref?: string }) {
     const r = await this.admin.from('projects').insert({ ...p, org_id: this.orgId, status: 'active', flow_stage: 'brief' }).select('id').single();
     if (r.error) throw new Error(r.error.message);
     return r.data as { id: string };
   }
+  async setProjectRef(id: string, ref: string) {
+    await this.admin.from('projects').update({ source_ref: ref }).eq('id', id).eq('org_id', this.orgId).is('source_ref', null);
+  }
+  /** Trello kaynaklı her yazma işaretlenir (sync_origin + synced_at): geri itilmez. */
+  private mark() { return { sync_origin: 'trello', synced_at: new Date().toISOString() }; }
   async createTasks(rows: TaskDraft[]) {
-    const { error } = await this.admin.from('tasks').insert(rows.map((r) => ({ ...r, org_id: this.orgId, client_visible: false })));
+    const { error } = await this.admin.from('tasks').insert(rows.map((r) => ({ ...r, org_id: this.orgId, client_visible: false, ...this.mark() })));
     if (error) throw new Error(error.message);
   }
   async updateTask(id: string, patch: Partial<TaskDraft>) {
-    const { error } = await this.admin.from('tasks').update(patch).eq('id', id).eq('org_id', this.orgId);
+    const { error } = await this.admin.from('tasks').update({ ...patch, ...this.mark() }).eq('id', id).eq('org_id', this.orgId);
     if (error) throw new Error(error.message);
   }
+}
+
+/* ───────── Senkron günlüğü (public.integration_sync_log) ───────── */
+export async function writeSyncLog(admin: SupabaseClient, orgId: string, entries: SyncLogDraft[]): Promise<void> {
+  if (!entries.length) return;
+  const rows = entries.map((e) => ({ ...e, org_id: orgId, provider: 'trello', message: e.message.slice(0, 500) }));
+  for (let i = 0; i < rows.length; i += 200) await admin.from('integration_sync_log').insert(rows.slice(i, i + 200)).then(() => undefined, () => undefined);
+}
+export async function loadSyncLog(admin: SupabaseClient, orgId: string, limit = 50): Promise<SyncLogEntry[]> {
+  const { data } = await admin.from('integration_sync_log').select('id,provider,direction,entity,entity_id,external_id,action,ok,message,created_at').eq('org_id', orgId).eq('provider', 'trello').order('created_at', { ascending: false }).limit(limit);
+  return (data ?? []) as SyncLogEntry[];
 }
 
 /* ───────── Üst düzey akışlar ───────── */
@@ -138,12 +154,17 @@ const credsOf = (c: TrelloConfig | null): TrelloCreds => { if (!c) throw new Tre
 export async function importFromTrello(admin: SupabaseClient, orgId: string): Promise<TrelloImportResult> {
   const cfg = await loadTrelloConfig(admin, orgId);
   const creds = credsOf(cfg);
+  if (cfg?.mode === 'off') throw new TrelloApiError(400, 'Trello entegrasyonu kapalı');
   let boards = await listBoards(creds);
   if (cfg?.board_ids?.length) boards = boards.filter((b) => cfg.board_ids!.includes(b.id));
   const snap = await fetchSnapshot(creds, boards.map((b) => ({ id: b.id, name: b.name })));
   const now = new Date().toISOString();
-  const res = await runImport(snap, new SupabaseTrelloStore(admin, orgId), { now, memberMap: cfg?.member_map });
-  await saveTrelloConfig(admin, orgId, { last_sync_at: now });
+  const store = new SupabaseTrelloStore(admin, orgId);
+  const logs: SyncLogDraft[] = [];
+  const res = await runImport(snap, store, { now, memberMap: cfg?.member_map, onLog: (e) => logs.push(e) });
+  const { employees } = await store.load();
+  await saveTrelloConfig(admin, orgId, { last_sync_at: now, list_map: buildListMap(snap.lists, employees, cfg?.member_map), member_ids: buildMemberIds(snap.members, employees, cfg?.member_map) });
+  await writeSyncLog(admin, orgId, logs);
   await admin.from('audit_events').insert({ org_id: orgId, action: 'trello.import', resource: 'integrations/trello', meta: { ...res, unmapped_members: res.unmapped_members.length } }).then(() => undefined, () => undefined);
   return res;
 }
@@ -160,12 +181,40 @@ export async function syncCard(admin: SupabaseClient, orgId: string, cardId: str
   const board = await trelloFetch<TrelloBoard>(creds, `/boards/${boardId}`, { params: { fields: 'name' } });
   const list = await trelloFetch<TrelloList>(creds, `/lists/${card.idList}`, { params: { fields: 'name,closed,idBoard' } });
   const members = await trelloFetch<TrelloMember[]>(creds, `/boards/${boardId}/members`, { params: { fields: 'fullName,username' } });
-  await runImport({ boards: [board], lists: [list], cards: [card], members }, new SupabaseTrelloStore(admin, orgId), { now: new Date().toISOString(), memberMap: cfg?.member_map });
+  const store = new SupabaseTrelloStore(admin, orgId);
+  const logs: SyncLogDraft[] = [];
+  await runImport({ boards: [board], lists: [list], cards: [card], members }, store, { now: new Date().toISOString(), memberMap: cfg?.member_map, onLog: (e) => logs.push(e) });
+  await writeSyncLog(admin, orgId, logs);
+  // Yeni liste / üye görüldüyse tersinir eşlemeleri tamamla (kısmi güncelleme; mevcut kayıtlar korunur).
+  if (!cfg?.list_map?.[list.id] || members.some((m) => !Object.values(cfg?.member_ids ?? {}).includes(m.id))) {
+    const { employees } = await store.load();
+    await saveTrelloConfig(admin, orgId, {
+      list_map: { ...buildListMap([list], employees, cfg?.member_map), ...(cfg?.list_map ?? {}) },
+      member_ids: { ...buildMemberIds(members, employees, cfg?.member_map), ...(cfg?.member_ids ?? {}) },
+    }).catch(() => undefined);
+  }
   return 'synced';
 }
 /** deleteCard: görevi silmeden arşive alır. */
 export async function archiveCardTask(admin: SupabaseClient, orgId: string, cardId: string) {
-  await admin.from('tasks').update({ state: 'archive' }).eq('org_id', orgId).eq('source_ref', `trello:${cardId}`);
+  const { data } = await admin.from('tasks').update({ state: 'archive', sync_origin: 'trello', synced_at: new Date().toISOString() }).eq('org_id', orgId).eq('source_ref', `trello:${cardId}`).neq('state', 'archive').select('id');
+  await writeSyncLog(admin, orgId, (data ?? []).map((r: Row) => ({ direction: 'pull' as const, entity: 'task', entity_id: r.id as string, external_id: cardId, action: 'archived', ok: true, message: 'Kart Trello’da silindi/arşivlendi' })));
+}
+
+/** Kayıtlı webhook'ları Trello'dan siler (kapatma anahtarı). Veriler korunur. */
+export async function deleteWebhooks(admin: SupabaseClient, orgId: string): Promise<{ removed: number; errors: string[] }> {
+  const cfg = await loadTrelloConfig(admin, orgId);
+  const ids = Object.values(cfg?.webhook_ids ?? {});
+  if (!cfg || !ids.length) return { removed: 0, errors: [] };
+  const creds = credsOf(cfg);
+  let removed = 0;
+  const errors: string[] = [];
+  for (const id of ids) {
+    try { await trelloFetch(creds, `/webhooks/${id}`, { method: 'DELETE' }); removed++; }
+    catch (e) { if (e instanceof TrelloApiError && e.status === 404) removed++; else errors.push(`${id}: ${e instanceof Error ? e.message : String(e)}`); }
+  }
+  await saveTrelloConfig(admin, orgId, { webhook_ids: {} });
+  return { removed, errors };
 }
 
 /** Pano başına webhook kaydı (callbackURL = <origin>/api/webhooks/trello?org=..&k=..). Var olanı yeniden kullanır. */

@@ -2,7 +2,7 @@ import {
   COLLECTIONS, DEAL_STAGES, LEAVE_DECIDERS, canReadColl, canWriteColl, type AuditEvent, type Checklist, type CollKey, type Deal, type DealStage, type Leave, type Records, type SaveInput,
   approvalCreateSchema, canDecideApproval, isClientRole, orgSettingsPatchSchema, taskCreateSchema, boardAnswerSchema,
   type AgentRun, type Approval, type ApprovalCreate, type BoardAnswer, type ConnectData, type Integration, type Me, type Message,
-  type OrgSettings, type Task, type Project, type Brand, type TrelloImportResult, type TrelloPublicState, maskTrelloConfig, type TaskCreate, type TaskState, type BoardDecision, type Role,
+  type OrgSettings, type Task, type Project, type Brand, type TrelloImportResult, type TrelloPublicState, type TrelloMode, type SyncLogEntry, TRELLO_MODES, maskTrelloConfig, type TaskCreate, type TaskState, type BoardDecision, type Role,
   BID_ROLES, TOKEN_ADMIN_ROLES, bidProposalSchema, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
 } from '@jscore/contracts';
 import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
@@ -235,7 +235,21 @@ export class DemoRepo implements Repo {
   async trelloState(): Promise<TrelloPublicState> {
     if (!TOKEN_ADMIN_ROLES.includes(this.role)) throw new ForbiddenError();
     const t = this.db().trello;
-    return { ...maskTrelloConfig(t ? { member_map: t.member_map, last_sync_at: t.last_sync_at ?? undefined } : null), connected: !!t?.last_sync_at };
+    return { ...maskTrelloConfig(t ? { member_map: t.member_map, last_sync_at: t.last_sync_at ?? undefined, mode: t.mode ?? 'two_way' } : null), connected: !!t?.last_sync_at, sync_log: t?.sync_log ?? [] };
+  }
+  async trelloSetMode(mode: TrelloMode) {
+    if (!TOKEN_ADMIN_ROLES.includes(this.role)) throw new ForbiddenError();
+    if (!TRELLO_MODES.includes(mode)) throw new NotFoundError('Mod');
+    const db = this.db();
+    const t = (db.trello ??= { last_sync_at: null, member_map: {} });
+    this.demoSyncLog(db, { direction: 'reconcile', entity: 'integration', entity_id: null, external_id: null, action: 'mode', ok: true, message: `${t.mode ?? 'two_way'} → ${mode}` });
+    t.mode = mode;
+    this.persist(db);
+  }
+  private importing = false;
+  private demoSyncLog(db: DemoDb, e: Omit<SyncLogEntry, 'provider' | 'created_at'>) {
+    const t = (db.trello ??= { last_sync_at: null, member_map: {} });
+    t.sync_log = [{ ...e, provider: 'trello', created_at: this.now() }, ...(t.sync_log ?? [])].slice(0, 50);
   }
   async trelloSetMember(name: string, employeeId: string) {
     if (!TOKEN_ADMIN_ROLES.includes(this.role)) throw new ForbiddenError();
@@ -288,7 +302,10 @@ export class DemoRepo implements Repo {
       },
     };
     const tr = (db.trello ??= { last_sync_at: null, member_map: {} });
-    const res = await runImport(fixture, store, { now: this.now(), memberMap: tr.member_map, concurrency: 1 });
+    this.importing = true;
+    let res: TrelloImportResult;
+    try { res = await runImport(fixture, store, { now: this.now(), memberMap: tr.member_map, concurrency: 1, onLog: (e) => this.demoSyncLog(db, e) }); }
+    finally { this.importing = false; }
     tr.last_sync_at = this.now();
     this.log(db, 'trello.import', 'integrations/trello', { tasks_created: res.tasks_created, tasks_updated: res.tasks_updated, cards: res.cards_seen });
     this.persist(db);
@@ -441,6 +458,12 @@ export class DemoRepo implements Repo {
         return { id: t.id };
       },
       setTaskState: async (org, id, state) => { const t = db.tasks.find((x) => x.id === id && x.org_id === org); if (!t) throw new NotFoundError('Görev'); t.state = state; },
+      // Entegrasyon senkronu (demo): Trello'ya yazma yok → yalnızca Trello kaynaklı görev değişikliklerini günlüğe "no-op" olarak yazar.
+      integrationSync: async (ev) => {
+        const n = ev.payload.new as { source_ref?: string | null; id?: string } | null | undefined;
+        if (this.importing || ev.aggregate !== 'tasks' || !n?.source_ref?.startsWith('trello:') || (db.trello?.mode ?? 'two_way') !== 'two_way') return;
+        this.demoSyncLog(db, { direction: 'push', entity: 'task', entity_id: n.id ?? ev.aggregate_id, external_id: n.source_ref.slice(7), action: 'demo_noop', ok: true, message: 'Demo: Trello’ya yazılmadı (canlı modda kart güncellenir)' });
+      },
       webhook: async () => { /* demo: ağ çağrısı yok (sunucuda gerçek HMAC imzalı çağrı yapılır) */ },
     };
   }

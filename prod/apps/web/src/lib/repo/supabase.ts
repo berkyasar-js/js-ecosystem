@@ -61,9 +61,16 @@ export class SupabaseRepo implements Repo {
   }
   async createTask(input: TaskCreate) {
     const v = taskCreateSchema.parse(input);
-    return this.ok<Task>(this.sb.from('tasks').insert({ ...v, org_id: await this.org() }).select().single());
+    return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').insert({ ...v, org_id: await this.org() }).select().single()));
   }
-  async moveTask(id: string, state: TaskState) { return this.ok<Task>(this.sb.from('tasks').update({ state }).eq('id', id).select().single()); }
+  async moveTask(id: string, state: TaskState) { return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').update({ state }).eq('id', id).select().single())); }
+  /** Best-effort satır içi JS → Trello itmesi (tarayıcıda, beklemeden). Kaçırılırsa /api/events/dispatch cron'u olaydan yeniden itiyor; itme idempotent. */
+  private pushSoon(t: Task): Task {
+    if (typeof window !== 'undefined') {
+      void fetch('/api/integrations/trello/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ task_id: t.id }), keepalive: true }).catch(() => undefined);
+    }
+    return t;
+  }
 
   async listApprovals() { return this.ok(this.sb.from('approvals').select('*').eq('org_id', await this.org()).order('created_at', { ascending: false })); }
   async createApproval(input: ApprovalCreate) {

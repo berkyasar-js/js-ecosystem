@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { fail, json } from '@/lib/api';
 import { verifyTrelloSignature } from '@/lib/hmac';
 import { archiveCardTask, loadTrelloConfig, syncCard } from '@/lib/integrations/trello';
+import { isOwnTrelloAction } from '@/lib/integrations/trello-push';
 import { createAdmin } from '@/lib/supabase/admin';
 
 /** Trello oluşturma sırasında HEAD ile adresi doğrular → 200. */
@@ -33,11 +34,14 @@ export async function POST(req: Request) {
       const k = url.searchParams.get('k');
       if (!k || !cfg.webhook_key || !eq(k, cfg.webhook_key)) return json({ error: 'Yetkisiz' }, 401);
     }
-    let body: { action?: { type?: string; data?: { card?: { id?: string } } } };
+    if (cfg.mode === 'off') return json({ ok: true, ignored: 'mode_off' });
+    let body: { action?: { type?: string; idMemberCreator?: string; data?: { card?: { id?: string } } } };
     try { body = JSON.parse(raw); } catch { return json({ error: 'JSON bekleniyor' }, 400); }
     const type = body.action?.type ?? '';
     const cardId = body.action?.data?.card?.id;
     if (!cardId) return json({ ok: true, ignored: type || 'no_card' });
+    // Döngü koruması: entegrasyon token'ının kendi yazdığı (JS → Trello) eylemler geri çekilmez.
+    if (isOwnTrelloAction(body.action, cfg)) return json({ ok: true, ignored: 'own_action', type });
     if (type === 'deleteCard') { await archiveCardTask(admin, orgId, cardId); return json({ ok: true, type, result: 'archived' }); }
     if (!/Card|CheckItem|Checklist/.test(type)) return json({ ok: true, ignored: type });
     return json({ ok: true, type, result: await syncCard(admin, orgId, cardId) });

@@ -1,5 +1,5 @@
 import type {
-  AuditEvent, AccessToken, AgentPrompt, AgentRun, Approval, BoardDecision, Brand, Channel, Integration, McpServer, Me, Member, Message,
+  AuditEvent, AccessToken, SyncLogEntry, AgentPrompt, AgentRun, Approval, BoardDecision, Brand, Channel, Integration, McpServer, Me, Member, Message,
   Organization, OrgSettings, Project, Role, StagePlanItem, Task, TaskAssignment, TaskBid, TaskState, TaskType, TeamMember, Twin, TwinBid, Webhook,
 } from '@jscore/contracts';
 import { TASK_STATES } from '@jscore/contracts';
@@ -244,7 +244,7 @@ export interface DemoDb {
   /** İhale teklifleri / atamalar: eski localStorage kayıtlarında yoktur → DemoRepo `??=` ile açar. */
   taskBids?: TaskBid[]; assignments?: TaskAssignment[];
   /** Trello demo durumu: örnek içe aktarma zamanı + kişi eşlemeleri (anahtar = memberKey(ad) → çalışan id). */
-  trello?: { last_sync_at: string | null; member_map: Record<string, string> };
+  trello?: { last_sync_at: string | null; member_map: Record<string, string>; mode?: 'two_way' | 'pull_only' | 'off'; sync_log?: SyncLogEntry[] };
   board: BoardDecision[]; twins: Twin[]; bids: TwinBid[]; connect: { integrations: Integration[]; mcp_servers: McpServer[]; webhooks: Webhook[]; tokens: AccessToken[] };
 }
 export const makeDemoDb = (): DemoDb => structuredClone({

@@ -3,7 +3,7 @@ import type {
   AgentPrompt, AgentRun, Approval, ApprovalCreate, BoardAnswer, BoardDecision, Brand, Channel, ConnectData, Integration, Me, Member,
   Message, Organization, OrgSettings, Project, Task, TaskCreate, TaskState, TaskType, TeamMember, Twin, TwinBid,
   AccessToken, BidAssignResult, BidProposal, TaskAssignment, TaskBid, TokenCreate,
-  TrelloImportResult, TrelloPublicState,
+  TrelloImportResult, TrelloMode, TrelloPublicState,
 } from '@jscore/contracts';
 import type { TrelloSnapshot } from '../integrations/trello-map';
 
@@ -44,6 +44,7 @@ export interface Repo {
   trelloState?(): Promise<TrelloPublicState>;
   trelloImport?(fixture?: TrelloSnapshot): Promise<TrelloImportResult>;
   trelloSetMember?(name: string, employeeId: string): Promise<void>;
+  trelloSetMode?(mode: TrelloMode): Promise<void>;
   // agents & intel
   listAgentPrompts(): Promise<AgentPrompt[]>;
   getActivePrompt(agent: string): Promise<AgentPrompt | null>;

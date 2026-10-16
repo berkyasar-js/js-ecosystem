@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { TOKEN_ADMIN_ROLES, type TeamMember, type TrelloImportResult, type TrelloPublicState } from '@jscore/contracts';
+import { TOKEN_ADMIN_ROLES, TRELLO_MODES, TRELLO_MODE_LABELS, summarizeSyncLog, type TeamMember, type TrelloImportResult, type TrelloMode, type TrelloPublicState } from '@jscore/contracts';
 import { fmtTime } from '@/components/ui';
 import { useSession } from '@/components/session';
 
@@ -54,6 +54,20 @@ export function TrelloCard() {
     if (r.errors.length) throw new Error(r.errors.join(' · '));
     setNote(`${r.count} pano için webhook kuruldu.`); await load();
   });
+  const setMode = (mode: TrelloMode) => run('mode', async () => {
+    if (mode === 'off' && !window.confirm('Trello kapatılsın mı? Webhook’lar silinir, JS ↔ Trello senkronu durur; veriler korunur.')) return;
+    if (demo) await repo!.trelloSetMode!(mode);
+    else {
+      const r = await api<{ note?: string }>('/api/integrations/trello', { method: 'PUT', body: JSON.stringify({ mode }) });
+      if (r.note) setNote(r.note);
+    }
+    await load();
+  });
+  const reconcile = () => run('reconcile', async () => {
+    const r = await api<{ pulled: number; pushed: number; created_cards: number; archived: number; errors: string[] }>('/api/integrations/trello/reconcile', { method: 'POST' });
+    setNote(`Eşitlendi · çekilen ${r.pulled} · itilen ${r.pushed} · yeni kart ${r.created_cards} · arşiv ${r.archived}${r.errors.length ? ` · ${r.errors.length} hata` : ''}`);
+    await load(); bump();
+  });
   const mapMember = (name: string, employeeId: string) => run('map', async () => {
     if (!employeeId) return;
     if (demo) await repo!.trelloSetMember!(name, employeeId);
@@ -65,6 +79,9 @@ export function TrelloCard() {
   if (!can) return null;
   const connected = !!st?.connected;
   const webhookN = Object.keys(st?.webhook_ids ?? {}).length;
+  const sync: TrelloMode = st?.mode ?? 'two_way';
+  const log = st?.sync_log ?? [];
+  const sum = summarizeSyncLog(log);
   return (
     <section className="card mb-4" aria-labelledby="trello-h">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -72,6 +89,17 @@ export function TrelloCard() {
         <span className={`chip ${connected ? 'chip-ok' : ''}`}>{connected ? `Bağlı${st?.last_sync_at ? ` · son senkron ${fmtTime(st.last_sync_at)}` : ''}` : 'Bağlı değil'}</span>
       </div>
       <p className="mt-1 text-sm text-muted">Panolar → marka · Kartlar → görev. Kişi listeleri atanan, “Onay / Teslim / Üretim / Bekleme” listeleri akış aşaması olur; şablon listeleri atlanır.</p>
+      {connected && (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className="text-sm" htmlFor="tr-mode">Senkron modu</label>
+          <select id="tr-mode" className="input w-auto" value={sync} disabled={!!busy} onChange={(e) => void setMode(e.target.value as TrelloMode)}>
+            {TRELLO_MODES.map((m) => <option key={m} value={m}>{TRELLO_MODE_LABELS[m]}</option>)}
+          </select>
+          {sync !== 'off' && <button className="btn btn-sm" disabled={!!busy} onClick={() => void setMode('off')}>Trello’yu kapat</button>}
+          {!demo && sync !== 'off' && <button className="btn btn-sm" disabled={!!busy} onClick={() => void reconcile()}>{busy === 'reconcile' ? 'Eşitleniyor…' : 'Şimdi eşitle'}</button>}
+          <span className="text-xs text-muted">{sync === 'two_way' ? 'JS’teki değişiklikler Trello kartına yazılır; çakışmada son yazan kazanır.' : sync === 'pull_only' ? 'Yalnızca Trello → JS; kartlara yazılmaz.' : 'Senkron durdu; veriler korunuyor.'}</span>
+        </div>
+      )}
       {err && <p role="alert" className="mt-3 text-sm text-magenta">{err}</p>}
       {note && <p role="status" className="mt-3 text-sm text-muted">{note}</p>}
 
@@ -102,6 +130,23 @@ export function TrelloCard() {
         </div>
       )}
 
+      {connected && (
+        <div className="mt-5" data-testid="trello-sync-log">
+          <h3 className="text-sm font-bold">Senkron günlüğü</h3>
+          <p className="mt-1 text-xs text-muted" role="status">Son senkron{st?.last_sync_at ? ` ${fmtTime(st.last_sync_at)}` : ''} · {sum.changes} değişiklik · {sum.errors} hata</p>
+          {log.length === 0 ? <p className="mt-2 text-sm text-muted">Henüz kayıt yok.</p> : (
+            <ul className="mt-2 grid max-h-64 gap-1 overflow-auto text-xs">
+              {log.slice(0, 50).map((e, i) => (
+                <li key={e.id ?? i} className={`flex flex-wrap gap-x-2 ${e.ok ? '' : 'text-magenta'}`}>
+                  <span className="text-muted">{fmtTime(e.created_at)}</span>
+                  <span className="chip">{e.direction === 'push' ? 'JS → Trello' : e.direction === 'pull' ? 'Trello → JS' : 'Uzlaştırma'}</span>
+                  <span className="font-medium">{e.action}</span><span>{e.message}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {res && (
         <div className="mt-5 grid gap-3" data-testid="trello-result">
           <h3 className="text-sm font-bold">Sonuç</h3>

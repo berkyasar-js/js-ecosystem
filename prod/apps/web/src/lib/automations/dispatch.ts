@@ -17,6 +17,8 @@ export interface DispatchPorts {
   setTaskState(orgId: string, taskId: string, state: TaskState): Promise<void>;
   /** İmzalama (HMAC) sunucu portunda yapılır; demo simüle eder. */
   webhook(url: string, body: string): Promise<void>;
+  /** Otomasyondan BAĞIMSIZ entegrasyon senkronu (ör. JS → Trello yazımı). Her olay için, kurallardan önce çağrılır; hata dispatcher'ı durdurmaz. */
+  integrationSync?(ev: AutomationEvent): Promise<void>;
   now(): string;
 }
 export interface DispatchResult { automation_id: string; name: string; status: 'ok' | 'error'; detail: string }
@@ -87,6 +89,8 @@ const render = (tpl: string, ev: AutomationEvent) =>
 
 /** Tek olayı yayımlanmış kurallara karşı değerlendirir; her eşleşme için aksiyonu çalıştırıp günlük yazar. */
 export async function dispatchEvent(ev: AutomationEvent, ports: DispatchPorts): Promise<DispatchResult[]> {
+  // Entegrasyon senkronu otomasyon kurallarından bağımsız çalışır (kural yok / otomasyon kaynaklı olay olsa da).
+  if (ports.integrationSync) { try { await ports.integrationSync(ev); } catch { /* senkron hatası günlüğe yazılır; dispatch sürer */ } }
   // Döngü koruması: otomasyonun kendi oluşturduğu kayıtlar yeniden tetiklemez.
   if (String(ev.payload.new?.source_ref ?? '').startsWith('automation:')) return [];
   const results: DispatchResult[] = [];

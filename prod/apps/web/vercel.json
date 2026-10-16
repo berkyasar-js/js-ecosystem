@@ -1,3 +1,12 @@
 {
-  "crons": [{ "path": "/api/events/dispatch", "schedule": "*/5 * * * *" }]
+  "crons": [
+    {
+      "path": "/api/events/dispatch",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/integrations/trello/reconcile",
+      "schedule": "0 * * * *"
+    }
+  ]
 }

@@ -1,4 +1,4 @@
-import type { Priority, TaskState, TrelloImportResult } from '@jscore/contracts';
+import type { Priority, TaskState, TrelloConfig, TrelloImportResult } from '@jscore/contracts';
 
 /**
  * Trello → JS Work eşleme çekirdeği: SAF fonksiyonlar (G/Ç yok) + port tabanlı idempotent `runImport`.
@@ -119,6 +119,65 @@ export function resolveEmployee(
   return cands.length === 1 ? cands[0].id : null;
 }
 
+/* ───────── Tersinir liste / üye eşlemesi (JS → Trello yazımı için) ───────── */
+export type ListMapEntry = NonNullable<TrelloConfig['list_map']>[string];
+const STAGE_OF_KIND: Record<Exclude<ListKind, 'template'>, TaskState> = { approval: 'approval', delivery: 'delivery', production: 'production', paused: 'brief', plan: 'plan', person: 'production' };
+/** listId → {board, kind, stage, person?, employee?, review?}; şablon ve arşivli listeler dışarıda. */
+export function buildListMap(lists: ReadonlyArray<TrelloList>, employees: ReadonlyArray<{ id: string; name: string }>, memberMap: Readonly<Record<string, string>> = {}): Record<string, ListMapEntry> {
+  const out: Record<string, ListMapEntry> = {};
+  for (const l of lists) {
+    if (l.closed) continue;
+    const info = classifyList(l.name);
+    if (info.kind === 'template') continue;
+    const e: ListMapEntry = { board: l.idBoard, kind: info.kind, stage: info.kind === 'person' && info.review ? 'internal_review' : STAGE_OF_KIND[info.kind] };
+    if (info.kind === 'person') {
+      e.person = info.person; if (info.review) e.review = true;
+      const emp = info.person ? resolveEmployee(info.person, employees, memberMap) : null;
+      if (emp) e.employee = emp;
+    }
+    out[l.id] = e;
+  }
+  return out;
+}
+/** employee id → Trello üye id (tam ad / eşleme ile çözülebilen panolu üyeler). */
+export function buildMemberIds(members: ReadonlyArray<TrelloMember>, employees: ReadonlyArray<{ id: string; name: string }>, memberMap: Readonly<Record<string, string>> = {}): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of members) { const e = resolveEmployee(m.fullName, employees, memberMap); if (e && !out[e]) out[e] = m.id; }
+  return out;
+}
+
+/* ───────── Çakışma kuralı: son yazan kazanır ───────── */
+/** 'push' = JS daha yeni (Trello'dan gelen değişiklik atlanır), 'pull' = Trello daha yeni ya da eşit/bilinmiyor. */
+export function resolveConflict(taskUpdatedAt: string | undefined | null, cardActivity: string | undefined | null): 'pull' | 'push' {
+  const t = taskUpdatedAt ? Date.parse(taskUpdatedAt) : NaN, c = cardActivity ? Date.parse(cardActivity) : NaN;
+  if (Number.isNaN(t) || Number.isNaN(c)) return 'pull';
+  return t > c ? 'push' : 'pull';
+}
+/** Kartın Trello'daki son etkinliği JS görevinden yeniyse JS → Trello yazımı atlanır (Trello kazanır). */
+export const trelloIsNewer = (taskUpdatedAt: string | undefined | null, cardActivity: string | undefined | null) => resolveConflict(taskUpdatedAt, cardActivity) === 'pull' && !!taskUpdatedAt && !!cardActivity;
+
+export interface ReconcilePlan { pullCards: TrelloCard[]; missing: StoreTask[]; pushTasks: StoreTask[]; unlinked: StoreTask[] }
+/**
+ * Saatlik uzlaştırma seçimi (saf): since'ten beri değişen kartlar çekilir (ya da henüz görevi olmayanlar), Trello'da açık kart listesinde
+ * olmayan (arşivlenmemiş) Trello görevleri "kayıp" sayılır, since'ten beri JS'te değişen (ve Trello kaynaklı olmayan) görevler itilir,
+ * kartı olmayan Trello-projesi görevleri `unlinked` olarak kart oluşturmaya adaydır.
+ */
+export function reconcilePlan(
+  cards: ReadonlyArray<TrelloCard>, tasks: ReadonlyArray<StoreTask & { sync_origin?: string | null }>, since: string | null | undefined,
+  opts: { trelloProjectIds?: ReadonlySet<string> } = {},
+): ReconcilePlan {
+  const sinceMs = since ? Date.parse(since) : 0;
+  const byRef = new Map(tasks.map((t) => [t.source_ref, t]));
+  const open = new Set(cards.map((c) => `trello:${c.id}`));
+  const changed = (iso?: string | null) => !sinceMs || !iso || Date.parse(iso) > sinceMs;
+  const pullCards = cards.filter((c) => !byRef.has(`trello:${c.id}`) || changed(c.dateLastActivity));
+  const linked = tasks.filter((t) => t.source_ref.startsWith('trello:') && !t.source_ref.startsWith('trello:board:') && !t.source_ref.includes('pending'));
+  const missing = linked.filter((t) => !open.has(t.source_ref) && t.state !== 'archive' && !t.labels.includes('trello:vanished'));
+  const pushTasks = linked.filter((t) => t.sync_origin !== 'trello' && !!sinceMs && !!t.updated_at && Date.parse(t.updated_at) > sinceMs);
+  const unlinked = tasks.filter((t) => !t.source_ref && !!opts.trelloProjectIds?.has(t.project_id) && t.sync_origin !== 'trello');
+  return { pullCards, missing, pushTasks, unlinked };
+}
+
 /* ───────── mapCard ───────── */
 export interface MapCtx {
   now: string;
@@ -193,12 +252,15 @@ export function mapCard(card: TrelloCard, ctx: MapCtx): MappedCard {
 }
 
 /* ───────── İdempotent içe aktarma (port tabanlı) ───────── */
-export interface StoreTask extends TaskDraft { id: string }
+export interface StoreTask extends TaskDraft { id: string; updated_at?: string }
+export interface SyncLogDraft { direction: 'push' | 'pull' | 'reconcile'; entity: string; entity_id: string | null; external_id: string | null; action: string; ok: boolean; message: string }
 export interface TrelloStore {
-  load(): Promise<{ brands: Array<{ id: string; name: string }>; employees: Array<{ id: string; name: string }>; projects: Array<{ id: string; name: string }>; tasks: StoreTask[] }>;
+  load(): Promise<{ brands: Array<{ id: string; name: string }>; employees: Array<{ id: string; name: string }>; projects: Array<{ id: string; name: string; source_ref?: string | null }>; tasks: StoreTask[] }>;
   /** İstemci + marka (status='prospect') oluşturur. */
   createBrand(name: string): Promise<{ id: string; name: string }>;
-  createProject(p: { brand_id: string; name: string; type: string }): Promise<{ id: string }>;
+  createProject(p: { brand_id: string; name: string; type: string; source_ref?: string }): Promise<{ id: string }>;
+  /** İsteğe bağlı: eksik 'trello:board:<id>' proje bağını yazar. */
+  setProjectRef?(id: string, ref: string): Promise<void>;
   createTasks(rows: TaskDraft[]): Promise<void>;
   updateTask(id: string, patch: Partial<TaskDraft>): Promise<void>;
 }
@@ -221,14 +283,16 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await fn(items[i++]); }));
 }
 
-export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: { now: string; memberMap?: Record<string, string>; concurrency?: number }): Promise<TrelloImportResult> {
+export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: { now: string; memberMap?: Record<string, string>; concurrency?: number; onLog?: (e: SyncLogDraft) => void }): Promise<TrelloImportResult> {
   const res: TrelloImportResult = {
     boards: snap.boards.length, lists: snap.lists.length, cards_seen: snap.cards.length, skipped_templates: 0, brands_created: [],
-    projects_created: 0, projects_updated: 0, tasks_created: 0, tasks_updated: 0, tasks_unchanged: 0, unmapped_members: [], errors: [],
+    projects_created: 0, projects_updated: 0, tasks_created: 0, tasks_updated: 0, tasks_unchanged: 0, tasks_skipped: 0, unmapped_members: [], errors: [],
   };
   const st = await store.load();
   const brands = [...st.brands];
   const projects = new Map(st.projects.map((p) => [p.name, p.id]));
+  const refless = new Set(st.projects.filter((p) => !p.source_ref).map((p) => p.id));
+  const log = opts.onLog ?? (() => undefined);
   const touched = new Set<string>();
   const existing = new Map(st.tasks.map((t) => [t.source_ref, t]));
   const boards = new Map(snap.boards.map((b) => [b.id, b]));
@@ -252,16 +316,22 @@ export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: 
         const b = await store.createBrand(m.brandName);
         brands.push(b); brandId = b.id; res.brands_created.push(b.name);
       }
+      const boardRef = board.id ? `trello:board:${board.id}` : undefined;
       let pid = projects.get(m.projectName);
-      if (!pid) { pid = (await store.createProject({ brand_id: brandId, name: m.projectName, type: m.projectType })).id; projects.set(m.projectName, pid); touched.add(m.projectName); res.projects_created++; }
+      if (!pid) { pid = (await store.createProject({ brand_id: brandId, name: m.projectName, type: m.projectType, source_ref: boardRef })).id; projects.set(m.projectName, pid); touched.add(m.projectName); res.projects_created++; }
       else if (!touched.has(m.projectName)) { touched.add(m.projectName); res.projects_updated++; }
+      if (boardRef && refless.has(pid) && store.setProjectRef) { refless.delete(pid); await store.setProjectRef(pid, boardRef).catch(() => undefined); }
       for (const n of uniq(m.unmapped)) unmapped.set(n, (unmapped.get(n) ?? 0) + 1);
       const draft: TaskDraft = { ...m.draft, project_id: pid };
       const cur = existing.get(m.ref);
-      if (!cur) creates.push(draft);
+      if (!cur) { creates.push(draft); log({ direction: 'pull', entity: 'task', entity_id: null, external_id: card.id, action: 'created', ok: true, message: draft.title }); }
       else {
         const patch = taskChanges(cur, draft);
-        if (Object.keys(patch).length) updates.push([cur.id, patch]); else res.tasks_unchanged++;
+        if (!Object.keys(patch).length) res.tasks_unchanged++;
+        else if (resolveConflict(cur.updated_at, card.dateLastActivity) === 'push') {
+          res.tasks_skipped = (res.tasks_skipped ?? 0) + 1;
+          log({ direction: 'pull', entity: 'task', entity_id: cur.id, external_id: card.id, action: 'skipped_conflict', ok: true, message: `JS daha yeni (${cur.updated_at}) · Trello ${card.dateLastActivity}: ${Object.keys(patch).join(', ')}` });
+        } else { updates.push([cur.id, patch]); log({ direction: 'pull', entity: 'task', entity_id: cur.id, external_id: card.id, action: 'updated', ok: true, message: Object.keys(patch).join(', ') }); }
       }
     } catch (e) { if (res.errors.length < 20) res.errors.push(`${card.name}: ${e instanceof Error ? e.message : String(e)}`); }
   }

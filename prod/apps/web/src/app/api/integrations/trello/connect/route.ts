@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     catch (e) { return json({ error: e instanceof TrelloApiError && e.status === 401 ? 'Trello anahtarı/token geçersiz' : 'Trello doğrulanamadı' }, 400); }
     const prev = await loadTrelloConfig(a.admin, a.orgId);
     // Aynı hesap/yeni token: pano seçimi ve eşlemeler korunur.
-    const cfg = await saveTrelloConfig(a.admin, a.orgId, { ...body.data, member_name: me.fullName, board_ids: prev?.board_ids, member_map: prev?.member_map });
+    const cfg = await saveTrelloConfig(a.admin, a.orgId, { ...body.data, member_name: me.fullName, token_member_id: me.id, board_ids: prev?.board_ids, member_map: prev?.member_map });
     return Response.json(maskTrelloConfig(cfg), { headers: { 'cache-control': 'no-store' } });
   } catch (e) { return fail(e); }
 }

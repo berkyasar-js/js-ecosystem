@@ -150,6 +150,8 @@ export interface Project {
 export interface Task {
   id: string; org_id: string; project_id: string; title: string; assignee_id: string | null; state: TaskState; priority: Priority;
   due_at: string; planned_minutes: number; task_type: string; qty: number; source_ref: string | null; labels: string[]; client_visible: boolean; created_at: string;
+  /** Trigger ile yazılır (0008): son-yazan-kazanır karşılaştırması için. */
+  updated_at?: string; sync_origin?: string | null; synced_at?: string | null;
 }
 export interface TaskType { key: string; label: string; sla_hours: number; default_minutes: number; unit_price_minor: number }
 export type ApprovalAction = 'content' | 'budget' | 'scope' | 'client_decision' | 'access';
@@ -333,9 +335,34 @@ export const trelloConfigSchema = z.object({
   webhook_key: z.string().optional(),
   callback_url: z.string().optional(),
   member_name: z.string().optional(),
+  /** Entegrasyonun token sahibi Trello üye id'si: kendi eylemlerimizin webhook yankısı yok sayılır (döngü koruması). */
+  token_member_id: z.string().optional(),
+  /** Geçiş dönemi anahtarı: iki yönlü / yalnızca Trello→JS / kapalı. */
+  mode: z.enum(['two_way', 'pull_only', 'off']).default('two_way'),
+  /** İçe aktarmada kurulan tersinir liste eşlemesi: listId → {board, kind, person|stage}. */
+  list_map: z.record(z.object({
+    board: z.string(), kind: z.enum(['approval', 'delivery', 'production', 'paused', 'plan', 'person']),
+    stage: z.string(), person: z.string().optional(), employee: z.string().optional(), review: z.boolean().optional(),
+  })).optional(),
+  /** employee id → Trello üye id (member_map'in tersi; kart üyeleri yazılırken kullanılır). */
+  member_ids: z.record(z.string()).optional(),
 });
 export type TrelloConfig = z.infer<typeof trelloConfigSchema>;
+export type TrelloMode = 'two_way' | 'pull_only' | 'off';
+export const TRELLO_MODES: TrelloMode[] = ['two_way', 'pull_only', 'off'];
+export const TRELLO_MODE_LABELS: Record<TrelloMode, string> = { two_way: 'İki yönlü', pull_only: 'Yalnızca Trello → JS', off: 'Kapalı' };
+/** public.integration_sync_log satırı. */
+export interface SyncLogEntry {
+  id?: string; org_id?: string; provider: string; direction: 'push' | 'pull' | 'reconcile'; entity: string; entity_id: string | null;
+  external_id: string | null; action: string; ok: boolean; message: string; created_at: string;
+}
+const NON_CHANGE = new Set(['mode', 'reconcile', 'demo_noop']);
+/** "Son senkron · n değişiklik · m hata" için özet: uygulanan değişiklikler (atlananlar ve bilgi satırları hariç) ve hatalar. */
+export function summarizeSyncLog(log: ReadonlyArray<Pick<SyncLogEntry, 'ok' | 'action'>>): { changes: number; errors: number } {
+  return { changes: log.filter((e) => e.ok && !e.action.startsWith('skipped') && !NON_CHANGE.has(e.action)).length, errors: log.filter((e) => !e.ok).length };
+}
 export interface TrelloPublicState {
+  mode?: TrelloMode; sync_log?: SyncLogEntry[];
   connected: boolean; member_name: string | null; api_key: string | null; token: string | null;
   board_ids: string[]; last_sync_at: string | null; webhook_ids: Record<string, string>; member_map: Record<string, string>;
   boards: Array<{ id: string; name: string }>;
@@ -345,7 +372,7 @@ const maskTail = (s: string, head: number) => `${s.slice(0, head)}••••${
 export function maskTrelloConfig(c: Partial<TrelloConfig> | null | undefined, boards: Array<{ id: string; name: string }> = []): TrelloPublicState {
   const has = !!c?.api_key && !!c?.token;
   return {
-    connected: has, member_name: c?.member_name ?? null,
+    mode: c?.mode ?? 'two_way', connected: has, member_name: c?.member_name ?? null,
     api_key: c?.api_key ? maskTail(c.api_key, 4) : null, token: c?.token ? maskTail(c.token, 0) : null,
     board_ids: c?.board_ids ?? [], last_sync_at: c?.last_sync_at ?? null, webhook_ids: c?.webhook_ids ?? {}, member_map: c?.member_map ?? {}, boards,
   };
@@ -354,6 +381,8 @@ export interface TrelloImportResult {
   boards: number; lists: number; cards_seen: number; skipped_templates: number;
   brands_created: string[]; projects_created: number; projects_updated: number;
   tasks_created: number; tasks_updated: number; tasks_unchanged: number;
+  /** Son-yazan-kazanır kuralı gereği atlanan (JS'te daha yeni) görev sayısı. */
+  tasks_skipped?: number;
   /** Eşlenemeyen kişi adları (kart üyesi veya kişi listesi) ve etkilenen kart sayısı. */
   unmapped_members: Array<{ name: string; cards: number }>;
   errors: string[];

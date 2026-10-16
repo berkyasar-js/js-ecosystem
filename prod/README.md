@@ -74,6 +74,32 @@ Ajansın Trello'daki işini JS Work'e yansıtır (Connect → Entegrasyonlar →
 
 **Demo:** anahtarsız modda *Örnek veriyle dene* 10 kartlık örnek (`trello-fixture.ts`) aynı çekirdekten geçer; `DemoRepo.trelloImport()` olayları dispatcher'a senkron verir.
 
+## Trello iki yönlü senkron (0008) ve Trello'dan çıkış planı
+**Geçiş dönemi.** Ekip bir süre Trello ve JS Ecosystem'i PARALEL kullanır; Trello içeriği her zaman güncel kalmalıdır. Sonra Trello kapatılır. Bu yüzden entegrasyon iki yönlüdür (`integrations.config.mode`):
+
+| Mod | Davranış |
+|---|---|
+| `two_way` (varsayılan) | Trello → JS (webhook + saatlik uzlaştırma) **ve** JS → Trello (kart yazımı) |
+| `pull_only` | Yalnızca Trello → JS; kartlara hiçbir şey yazılmaz |
+| `off` | Senkron durur, kayıtlı webhook'lar Trello'dan silinir; **veriler (görevler, projeler, eşlemeler, günlük) korunur** |
+
+**Kurulum ek adımları:** `0008_trello_sync.sql` migration'ını uygula (`tasks.updated_at` + `sync_origin/synced_at`, `projects.source_ref`, `integration_sync_log`). Trello token'ı artık **yazma** yetkili olmalı (token oluştururken `scope=read,write`; Power-Up token bağlantısında *Allow* verirken "read" yetmez). Token için tercihen ayrı bir "JS Work bot" Trello hesabı kullan: webhook'ta o üyenin eylemleri döngü koruması gereği yok sayılır (kendi hesabınla Trello'da elle yapılan değişiklik de yok sayılır; saatlik uzlaştırma yine de yakalar).
+
+**JS → Trello** (`lib/integrations/trello-push.ts`): `source_ref='trello:<kartId>'` görev değişince kart güncellenir — liste (aynı panoda: onay → `… Müşteri Onay`, teslim → `… Teslim`, üretim → atananın kişi kuyruğu yoksa `Kurulum-Baskı-Produksiyon`, iç revize → atananın `Kontrol` kuyruğu, plan → `… SM`, brief → `Bekleme Salonu`), `due` / `dueComplete`, ad (`NNN_` iş no korunur), üyeler (`config.member_ids`: çalışan → Trello üye id), arşiv/bitti → `closed=true`. Karşılığı olmayan aşama (ör. *kapsam*, Kontrol kuyruğu olmayan kişide *iç revize*) için kart yerinde kalır. Trello'dan gelen proje (`projects.source_ref='trello:board:<id>'`, içe aktarmada eklenir) içinde JS'te açılan **yeni görev** için doğru listede kart açılır ve `source_ref` göreve yazılır (atomik "pending" talebi çift kartı önler). Liste eşlemesi `config.list_map` (listId → `{board, kind, stage, person?, employee?, review?}`), içe aktarma ve saatlik uzlaştırmada yenilenir. Bir proje birden çok panodan kart içeriyorsa yeni kart ilk içe aktarılan panoya açılır.
+Tetik: olay hattında otomasyondan **bağımsız** `integrationSync` adımı (`dispatchEvent` kurallardan önce çağırır; `/api/events/dispatch` cron'u 5 dakikada bir) + Supabase deposu görev yazınca tarayıcıdan best-effort satır içi `POST /api/integrations/trello/push`. İtme idempotenttir (kartta fark yoksa Trello'ya yazılmaz). Demo: Trello'ya yazılmaz, günlüğe `demo_noop` düşer.
+
+**Döngü koruması:** Trello kaynaklı yazmalar `tasks.sync_origin='trello'` (+`synced_at`) ile işaretlenir ve olay yükünde (`payload.new.sync_origin`) görülür → geri itilmez (0008 tetikleyicisi, işarete dokunmayan JS yazmasında işareti temizler). Webhook'ta `idMemberCreator == config.token_member_id` (bağlanırken kaydedilir) eylemler yok sayılır.
+
+**Çakışma kuralı:** son yazan kazanır — Trello `dateLastActivity` ile `tasks.updated_at` (0008 trigger'ı) karşılaştırılır; JS daha yeniyse Trello'dan gelen değişiklik, kart daha yeniyse JS'ten giden değişiklik atlanır. Uygulanan/atlanan/hatalı her işlem `integration_sync_log` tablosuna yazılır; Connect → Trello kartında **Senkron günlüğü** (son 50) ve "Son senkron · n değişiklik · m hata" satırı görünür.
+
+**Saatlik uzlaştırma** (`/api/integrations/trello/reconcile`, `vercel.json` cron `0 * * * *`, `CRON_SECRET`; elle: Connect → *Şimdi eşitle*): `last_sync_at`'ten beri değişen kartlar çekilir, JS'te değişen görevler (ve kartsız yeni Trello-proje görevleri) itilir; Trello'da silinen/arşivlenen kartların görevi **arşive alınır**; kartı seçili panolarda bulunamayan ama silinmemiş görev `trello:vanished` etiketiyle korunur ve günlüğe yazılır.
+
+### Trello'dan çıkış planı
+1. **Paralel dönem** (`two_way`): ekip iki yerde de çalışabilir; Senkron günlüğündeki hata satırlarını (ör. `vanished`, listesi olmayan aşama) haftalık gözden geçir; eşlenemeyen kişileri (Connect → içe aktarma sonucu) tamamla.
+2. **Sadece okuma** (`pull_only`): ekip JS'e geçmeye başladığında Trello'ya yazımı kes; Trello'da yapılan son değişiklikler JS'e akmaya devam eder.
+3. **Kapat** (Connect → *Trello'yu kapat* ya da mod = Kapalı): webhook'lar silinir, senkron durur; görevler, projeler, `source_ref` bağları ve günlük **silinmez**. İstersen sonra modu tekrar açıp *Webhook kur* ile devam edebilirsin.
+4. Trello panolarını Trello'da arşivle/dışa aktar; anahtarı Power-Up sayfasından iptal et.
+
 ## Bilinen eksikler
-Trello: gerçek Trello API'sine karşı uçtan uca denenmedi (anahtar yok; HTTP katmanı ve Supabase deposu yalnızca derleme/ham mantık testiyle doğrulandı), webhook'lar kart bazlı yeniden çekim yapar (Trello'daki değişiklik JS Work'teki elle düzenlemenin üstüne yazar), silinen/arşivlenen kart tam içe aktarmada arşive alınmaz (yalnızca webhook ile), 1000+ kartta tek istek/pano limiti (Trello 1000 kart sınırı) geçerlidir. 
+Trello senkron: JS → Trello yazımı, uzlaştırma ve 0008 tetikleyicileri gerçek Trello/Supabase'e karşı denenmedi (yalnızca saf mantık + bellek portlu testler); Trello'da JS'te karşılığı olmayan liste/aşama (kapsam, Kontrol'süz iç revize) tek yönlü kalır ve Trello'dan gelen sonraki çekim aşamayı listeye göre yeniden yazabilir; satır içi itme tarayıcıdan çağrılır (sekme kapanırsa cron 5 dk içinde tamamlar). Trello: gerçek Trello API'sine karşı uçtan uca denenmedi (anahtar yok; HTTP katmanı ve Supabase deposu yalnızca derleme/ham mantık testiyle doğrulandı), webhook'lar kart bazlı yeniden çekim yapar (artık son-yazan-kazanır: daha yeni JS düzenlemesi korunur), silinen/arşivlenen kart tam içe aktarmada arşive alınmaz (yalnızca webhook ile), 1000+ kartta tek istek/pano limiti (Trello 1000 kart sınırı) geçerlidir. 
 Supabase uçtan uca doğrulanmadı (instance yok; jsonb katman, RPC (`assign_bid`, `hire_candidate`…) ve RLS/tetikleyiciler canlı DB'de test edilmedi; 0006 yalnızca statik testle doğrulandı), tarayıcıda görsel test yapılmadı, dosya yükleme/Vimeo/MinIO simüle. Demo'da API anahtarları yalnızca tarayıcıda yaşar (sunucu durumsuz; sunucu uçları demo için `jsdemo_token` kabul eder) ve demo webhook aksiyonu ağ çağrısı yapmaz. Otomasyon zincirleme tetiklemesi (bir kuralın ürettiği olayın başka kuralı tetiklemesi) demoda yok. Otomasyon `condition` ifadeleri değerlendirilmez. Cron aralığı Vercel planına bağlıdır.
