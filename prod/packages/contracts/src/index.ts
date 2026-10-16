@@ -164,7 +164,7 @@ export interface Message {
   id: string; org_id: string; channel_id: string; author_id: string; author_name: string; body: string;
   meta: { from?: string; subject?: string; brand_id?: string } & Record<string, unknown>; created_at: string;
 }
-export interface Integration { id: string; org_id: string; provider: string; name: string; status: 'connected' | 'available' | 'error'; scopes: string[]; secret_ref: string | null }
+export interface Integration { id: string; org_id: string; provider: string; name: string; status: 'connected' | 'available' | 'error'; scopes: string[]; secret_ref: string | null; last_sync_at?: string | null }
 export interface McpServer { id: string; org_id: string; name: string; url: string; status: 'connected' | 'available'; tools: string[] }
 export interface AccessToken {
   id: string; org_id: string; name: string; token_prefix: string; scopes: string[]; created_at: string; last_used_at: string | null;
@@ -317,3 +317,45 @@ export const mcpCreateTaskDraftArgs = z.object({
 export const mcpProjectStatusArgs = z.object({ project_id: z.string().optional() });
 
 export * from './modules';
+
+/* ───────── Trello entegrasyonu ───────── */
+/** integrations.config (provider='trello'). Gizli alanlar yalnızca sunucuda (servis rolü) okunur/yazılır; istemciye `maskTrelloConfig` görünümü gider. */
+export const trelloConfigSchema = z.object({
+  api_key: z.string().trim().min(16).max(64),
+  token: z.string().trim().min(20).max(200),
+  board_ids: z.array(z.string().min(1)).optional(),
+  last_sync_at: z.string().optional(),
+  /** boardId → Trello webhook id */
+  webhook_ids: z.record(z.string()).optional(),
+  /** normalize Trello adı → employee id (içe aktarmada yeniden kullanılır) */
+  member_map: z.record(z.string()).optional(),
+  /** Webhook geri çağrısındaki gizli `k` parametresi (TRELLO_API_SECRET yokken doğrulama) ve kayıtlı callback URL'si. */
+  webhook_key: z.string().optional(),
+  callback_url: z.string().optional(),
+  member_name: z.string().optional(),
+});
+export type TrelloConfig = z.infer<typeof trelloConfigSchema>;
+export interface TrelloPublicState {
+  connected: boolean; member_name: string | null; api_key: string | null; token: string | null;
+  board_ids: string[]; last_sync_at: string | null; webhook_ids: Record<string, string>; member_map: Record<string, string>;
+  boards: Array<{ id: string; name: string }>;
+}
+const maskTail = (s: string, head: number) => `${s.slice(0, head)}••••${s.slice(-4)}`;
+/** İstemciye dönen maskeli görünüm: tam anahtar/token asla yok. */
+export function maskTrelloConfig(c: Partial<TrelloConfig> | null | undefined, boards: Array<{ id: string; name: string }> = []): TrelloPublicState {
+  const has = !!c?.api_key && !!c?.token;
+  return {
+    connected: has, member_name: c?.member_name ?? null,
+    api_key: c?.api_key ? maskTail(c.api_key, 4) : null, token: c?.token ? maskTail(c.token, 0) : null,
+    board_ids: c?.board_ids ?? [], last_sync_at: c?.last_sync_at ?? null, webhook_ids: c?.webhook_ids ?? {}, member_map: c?.member_map ?? {}, boards,
+  };
+}
+export interface TrelloImportResult {
+  boards: number; lists: number; cards_seen: number; skipped_templates: number;
+  brands_created: string[]; projects_created: number; projects_updated: number;
+  tasks_created: number; tasks_updated: number; tasks_unchanged: number;
+  /** Eşlenemeyen kişi adları (kart üyesi veya kişi listesi) ve etkilenen kart sayısı. */
+  unmapped_members: Array<{ name: string; cards: number }>;
+  errors: string[];
+}
+export const trelloMemberMapSchema = z.object({ member_map: z.record(z.string().min(1), z.string().min(1)) });

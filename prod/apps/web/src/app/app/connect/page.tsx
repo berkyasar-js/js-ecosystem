@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { API_TOKEN_SCOPES, TOKEN_ADMIN_ROLES } from '@jscore/contracts';
 import { Async, Empty, PageHeader, Tabs, fmtDate, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
+import { TrelloCard } from './trello-card';
 
 export default function Connect() {
   const { repo, me, mode, bump } = useSession();
@@ -39,8 +40,10 @@ export default function Connect() {
       <Tabs<typeof tab> tabs={[['int', 'Entegrasyonlar'], ['mcp', 'MCP sunucuları'], ['api', 'API & Webhook’lar'], ['keys', 'API Anahtarları']]} value={tab} onChange={setTab} />
       {err && <p role="alert" className="mb-3 text-sm text-magenta">{err}</p>}
       <Async q={q}>{(d) => tab === 'int' ? (
+        <>
+        <TrelloCard />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {d.integrations.map((i) => (
+          {d.integrations.filter((i) => i.provider !== 'trello').map((i) => (
             <article key={i.id} className="card">
               <div className="flex items-center justify-between gap-2"><h2 className="font-bold">{i.name}</h2><span className={`chip ${i.status === 'connected' ? 'chip-ok' : i.status === 'error' ? 'chip-bad' : ''}`}>{i.status === 'connected' ? 'Bağlı' : i.status === 'error' ? 'Hata' : 'Hazır'}</span></div>
               <div className="mt-3 flex flex-wrap gap-1.5">{i.scopes.map((s) => <span key={s} className="chip">{s}</span>)}</div>
@@ -48,6 +51,7 @@ export default function Connect() {
             </article>
           ))}
         </div>
+        </>
       ) : tab === 'mcp' ? (
         d.mcp_servers.length === 0 ? <Empty>MCP sunucusu yok.</Empty> : (
           <ul className="grid gap-3">{d.mcp_servers.map((m) => (

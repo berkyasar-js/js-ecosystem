@@ -243,6 +243,8 @@ export interface DemoDb {
   cols: ModuleCols; audit: AuditEvent[];
   /** İhale teklifleri / atamalar: eski localStorage kayıtlarında yoktur → DemoRepo `??=` ile açar. */
   taskBids?: TaskBid[]; assignments?: TaskAssignment[];
+  /** Trello demo durumu: örnek içe aktarma zamanı + kişi eşlemeleri (anahtar = memberKey(ad) → çalışan id). */
+  trello?: { last_sync_at: string | null; member_map: Record<string, string> };
   board: BoardDecision[]; twins: Twin[]; bids: TwinBid[]; connect: { integrations: Integration[]; mcp_servers: McpServer[]; webhooks: Webhook[]; tokens: AccessToken[] };
 }
 export const makeDemoDb = (): DemoDb => structuredClone({

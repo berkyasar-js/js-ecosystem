@@ -50,7 +50,7 @@ create table public.decision_rights (
   action text not null, level int not null check (level between 1 and 3),
   decider text not null,            -- rol veya 'board' / 'founder'
   limit_minor bigint, notes text,
-  primary key (org_id, action)
+  primary key (org_id, action, level)
 );
 
 do $$ declare t text; begin

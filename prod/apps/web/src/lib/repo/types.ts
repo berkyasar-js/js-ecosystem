@@ -3,7 +3,9 @@ import type {
   AgentPrompt, AgentRun, Approval, ApprovalCreate, BoardAnswer, BoardDecision, Brand, Channel, ConnectData, Integration, Me, Member,
   Message, Organization, OrgSettings, Project, Task, TaskCreate, TaskState, TaskType, TeamMember, Twin, TwinBid,
   AccessToken, BidAssignResult, BidProposal, TaskAssignment, TaskBid, TokenCreate,
+  TrelloImportResult, TrelloPublicState,
 } from '@jscore/contracts';
+import type { TrelloSnapshot } from '../integrations/trello-map';
 
 export interface Repo {
   readonly mode: 'demo' | 'supabase';
@@ -38,6 +40,10 @@ export interface Repo {
   /** API anahtarı: yalnızca sha256 özeti saklanır; düz token yalnızca bu çağrının dönüşünde bir kez bulunur. owner/org_admin/integration_admin. */
   createToken(input: TokenCreate): Promise<{ token: AccessToken; plaintext: string }>;
   revokeToken(id: string): Promise<void>;
+  /** Trello (yalnızca DemoRepo): Supabase'de sunucu rotaları /api/integrations/trello/* kullanılır (sırlar istemciye inmez). */
+  trelloState?(): Promise<TrelloPublicState>;
+  trelloImport?(fixture?: TrelloSnapshot): Promise<TrelloImportResult>;
+  trelloSetMember?(name: string, employeeId: string): Promise<void>;
   // agents & intel
   listAgentPrompts(): Promise<AgentPrompt[]>;
   getActivePrompt(agent: string): Promise<AgentPrompt | null>;

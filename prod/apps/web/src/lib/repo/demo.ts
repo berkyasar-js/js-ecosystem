@@ -2,9 +2,11 @@ import {
   COLLECTIONS, DEAL_STAGES, LEAVE_DECIDERS, canReadColl, canWriteColl, type AuditEvent, type Checklist, type CollKey, type Deal, type DealStage, type Leave, type Records, type SaveInput,
   approvalCreateSchema, canDecideApproval, isClientRole, orgSettingsPatchSchema, taskCreateSchema, boardAnswerSchema,
   type AgentRun, type Approval, type ApprovalCreate, type BoardAnswer, type ConnectData, type Integration, type Me, type Message,
-  type OrgSettings, type Task, type TaskCreate, type TaskState, type BoardDecision, type Role,
+  type OrgSettings, type Task, type Project, type Brand, type TrelloImportResult, type TrelloPublicState, maskTrelloConfig, type TaskCreate, type TaskState, type BoardDecision, type Role,
   BID_ROLES, TOKEN_ADMIN_ROLES, bidProposalSchema, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
 } from '@jscore/contracts';
+import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
+import { memberKey, runImport, type StoreTask, type TaskDraft, type TrelloSnapshot, type TrelloStore } from '../integrations/trello-map';
 import { demoTwinBids, type TwinBidInput } from '../agents/demo';
 import { dispatchEvent, type AutomationEvent, type DispatchPorts } from '../automations/dispatch';
 import { addDaysIso, generateToken, tokenPrefix } from '../token';
@@ -228,6 +230,69 @@ export class DemoRepo implements Repo {
     t.revoked_at = this.now();
     this.log(db, 'token.revoke', `access_tokens/${id}`);
     this.persist(db);
+  }
+  /* ───────── Trello (demo): örnek veriyle aynı içe aktarma çekirdeği ───────── */
+  async trelloState(): Promise<TrelloPublicState> {
+    if (!TOKEN_ADMIN_ROLES.includes(this.role)) throw new ForbiddenError();
+    const t = this.db().trello;
+    return { ...maskTrelloConfig(t ? { member_map: t.member_map, last_sync_at: t.last_sync_at ?? undefined } : null), connected: !!t?.last_sync_at };
+  }
+  async trelloSetMember(name: string, employeeId: string) {
+    if (!TOKEN_ADMIN_ROLES.includes(this.role)) throw new ForbiddenError();
+    const db = this.db();
+    if (!db.team.some((m) => m.id === employeeId && m.org_id === this.orgId)) throw new NotFoundError('Çalışan');
+    const t = (db.trello ??= { last_sync_at: null, member_map: {} });
+    const k = memberKey(name);
+    if (k) t.member_map[k] = employeeId;
+    this.log(db, 'trello.map_member', 'integrations/trello', { name, employeeId });
+    this.persist(db);
+  }
+  async trelloImport(fixture: TrelloSnapshot = TRELLO_FIXTURE): Promise<TrelloImportResult> {
+    if (!TOKEN_ADMIN_ROLES.includes(this.role)) throw new ForbiddenError('Trello içe aktarma yalnızca owner / org_admin / entegrasyon admin');
+    const db = this.db();
+    const org = this.orgId;
+    const toDraft = (t: Task): StoreTask => ({ id: t.id, source_ref: t.source_ref ?? '', project_id: t.project_id, title: t.title, assignee_id: t.assignee_id, state: t.state, priority: t.priority, due_at: t.due_at || null, planned_minutes: t.planned_minutes, task_type: t.task_type, labels: t.labels });
+    const store: TrelloStore = {
+      load: async () => ({
+        employees: db.team.filter((m) => m.org_id === org && m.status === 'active').map((m) => ({ id: m.id, name: m.name })),
+        brands: db.brands.filter((b) => b.org_id === org).map((b) => ({ id: b.id, name: b.name })),
+        projects: db.projects.filter((p) => p.org_id === org).map((p) => ({ id: p.id, name: p.name })),
+        tasks: db.tasks.filter((t) => t.org_id === org && t.source_ref?.startsWith('trello:')).map(toDraft),
+      }),
+      createBrand: async (name) => {
+        let n = db.brands.length + 1;
+        while (db.brands.some((b) => b.id === `c_tr${n}`)) n++;
+        const b: Brand = { id: `c_tr${n}`, org_id: org, client_id: `cl_tr${n}`, name, sector: '', status: 'prospect', account_owner: '', art_director: '', copywriter: '', compliance_flags: [], monthly_quota: {}, health: 60, internal: false };
+        db.brands.push(b);
+        return { id: b.id, name: b.name };
+      },
+      createProject: async (p) => {
+        const id = this.nextId('p', db.projects.map((x) => x.id));
+        const row: Project = { id, org_id: org, brand_id: p.brand_id, name: p.name, type: p.type, status: 'active', flow_stage: 'brief', flow_owner: '', stage_plan: [], due_at: '', budget_minor: 0, summary: 'Trello içe aktarma', client_visible: false };
+        db.projects.push(row);
+        return { id };
+      },
+      createTasks: async (rows: TaskDraft[]) => {
+        for (const r of rows) {
+          const t: Task = { id: this.nextId('t', db.tasks.map((x) => x.id)), org_id: org, ...r, due_at: r.due_at ?? '', qty: 1, client_visible: false, created_at: this.now() };
+          db.tasks.push(t);
+          await this.fire(db, 'tasks.insert', 'tasks', t);
+        }
+      },
+      updateTask: async (id, patch) => {
+        const t = db.tasks.find((x) => x.id === id && x.org_id === org);
+        if (!t) throw new NotFoundError('Görev');
+        const before = { ...t };
+        Object.assign(t, patch, patch.due_at !== undefined ? { due_at: patch.due_at ?? '' } : {});
+        await this.fire(db, 'tasks.update', 'tasks', t, before);
+      },
+    };
+    const tr = (db.trello ??= { last_sync_at: null, member_map: {} });
+    const res = await runImport(fixture, store, { now: this.now(), memberMap: tr.member_map, concurrency: 1 });
+    tr.last_sync_at = this.now();
+    this.log(db, 'trello.import', 'integrations/trello', { tasks_created: res.tasks_created, tasks_updated: res.tasks_updated, cards: res.cards_seen });
+    this.persist(db);
+    return res;
   }
   async setIntegrationStatus(id: string, status: Integration['status']) {
     if (!['owner', 'org_admin', 'integration_admin'].includes(this.role)) throw new ForbiddenError();
