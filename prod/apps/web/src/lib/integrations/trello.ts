@@ -105,7 +105,7 @@ export class SupabaseTrelloStore implements TrelloStore {
       this.all<{ id: string; name: string }>('brands', 'id,name'),
       this.all<{ id: string; name: string; brand_id: string; source_ref: string | null; status: string }>('projects', 'id,name,brand_id,source_ref,status'),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.all<StoreTask & { sync_origin?: string | null }>('tasks', 'id,source_ref,project_id,title,assignee_id,state,priority,due_at,planned_minutes,task_type,labels,updated_at,sync_origin', (q: any) => q.like('source_ref', 'trello:%')),
+      this.all<StoreTask & { sync_origin?: string | null }>('tasks', 'id,source_ref,project_id,title,assignee_id,state,priority,due_at,planned_minutes,task_type,labels,updated_at,synced_at,sync_origin', (q: any) => q.like('source_ref', 'trello:%')),
     ]);
     return { employees, brands, projects, tasks };
   }

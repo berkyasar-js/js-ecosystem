@@ -222,6 +222,26 @@ describe('Trello · migration 0007', () => {
   });
 });
 
+describe('Trello · birleştirme sonrası kart güncellemesi', () => {
+  it('birleştirme taşıması (sync_origin=trello, synced_at=updated_at) sonraki kart güncellemesini engellemez', async () => {
+    const { s, store } = memStore();
+    // Üretim deposunu taklit: taşıma yazması işaretlenir, DB tetikleyicisi updated_at'i synced_at'e eşitler.
+    store.moveProjectTasks = async (from, to) => {
+      const rows = s.tasks.filter((t) => t.project_id === from);
+      rows.forEach((t) => { t.project_id = to; t.updated_at = '2026-10-16T12:00:00Z'; t.synced_at = '2026-10-16T12:00:00Z'; });
+      return rows.length;
+    };
+    s.projects.push({ id: 'o1', name: "Anova Kasım'26 SM", brand_id: 'b1', source_ref: 'trello:board:b1', status: 'active' }, { id: 'o3', name: 'Anova · Trello', brand_id: 'b1', source_ref: 'trello:board:b1', status: 'active' });
+    s.tasks.push({ id: 'a', project_id: 'o1', source_ref: 'trello:x1', title: "Anova Kasım'26 SM", assignee_id: null, state: 'production', priority: 'normal', due_at: null, planned_minutes: 0, task_type: 'general', labels: ['trello'] });
+    const snap = { ...TRELLO_FIXTURE, cards: [{ id: 'x1', idBoard: 'b1', idList: 'l7', name: "Anova Kasım'26 SM", dateLastActivity: '2026-10-16T09:00:00Z' }] };
+    const logs: SyncLogDraft[] = [];
+    const r = await runImport(snap, store, { now: '2026-10-16T13:00:00Z', onLog: (e) => logs.push(e) });
+    expect(r.projects_merged).toBe(1);
+    expect(logs.some((l) => l.action === 'skipped_conflict')).toBe(false);
+    expect(s.tasks[0].labels).toContain('sm:2026-11');
+  });
+});
+
 describe('Trello · marka başına tek proje', () => {
   it('SM ayı ayrıştırma: Türkçe ay adları, 2 ve 4 haneli yıl → sm:YYYY-MM etiketi', () => {
     const lab = (n: string) => mapCard(card(n), ctx()).draft.labels.filter((l) => l.startsWith('sm:'));

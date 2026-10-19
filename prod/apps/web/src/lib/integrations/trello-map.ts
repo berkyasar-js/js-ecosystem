@@ -157,14 +157,33 @@ export function buildMemberIds(members: ReadonlyArray<TrelloMember>, employees: 
 }
 
 /* ───────── Çakışma kuralı: son yazan kazanır ───────── */
-/** 'push' = JS daha yeni (Trello'dan gelen değişiklik atlanır), 'pull' = Trello daha yeni ya da eşit/bilinmiyor. */
-export function resolveConflict(taskUpdatedAt: string | undefined | null, cardActivity: string | undefined | null): 'pull' | 'push' {
-  const t = taskUpdatedAt ? Date.parse(taskUpdatedAt) : NaN, c = cardActivity ? Date.parse(cardActivity) : NaN;
-  if (Number.isNaN(t) || Number.isNaN(c)) return 'pull';
+/** JS tarafı yazma mı? Yalnızca son Trello senkronundan SONRA yapılmış yazma (updated_at > synced_at). synced_at yok → hayır (ilk/birleştirme yazmaları engellemez). */
+export function jsEditedSinceSync(updatedAt: string | undefined | null, syncedAt: string | undefined | null): boolean {
+  const u = updatedAt ? Date.parse(updatedAt) : NaN, s = syncedAt ? Date.parse(syncedAt) : NaN;
+  if (Number.isNaN(u) || Number.isNaN(s)) return false;
+  return u > s;
+}
+/** Geri itme adayı mı? Son yazma Trello'dan geldiyse (sync_origin='trello' ya da updated_at <= synced_at) itilmez. */
+export function isTrelloOriginWrite(t: { sync_origin?: string | null; updated_at?: string | null; synced_at?: string | null }): boolean {
+  if (t.sync_origin === 'trello') return true;
+  const u = t.updated_at ? Date.parse(t.updated_at) : NaN, s = t.synced_at ? Date.parse(t.synced_at) : NaN;
+  return !Number.isNaN(u) && !Number.isNaN(s) && u <= s;
+}
+/**
+ * 'push' = JS daha yeni (Trello'dan gelen değişiklik atlanır), 'pull' = Trello daha yeni / eşit / bilinmiyor.
+ * JS ancak gerçek bir JS yazması varsa (updated_at > synced_at) VE kartın dateLastActivity'sinden yeniyse kazanır.
+ */
+export function resolveConflict(taskUpdatedAt: string | undefined | null, cardActivity: string | undefined | null, syncedAt: string | undefined | null): 'pull' | 'push' {
+  if (!jsEditedSinceSync(taskUpdatedAt, syncedAt)) return 'pull';
+  const t = Date.parse(taskUpdatedAt as string), c = cardActivity ? Date.parse(cardActivity) : NaN;
+  if (Number.isNaN(c)) return 'pull';
   return t > c ? 'push' : 'pull';
 }
 /** Kartın Trello'daki son etkinliği JS görevinden yeniyse JS → Trello yazımı atlanır (Trello kazanır). */
-export const trelloIsNewer = (taskUpdatedAt: string | undefined | null, cardActivity: string | undefined | null) => resolveConflict(taskUpdatedAt, cardActivity) === 'pull' && !!taskUpdatedAt && !!cardActivity;
+export const trelloIsNewer = (taskUpdatedAt: string | undefined | null, cardActivity: string | undefined | null) => {
+  const t = taskUpdatedAt ? Date.parse(taskUpdatedAt) : NaN, c = cardActivity ? Date.parse(cardActivity) : NaN;
+  return !Number.isNaN(t) && !Number.isNaN(c) && t <= c;
+};
 
 export interface ReconcilePlan { pullCards: TrelloCard[]; missing: StoreTask[]; pushTasks: StoreTask[]; unlinked: StoreTask[] }
 /**
@@ -183,8 +202,8 @@ export function reconcilePlan(
   const pullCards = cards.filter((c) => !byRef.has(`trello:${c.id}`) || changed(c.dateLastActivity));
   const linked = tasks.filter((t) => t.source_ref.startsWith('trello:') && !t.source_ref.startsWith('trello:board:') && !t.source_ref.includes('pending'));
   const missing = linked.filter((t) => !open.has(t.source_ref) && t.state !== 'archive' && !t.labels.includes('trello:vanished'));
-  const pushTasks = linked.filter((t) => t.sync_origin !== 'trello' && !!sinceMs && !!t.updated_at && Date.parse(t.updated_at) > sinceMs);
-  const unlinked = tasks.filter((t) => !t.source_ref && !!opts.trelloProjectIds?.has(t.project_id) && t.sync_origin !== 'trello');
+  const pushTasks = linked.filter((t) => !isTrelloOriginWrite(t) && !!sinceMs && !!t.updated_at && Date.parse(t.updated_at) > sinceMs);
+  const unlinked = tasks.filter((t) => !t.source_ref && !!opts.trelloProjectIds?.has(t.project_id) && !isTrelloOriginWrite(t));
   return { pullCards, missing, pushTasks, unlinked };
 }
 
@@ -266,7 +285,7 @@ export function mapCard(card: TrelloCard, ctx: MapCtx): MappedCard {
 }
 
 /* ───────── İdempotent içe aktarma (port tabanlı) ───────── */
-export interface StoreTask extends TaskDraft { id: string; updated_at?: string }
+export interface StoreTask extends TaskDraft { id: string; updated_at?: string; synced_at?: string | null }
 export interface SyncLogDraft { direction: 'push' | 'pull' | 'reconcile'; entity: string; entity_id: string | null; external_id: string | null; action: string; ok: boolean; message: string }
 export interface StoreProject { id: string; name: string; brand_id?: string | null; source_ref?: string | null; status?: string }
 export const MERGED_SUFFIX = ' (birleştirildi)';
@@ -408,7 +427,7 @@ export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: 
       else {
         const patch = taskChanges(cur, draft);
         if (!Object.keys(patch).length) res.tasks_unchanged++;
-        else if (resolveConflict(cur.updated_at, card.dateLastActivity) === 'push') {
+        else if (resolveConflict(cur.updated_at, card.dateLastActivity, cur.synced_at) === 'push') {
           res.tasks_skipped = (res.tasks_skipped ?? 0) + 1;
           log({ direction: 'pull', entity: 'task', entity_id: cur.id, external_id: card.id, action: 'skipped_conflict', ok: true, message: `JS daha yeni (${cur.updated_at}) · Trello ${card.dateLastActivity}: ${Object.keys(patch).join(', ')}` });
         } else { updates.push([cur.id, patch]); log({ direction: 'pull', entity: 'task', entity_id: cur.id, external_id: card.id, action: 'updated', ok: true, message: Object.keys(patch).join(', ') }); }

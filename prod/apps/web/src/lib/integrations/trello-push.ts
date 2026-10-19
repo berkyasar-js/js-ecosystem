@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TaskState, TrelloConfig } from '@jscore/contracts';
 import { CARD_FIELDS, TrelloApiError, loadTrelloConfig, trelloFetch, writeSyncLog, type TrelloCreds } from './trello';
-import { trelloIsNewer, type ListMapEntry, type SyncLogDraft, type TrelloCard } from './trello-map';
+import { isTrelloOriginWrite, trelloIsNewer, type ListMapEntry, type SyncLogDraft, type TrelloCard } from './trello-map';
 
 /**
  * JS → Trello yazımı. Saf kısım (liste seçimi, kart yaması, olay filtresi, döngü koruması) + port tabanlı `pushTaskWith`
@@ -16,7 +16,7 @@ import { trelloIsNewer, type ListMapEntry, type SyncLogDraft, type TrelloCard } 
 
 export interface PushTask {
   id: string; org_id?: string; project_id: string; title: string; assignee_id: string | null; state: TaskState; due_at: string | null;
-  labels: string[]; source_ref: string | null; updated_at?: string | null; sync_origin?: string | null;
+  labels: string[]; source_ref: string | null; updated_at?: string | null; synced_at?: string | null; sync_origin?: string | null;
 }
 export interface CardPatch { name?: string; idList?: string; due?: string | null; dueComplete?: boolean; idMembers?: string[]; closed?: boolean }
 export type ListMap = NonNullable<TrelloConfig['list_map']>;
@@ -95,7 +95,7 @@ export function shouldPushEvent(ev: SyncEventLike, cfg: Pick<TrelloConfig, 'mode
   if (ev.aggregate !== 'tasks' || !/\.(insert|update)$/.test(ev.type)) return { push: false, reason: 'not_task' };
   const n = ev.payload.new;
   if (!n) return { push: false, reason: 'no_row' };
-  if (ev.payload.origin === 'trello' || n.sync_origin === 'trello') return { push: false, reason: 'origin' };
+  if (ev.payload.origin === 'trello' || n.sync_origin === 'trello' || isTrelloOriginWrite(n as { updated_at?: string | null; synced_at?: string | null })) return { push: false, reason: 'origin' };
   const ref = typeof n.source_ref === 'string' ? n.source_ref : null;
   if (ref && !ref.startsWith('trello:')) return { push: false, reason: 'foreign_ref' };
   if (ev.type.endsWith('.insert')) return ref ? { push: false, reason: 'already_linked' } : { push: true, reason: 'new_task' };
@@ -132,7 +132,7 @@ export async function pushTaskWith(ports: PushPorts, taskId: string, opts: { pre
   try {
     const task = await ports.loadTask(taskId);
     if (!task) return 'noop';
-    if (task.sync_origin === 'trello') { await log('skipped_origin', true, 'Trello kaynaklı yazma geri itilmedi', task.source_ref?.slice(7) ?? null); return 'skipped'; }
+    if (isTrelloOriginWrite(task)) { await log('skipped_origin', true, 'Trello kaynaklı yazma geri itilmedi', task.source_ref?.slice(7) ?? null); return 'skipped'; }
     const ref = task.source_ref;
     const listMap = cfg.list_map ?? {};
     if (ref?.startsWith('trello:') && !ref.startsWith('trello:board:') && ref !== 'trello:pending') {
@@ -177,7 +177,7 @@ export function supabasePushPorts(admin: SupabaseClient, orgId: string, cfg: Tre
   return {
     cfg,
     async loadTask(id) {
-      const { data, error } = await admin.from('tasks').select('id,project_id,title,assignee_id,state,due_at,labels,source_ref,updated_at,sync_origin').eq('id', id).eq('org_id', orgId).maybeSingle();
+      const { data, error } = await admin.from('tasks').select('id,project_id,title,assignee_id,state,due_at,labels,source_ref,updated_at,synced_at,sync_origin').eq('id', id).eq('org_id', orgId).maybeSingle();
       if (error) throw new Error(error.message);
       return (data as PushTask | null) ?? null;
     },

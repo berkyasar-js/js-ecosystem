@@ -79,6 +79,10 @@ describe('Trello push · döngü koruması', () => {
     expect(shouldPushEvent(ev({ sync_origin: 'trello' }), CFG()).reason).toBe('origin');
     expect(shouldPushEvent({ ...ev(), payload: { ...ev().payload, origin: 'trello' } }, CFG()).reason).toBe('origin');
   });
+  it('updated_at <= synced_at (içe aktarma yazması) itilmez; senkron sonrası JS yazması itilir', () => {
+    expect(shouldPushEvent(ev({ updated_at: '2026-10-16T10:00:00Z', synced_at: '2026-10-16T10:00:00Z' }), CFG()).reason).toBe('origin');
+    expect(shouldPushEvent(ev({ updated_at: '2026-10-16T10:00:01Z', synced_at: '2026-10-16T10:00:00Z' }), CFG()).push).toBe(true);
+  });
   it('mod two_way değilse, ilgisiz alan değişince, yabancı source_ref ile itilmez; yeni görev (ref yok) itilir', () => {
     expect(shouldPushEvent(ev(), CFG({ mode: 'pull_only' })).reason).toBe('mode');
     expect(shouldPushEvent(ev(), CFG({ mode: 'off' })).push).toBe(false);
@@ -145,6 +149,11 @@ describe('Trello push · pushTaskWith', () => {
     const older = fakePorts(task({ state: 'approval', updated_at: '2026-10-16T10:00:00Z' }), card({ dateLastActivity: '2026-10-16T09:00:00Z' }));
     expect(await pushTaskWith(older.ports, 't1')).toBe('updated');
   });
+  it('updated_at <= synced_at olan görev (Trello yazması) geri itilmez', async () => {
+    const { ports, calls } = fakePorts(task({ state: 'approval', updated_at: '2026-10-16T10:00:00Z', synced_at: '2026-10-16T10:00:00Z' }), card({ dateLastActivity: '2026-10-16T09:00:00Z' }));
+    expect(await pushTaskWith(ports, 't1')).toBe('skipped');
+    expect(calls.put).toEqual([]);
+  });
   it('kart Trello’da yok → hata günlüğü (vanished)', async () => {
     const { ports, logs } = fakePorts(task(), null);
     expect(await pushTaskWith(ports, 't1')).toBe('error');
@@ -168,16 +177,21 @@ describe('Trello push · pushTaskWith', () => {
 });
 
 describe('Trello · çakışma kuralı (son yazan kazanır)', () => {
-  it('resolveConflict', () => {
-    expect(resolveConflict('2026-10-16T10:00:00Z', '2026-10-16T09:00:00Z')).toBe('push'); // JS yeni → Trello'dan gelen atlanır
-    expect(resolveConflict('2026-10-16T09:00:00Z', '2026-10-16T10:00:00Z')).toBe('pull');
-    expect(resolveConflict('2026-10-16T10:00:00Z', '2026-10-16T10:00:00Z')).toBe('pull');
-    expect(resolveConflict(undefined, '2026-10-16T10:00:00Z')).toBe('pull');
+  it('resolveConflict: yalnızca senkrondan sonraki JS yazması engeller', () => {
+    const SY = '2026-10-16T08:00:00Z';
+    expect(resolveConflict('2026-10-16T10:00:00Z', '2026-10-16T09:00:00Z', SY)).toBe('push'); // JS düzenlemesi (updated_at > synced_at) ve kartan yeni
+    expect(resolveConflict('2026-10-16T09:00:00Z', '2026-10-16T10:00:00Z', SY)).toBe('pull'); // Trello daha yeni
+    expect(resolveConflict('2026-10-16T10:00:00Z', '2026-10-16T10:00:00Z', SY)).toBe('pull');
+    expect(resolveConflict(undefined, '2026-10-16T10:00:00Z', SY)).toBe('pull');
+    expect(resolveConflict('2026-10-16T10:00:00Z', '2026-10-16T09:00:00Z', '2026-10-16T10:00:00Z')).toBe('pull'); // updated_at == synced_at → içe aktarma yazması
+    expect(resolveConflict('2026-10-16T10:00:00Z', '2026-10-16T09:00:00Z', '2026-10-16T10:30:00Z')).toBe('pull'); // senkron sonrası JS yazması yok
+    expect(resolveConflict('2026-10-16T10:00:00Z', '2026-10-16T09:00:00Z', null)).toBe('pull'); // synced_at yok → engellemez
+    expect(resolveConflict('2026-10-16T10:00:00Z', '2026-10-16T09:00:00Z', undefined)).toBe('pull');
   });
   const SNAP = (activity: string): TrelloSnapshot => ({ boards: [{ id: 'B1', name: 'Pano' }], lists: [{ id: 'lSeda', idBoard: 'B1', name: 'Seda' }], members: [],
     cards: [{ id: 'c1', idBoard: 'B1', idList: 'lSeda', name: '184_Anova İş', dateLastActivity: activity }] });
-  function store(updatedAt: string) {
-    const cur: StoreTask = { id: 't1', source_ref: 'trello:c1', project_id: 'p1', title: 'Eski ad', assignee_id: 'SK', state: 'production', priority: 'normal', due_at: null, planned_minutes: 0, task_type: 'general', labels: [], updated_at: updatedAt };
+  function store(updatedAt: string, syncedAt: string | null = '2026-10-16T08:00:00Z') {
+    const cur: StoreTask = { id: 't1', source_ref: 'trello:c1', project_id: 'p1', title: 'Eski ad', assignee_id: 'SK', state: 'production', priority: 'normal', due_at: null, planned_minutes: 0, task_type: 'general', labels: [], updated_at: updatedAt, synced_at: syncedAt };
     const updates: Array<Partial<TaskDraft>> = [];
     const s: TrelloStore = {
       load: async () => ({ brands: [{ id: 'b', name: 'Anova' }], employees: TEAM, projects: [{ id: 'p1', name: 'Anova · Trello' }], tasks: [cur] }),
@@ -193,6 +207,14 @@ describe('Trello · çakışma kuralı (son yazan kazanır)', () => {
     expect(updates).toEqual([]);
     expect(r).toMatchObject({ tasks_updated: 0, tasks_skipped: 1 });
     expect(logs[0]).toMatchObject({ direction: 'pull', action: 'skipped_conflict' });
+  });
+  it('içe aktarma/birleştirme yazması (updated_at <= synced_at ya da synced_at yok) kart güncellemesini engellemez', async () => {
+    for (const [u, sy] of [['2026-10-16T10:00:00Z', '2026-10-16T10:00:00Z'], ['2026-10-16T10:00:00Z', '2026-10-16T10:30:00Z'], ['2026-10-16T10:00:00Z', null]] as const) {
+      const { s, updates } = store(u, sy);
+      const r = await runImport(SNAP('2026-10-16T09:00:00Z'), s, { now: '2026-10-16T11:00:00Z' });
+      expect(updates[0]).toMatchObject({ title: 'Anova İş' });
+      expect(r).toMatchObject({ tasks_updated: 1, tasks_skipped: 0 });
+    }
   });
   it('Trello daha yeniyse uygulanır', async () => {
     const { s, updates } = store('2026-10-16T08:00:00Z');
@@ -229,13 +251,14 @@ describe('Trello · saatlik uzlaştırma seçimi', () => {
   const tasks = [
     st('old'), st('chg'), st('gone'), st('gone_arch', { state: 'archive' }), st('gone_flag', { labels: ['trello:vanished'] }),
     st('jsedit', { updated_at: '2026-10-16T09:45:00Z' }), st('fromTrello', { updated_at: '2026-10-16T09:45:00Z', sync_origin: 'trello' }),
+    st('syncedWrite', { updated_at: '2026-10-16T09:45:00Z', synced_at: '2026-10-16T09:45:00Z' }), st('editAfterSync', { updated_at: '2026-10-16T09:50:00Z', synced_at: '2026-10-16T09:45:00Z' }),
     { ...st('x'), id: 'unl', source_ref: '', project_id: 'trelloProj' } as StoreTask,
   ];
   it('çekilecek kartlar, kayıp görevler, itilecek görevler', () => {
     const p = reconcilePlan(cards, tasks, SINCE, { trelloProjectIds: new Set(['trelloProj']) });
     expect(p.pullCards.map((c) => c.id).sort()).toEqual(['chg', 'new']);
-    expect(p.missing.map((t) => t.source_ref).sort()).toEqual(['trello:fromTrello', 'trello:gone', 'trello:jsedit'].sort());
-    expect(p.pushTasks.map((t) => t.id)).toEqual(['t_jsedit']); // Trello kaynaklı yazma itilmez
+    expect(p.missing.map((t) => t.source_ref).sort()).toEqual(['trello:editAfterSync', 'trello:fromTrello', 'trello:gone', 'trello:jsedit', 'trello:syncedWrite'].sort());
+    expect(p.pushTasks.map((t) => t.id).sort()).toEqual(['t_editAfterSync', 't_jsedit']); // Trello kaynaklı yazma (sync_origin / updated_at <= synced_at) itilmez
     expect(p.unlinked.map((t) => t.id)).toEqual(['unl']);
   });
   it('last_sync_at yoksa (ilk koşu) tüm kartlar çekilir, hiçbir görev itilmez', () => {
