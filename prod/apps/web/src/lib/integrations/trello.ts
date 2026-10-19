@@ -103,7 +103,7 @@ export class SupabaseTrelloStore implements TrelloStore {
     const [employees, brands, projects, tasks] = await Promise.all([
       this.all<{ id: string; name: string }>('employees', 'id,name'),
       this.all<{ id: string; name: string }>('brands', 'id,name'),
-      this.all<{ id: string; name: string; source_ref: string | null }>('projects', 'id,name,source_ref'),
+      this.all<{ id: string; name: string; brand_id: string; source_ref: string | null; status: string }>('projects', 'id,name,brand_id,source_ref,status'),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       this.all<StoreTask & { sync_origin?: string | null }>('tasks', 'id,source_ref,project_id,title,assignee_id,state,priority,due_at,planned_minutes,task_type,labels,updated_at,sync_origin', (q: any) => q.like('source_ref', 'trello:%')),
     ]);
@@ -123,6 +123,16 @@ export class SupabaseTrelloStore implements TrelloStore {
   }
   async setProjectRef(id: string, ref: string) {
     await this.admin.from('projects').update({ source_ref: ref }).eq('id', id).eq('org_id', this.orgId).is('source_ref', null);
+  }
+  /** Birleştirme: projedeki tüm görevleri hedefe taşır (görev silinmez). */
+  async moveProjectTasks(fromId: string, toId: string) {
+    const { data, error } = await this.admin.from('tasks').update({ project_id: toId, ...this.mark() }).eq('org_id', this.orgId).eq('project_id', fromId).select('id');
+    if (error) throw new Error(error.message);
+    return (data ?? []).length;
+  }
+  async updateProject(id: string, patch: { status?: string; name?: string }) {
+    const { error } = await this.admin.from('projects').update(patch).eq('id', id).eq('org_id', this.orgId);
+    if (error) throw new Error(error.message);
   }
   /** Trello kaynaklı her yazma işaretlenir (sync_origin + synced_at): geri itilmez. */
   private mark() { return { sync_origin: 'trello', synced_at: new Date().toISOString() }; }

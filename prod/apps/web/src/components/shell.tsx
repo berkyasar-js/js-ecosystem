@@ -101,9 +101,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <div className="min-w-0">
         <header className="topbar">
           <button className="btn btn-ghost icon-btn lg:hidden" onClick={() => setOpen(true)} aria-label="Menüyü aç"><Menu size={18} /></button>
-          <div className="breadcrumb"><span className="hidden sm:inline">{orgName}</span><ChevronRight size={14} aria-hidden className="hidden sm:inline" /><strong>{crumb}</strong></div>
+          <div className="breadcrumb"><span className="org-crumb hidden sm:inline">{orgName}</span><ChevronRight size={14} aria-hidden className="org-crumb hidden sm:inline" /><strong>{crumb}</strong></div>
           <div className="top-actions">
-            <div className="relative">
+            <div className="search-wrap">
               <button className="search-trigger" onClick={() => setSearchOpen((v) => !v)} aria-label="Ara (⌘K)" aria-expanded={searchOpen}>
                 <Search size={15} aria-hidden /><span className="hidden md:inline">Ara</span><kbd className="hidden md:inline">⌘ K</kbd>
               </button>
@@ -118,14 +118,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
               )}
             </div>
             {orgs.length > 1 && (
-              <select className="input hidden w-auto md:block" aria-label="Organizasyon" value={orgId} onChange={(e) => setOrg(e.target.value)}>
+              <select className="input org-select hidden w-auto md:block" aria-label="Organizasyon" value={orgId} onChange={(e) => setOrg(e.target.value)}>
                 {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             )}
-            <span className="role-chip hidden sm:inline-flex" title={me.title}><span className="dot" />{ROLE_LABELS[me.role]}</span>
+            <span className="role-chip hidden sm:inline-flex" title={`${ROLE_LABELS[me.role]} · ${me.title}`} aria-label={`Rol: ${ROLE_LABELS[me.role]}`}><span className="dot" /><span className="role-text">{ROLE_LABELS[me.role]}</span></span>
             {mode === 'demo' && (
-              <button className="demo-chip hidden md:inline-flex" title="Demo verisini sıfırla" aria-label="Demo modu, 14 Ekim 2026. Demo verisini sıfırla" onClick={() => { if (window.confirm('Demo verisi sıfırlansın mı?')) resetDemo(); }}>
-                <i className="demo-dot" />Demo · 14 Ekim 2026
+              <button className="demo-chip hidden md:inline-flex" title="Demo · 14 Ekim 2026 — verisini sıfırla" aria-label="Demo modu, 14 Ekim 2026. Demo verisini sıfırla" onClick={() => { if (window.confirm('Demo verisi sıfırlansın mı?')) resetDemo(); }}>
+                <i className="demo-dot" /><span className="demo-text">Demo · 14 Ekim 2026</span>
               </button>
             )}
             <Link href="/app/approvals" className="btn btn-ghost icon-btn" aria-label={`Bildirimler (${pending} bekleyen onay)`}>

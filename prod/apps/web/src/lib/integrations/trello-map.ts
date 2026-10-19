@@ -29,6 +29,11 @@ const MONTHS: Array<[string, string]> = [
 ];
 const MONTH_RE = new RegExp(`(?<![a-z])(${MONTHS.map((m) => m[0]).join('|')})(?:\\s*['’‘\`´]?\\s*(\\d{4}|\\d{2}))?(?![a-z0-9])`);
 
+/** "Kasım'26" / "Mart'25" / "Kasım 2026" → 'sm:2026-11'. Yıl yoksa verilen varsayılan 2 haneli yıl kullanılır. */
+export function smMonthLabel(month: { index: number; yy: string }): string {
+  return `sm:20${month.yy.padStart(2, '0')}-${String(month.index).padStart(2, '0')}`;
+}
+
 /* ───────── Kart adı ───────── */
 export interface ParsedCardName {
   jobNo: string | null; title: string;
@@ -79,17 +84,22 @@ export function matchBrand(parsed: ParsedCardName, brands: ReadonlyArray<{ id: s
 }
 
 /* ───────── Liste türü ───────── */
-export type ListKind = 'template' | 'approval' | 'delivery' | 'production' | 'paused' | 'plan' | 'person';
+export type ListKind = 'template' | 'approval' | 'delivery' | 'production' | 'paused' | 'plan' | 'person' | 'ideas' | 'other';
 export interface ListInfo { kind: ListKind; /** yalnızca kind='person': değiştiricisiz kişi adı */ person?: string; review?: boolean }
 const PERSON_MODS = ['kontrol', 'masaustu', 'cekim'];
+/** Kişi olmayan liste adı sözcükleri (katlanmış, tam sözcük): bunlar "eşlenemeyen üye" olarak raporlanmaz. */
+export const NON_PERSON_TOKENS: ReadonlySet<string> = new Set(['isler', 'onay', 'teslim', 'sablon', 'sablonlar', 'salonu', 'sm']);
+export const isNonPersonList = (name: string): boolean => fold(name.normalize('NFC')).split(/[^a-z0-9]+/).filter(Boolean).some((t) => NON_PERSON_TOKENS.has(t));
 export function classifyList(name: string): ListInfo {
   const f = fold(name.normalize('NFC')).trim();
   if (f.includes('sablon')) return { kind: 'template' };
+  if (f.includes('odullu')) return { kind: 'ideas' };
   if (f.includes('bekleme')) return { kind: 'paused' };
   if (/(^|\s)onay(\s|$)/.test(f)) return { kind: 'approval' };
   if (f.includes('teslim')) return { kind: 'delivery' };
   if (f.includes('produksiyon') || f.includes('kurulum') || /(^|\s)baski(\s|$)/.test(f)) return { kind: 'production' };
   if (MONTH_RE.test(f) || /(^|[^a-z0-9])sm($|[^a-z0-9])/.test(f)) return { kind: 'plan' };
+  if (isNonPersonList(name)) return { kind: 'other' };
   const toks = words(name.normalize('NFC').replace(/[^\p{L}\p{N}\s.]/gu, ' '));
   const keep = toks.filter((t) => !PERSON_MODS.includes(fold(t)));
   return { kind: 'person', person: keep.join(' ').trim() || name.trim(), review: toks.some((t) => fold(t) === 'kontrol') };
@@ -121,7 +131,7 @@ export function resolveEmployee(
 
 /* ───────── Tersinir liste / üye eşlemesi (JS → Trello yazımı için) ───────── */
 export type ListMapEntry = NonNullable<TrelloConfig['list_map']>[string];
-const STAGE_OF_KIND: Record<Exclude<ListKind, 'template'>, TaskState> = { approval: 'approval', delivery: 'delivery', production: 'production', paused: 'brief', plan: 'plan', person: 'production' };
+const STAGE_OF_KIND: Record<Exclude<ListKind, 'template'>, TaskState> = { approval: 'approval', delivery: 'delivery', production: 'production', paused: 'brief', plan: 'plan', person: 'production', ideas: 'brief', other: 'production' };
 /** listId → {board, kind, stage, person?, employee?, review?}; şablon ve arşivli listeler dışarıda. */
 export function buildListMap(lists: ReadonlyArray<TrelloList>, employees: ReadonlyArray<{ id: string; name: string }>, memberMap: Readonly<Record<string, string>> = {}): Record<string, ListMapEntry> {
   const out: Record<string, ListMapEntry> = {};
@@ -193,10 +203,12 @@ export interface TaskDraft {
   due_at: string | null; planned_minutes: number; task_type: string; labels: string[];
 }
 export interface MappedCard {
-  skipped: boolean; ref: string; brandId: string | null; brandName: string; projectName: string; projectType: 'social_monthly' | 'imported';
+  skipped: boolean; ref: string; brandId: string | null; brandName: string; projectName: string; projectType: 'imported';
   draft: Omit<TaskDraft, 'project_id'>; unmapped: string[]; jobNo: string | null;
 }
 const uniq = <T,>(a: T[]) => Array.from(new Set(a));
+
+export const canonicalProjectName = (brand: string) => `${brand} · Trello`;
 
 export function mapCard(card: TrelloCard, ctx: MapCtx): MappedCard {
   const info = ctx.list ? classifyList(ctx.list.name) : ({ kind: 'person' } as ListInfo);
@@ -205,7 +217,7 @@ export function mapCard(card: TrelloCard, ctx: MapCtx): MappedCard {
   const archivedList = !!ctx.list?.closed;
   const archived = archivedList || !!card.closed;
   const smMonthly = parsed.sm && !!parsed.month;
-  const projectName = smMonthly ? `${brand.name} ${parsed.month!.label}'${parsed.month!.yy} SM` : `${brand.name} · Trello`;
+  const projectName = canonicalProjectName(brand.name);
 
   // atanan: kişi listesi → kart üyeleri (sırayla)
   const unmapped: string[] = [];
@@ -226,7 +238,7 @@ export function mapCard(card: TrelloCard, ctx: MapCtx): MappedCard {
 
   const state: TaskState = archived ? 'archive'
     : info.kind === 'approval' ? 'approval' : info.kind === 'delivery' ? 'delivery' : info.kind === 'production' ? 'production'
-    : info.kind === 'paused' ? 'brief' : info.kind === 'plan' ? 'plan' : info.review ? 'internal_review' : 'production';
+    : info.kind === 'paused' || info.kind === 'ideas' ? 'brief' : info.kind === 'plan' ? 'plan' : info.review ? 'internal_review' : 'production';
 
   const due = card.due ?? null;
   const overdue = !!due && !card.dueComplete && Date.parse(due) < Date.parse(ctx.now) && !archived;
@@ -236,6 +248,8 @@ export function mapCard(card: TrelloCard, ctx: MapCtx): MappedCard {
     ...(card.labels ?? []).map((l) => (l.name?.trim() || l.color || '')).filter(Boolean),
     ...(parsed.jobNo ? [`job:${parsed.jobNo}`] : []),
     ...(info.kind === 'paused' ? ['waiting'] : []),
+    ...(info.kind === 'ideas' ? ['ödül-fikri'] : []),
+    ...(smMonthly ? [smMonthLabel(parsed.month!)] : []),
     ...(archivedList ? ['trello:archived-list'] : []),
     ...(card.closed ? ['trello:closed'] : []),
     ...(total > 0 ? [`checklist ${card.badges?.checkItemsChecked ?? 0}/${total}`] : []),
@@ -243,7 +257,7 @@ export function mapCard(card: TrelloCard, ctx: MapCtx): MappedCard {
   const title = (parsed.title.length >= 2 ? parsed.title : card.name).slice(0, 200);
   return {
     skipped: info.kind === 'template', ref: `trello:${card.id}`, brandId: brand.id, brandName: brand.name, projectName,
-    projectType: smMonthly ? 'social_monthly' : 'imported', jobNo: parsed.jobNo, unmapped,
+    projectType: 'imported', jobNo: parsed.jobNo, unmapped,
     draft: {
       source_ref: `trello:${card.id}`, title, assignee_id: assignee, state, priority: overdue ? 'high' : 'normal', due_at: due,
       planned_minutes: total * 30, task_type: parsed.sm ? 'social_visual' : 'general', labels,
@@ -254,13 +268,19 @@ export function mapCard(card: TrelloCard, ctx: MapCtx): MappedCard {
 /* ───────── İdempotent içe aktarma (port tabanlı) ───────── */
 export interface StoreTask extends TaskDraft { id: string; updated_at?: string }
 export interface SyncLogDraft { direction: 'push' | 'pull' | 'reconcile'; entity: string; entity_id: string | null; external_id: string | null; action: string; ok: boolean; message: string }
+export interface StoreProject { id: string; name: string; brand_id?: string | null; source_ref?: string | null; status?: string }
+export const MERGED_SUFFIX = ' (birleştirildi)';
 export interface TrelloStore {
-  load(): Promise<{ brands: Array<{ id: string; name: string }>; employees: Array<{ id: string; name: string }>; projects: Array<{ id: string; name: string; source_ref?: string | null }>; tasks: StoreTask[] }>;
+  load(): Promise<{ brands: Array<{ id: string; name: string }>; employees: Array<{ id: string; name: string }>; projects: StoreProject[]; tasks: StoreTask[] }>;
   /** İstemci + marka (status='prospect') oluşturur. */
   createBrand(name: string): Promise<{ id: string; name: string }>;
   createProject(p: { brand_id: string; name: string; type: string; source_ref?: string }): Promise<{ id: string }>;
   /** İsteğe bağlı: eksik 'trello:board:<id>' proje bağını yazar. */
   setProjectRef?(id: string, ref: string): Promise<void>;
+  /** İsteğe bağlı (birleştirme): projedeki TÜM görevleri (Trello kaynaklı olmayanlar dahil) başka projeye taşır; taşınan sayıyı döner. */
+  moveProjectTasks?(fromId: string, toId: string): Promise<number>;
+  /** İsteğe bağlı (birleştirme): proje durumu / adı. Proje asla silinmez. */
+  updateProject?(id: string, patch: { status?: string; name?: string }): Promise<void>;
   createTasks(rows: TaskDraft[]): Promise<void>;
   updateTask(id: string, patch: Partial<TaskDraft>): Promise<void>;
 }
@@ -278,6 +298,62 @@ export function taskChanges(cur: TaskDraft, next: TaskDraft): Partial<TaskDraft>
   if ([...cur.labels].sort().join('|') !== [...next.labels].sort().join('|')) patch.labels = next.labels;
   return patch;
 }
+/** Trello kaynaklı (ya da Trello adlandırmalı) proje mi? 'trello:*' source_ref, "<Marka> <Ay'YY> SM" ya da "<Marka> · Trello". */
+function isTrelloProject(p: StoreProject, brandName: string): boolean {
+  if (p.name.endsWith(MERGED_SUFFIX)) return false;
+  if (p.source_ref?.startsWith('trello:')) return true;
+  const n = fold(p.name.normalize('NFC')).trim(), b = fold(brandName).trim();
+  if (n === fold(canonicalProjectName(brandName))) return true;
+  if (!n.startsWith(b + ' ')) return false;
+  const rest = n.slice(b.length + 1);
+  return new RegExp(`^(${MONTHS.map((m) => m[0]).join('|')})\\s*['’‘\`´]?\\s*(\\d{4}|\\d{2})?\\s+sm$`).test(rest);
+}
+
+/**
+ * Marka başına TEK proje ("<Marka> · Trello"): aynı markanın Trello kaynaklı diğer projelerinin görevleri kanonik projeye taşınır,
+ * boşalan projeler 'done' + " (birleştirildi)" son ekiyle bırakılır (silinmez). İdempotent: ikinci çalıştırmada değişiklik yok.
+ */
+export async function consolidateTrelloProjects(
+  st: Awaited<ReturnType<TrelloStore['load']>>, store: TrelloStore, opts: { boardRef?: string; log?: (e: SyncLogDraft) => void },
+): Promise<{ merged: number; created: number; projects: StoreProject[] }> {
+  const out = { merged: 0, created: 0, projects: st.projects };
+  if (!store.moveProjectTasks || !store.updateProject) return out;
+  const byBrand = new Map<string, StoreProject[]>();
+  for (const p of st.projects) {
+    if (!p.brand_id) continue;
+    const brand = st.brands.find((b) => b.id === p.brand_id);
+    if (brand && isTrelloProject(p, brand.name)) byBrand.set(brand.id, [...(byBrand.get(brand.id) ?? []), p]);
+  }
+  const projects = [...st.projects];
+  for (const [brandId, group] of byBrand) {
+    const brand = st.brands.find((b) => b.id === brandId)!;
+    const cname = canonicalProjectName(brand.name);
+    const canon = group.find((p) => p.name === cname) ?? group.find((p) => fold(p.name) === fold(cname));
+    const leftovers = group.filter((p) => p !== canon);
+    if (!leftovers.length) continue;
+    let target = canon;
+    if (!target) {
+      const ref = leftovers.find((p) => p.source_ref?.startsWith('trello:board:'))?.source_ref ?? undefined;
+      const created = await store.createProject({ brand_id: brandId, name: cname, type: 'imported', source_ref: opts.boardRef ?? ref });
+      target = { id: created.id, name: cname, brand_id: brandId, source_ref: opts.boardRef ?? ref ?? null, status: 'active' };
+      projects.push(target); out.created++;
+    }
+    for (const lo of leftovers) {
+      const moved = await store.moveProjectTasks(lo.id, target.id);
+      for (const t of st.tasks) if (t.project_id === lo.id) t.project_id = target.id;
+      const name = lo.name + MERGED_SUFFIX;
+      await store.updateProject(lo.id, { status: 'done', name });
+      const i = projects.findIndex((p) => p.id === lo.id);
+      if (i >= 0) projects[i] = { ...lo, name, status: 'done' };
+      out.merged++;
+      opts.log?.({ direction: 'reconcile', entity: 'project', entity_id: lo.id, external_id: lo.source_ref ?? null, action: 'merged', ok: true, message: `${lo.name} → ${target.name} (${moved} görev)` });
+    }
+  }
+  out.projects = projects;
+  return out;
+}
+
+const boardOf = (snap: TrelloSnapshot): TrelloBoard | undefined => snap.boards[0] ?? (snap.lists[0] ? { id: snap.lists[0].idBoard, name: '?' } : undefined);
 async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await fn(items[i++]); }));
@@ -290,9 +366,13 @@ export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: 
   };
   const st = await store.load();
   const brands = [...st.brands];
-  const projects = new Map(st.projects.map((p) => [p.name, p.id]));
-  const refless = new Set(st.projects.filter((p) => !p.source_ref).map((p) => p.id));
   const log = opts.onLog ?? (() => undefined);
+  const firstBoard = snap.boards[0] ?? boardOf(snap);
+  const cons = await consolidateTrelloProjects(st, store, { boardRef: firstBoard ? `trello:board:${firstBoard.id}` : undefined, log }).catch((e) => { res.errors.push(`birleştirme: ${e instanceof Error ? e.message : String(e)}`); return null; });
+  if (cons) { res.projects_merged = cons.merged; res.projects_created += cons.created; }
+  const live = cons?.projects ?? st.projects;
+  const projects = new Map(live.filter((p) => !p.name.endsWith(MERGED_SUFFIX)).map((p) => [p.name, p.id]));
+  const refless = new Set(live.filter((p) => !p.source_ref).map((p) => p.id));
   const touched = new Set<string>();
   const existing = new Map(st.tasks.map((t) => [t.source_ref, t]));
   const boards = new Map(snap.boards.map((b) => [b.id, b]));

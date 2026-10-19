@@ -51,6 +51,7 @@ export function chooseList(task: Pick<PushTask, 'state' | 'assignee_id'>, boardI
   if (cur && cur.board === boardId) {
     if (best ? best(cur) : targets.some((p) => p(cur))) return currentListId!;
     // Atananı olmayan üretim kartı herhangi bir kişi kuyruğunda kalabilir (kuyruk sahibi zaten çözülememiş olabilir).
+    if (task.state === 'brief' && cur.kind === 'ideas') return currentListId!;
     if (!task.assignee_id && task.state === 'production' && cur.kind === 'person' && !cur.review) return currentListId!;
   }
   return best ? lists.find(([, e]) => best(e))![0] : null;

@@ -146,6 +146,8 @@ export interface StagePlanItem { stage: TaskState; owner: string; due_at: string
 export interface Project {
   id: string; org_id: string; brand_id: string; name: string; type: string; status: 'planning' | 'active' | 'done' | 'paused';
   flow_stage: TaskState; flow_owner: string; stage_plan: StagePlanItem[]; due_at: string; budget_minor: number; summary: string; client_visible: boolean;
+  /** Trello içe aktarma bağı ('trello:board:<id>'). */
+  source_ref?: string | null;
 }
 export interface Task {
   id: string; org_id: string; project_id: string; title: string; assignee_id: string | null; state: TaskState; priority: Priority;
@@ -348,7 +350,7 @@ export const trelloConfigSchema = z.object({
   mode: z.enum(['two_way', 'pull_only', 'off']).default('two_way'),
   /** İçe aktarmada kurulan tersinir liste eşlemesi: listId → {board, kind, person|stage}. */
   list_map: z.record(z.object({
-    board: z.string(), kind: z.enum(['approval', 'delivery', 'production', 'paused', 'plan', 'person']),
+    board: z.string(), kind: z.enum(['approval', 'delivery', 'production', 'paused', 'plan', 'person', 'ideas', 'other']),
     stage: z.string(), person: z.string().optional(), employee: z.string().optional(), review: z.boolean().optional(),
   })).optional(),
   /** employee id → Trello üye id (member_map'in tersi; kart üyeleri yazılırken kullanılır). */
@@ -387,6 +389,8 @@ export function maskTrelloConfig(c: Partial<TrelloConfig> | null | undefined, bo
 export interface TrelloImportResult {
   boards: number; lists: number; cards_seen: number; skipped_templates: number;
   brands_created: string[]; projects_created: number; projects_updated: number;
+  /** Marka başına tek projeye birleştirilen (boşaltılıp 'done' yapılan) eski proje sayısı. */
+  projects_merged?: number;
   tasks_created: number; tasks_updated: number; tasks_unchanged: number;
   /** Son-yazan-kazanır kuralı gereği atlanan (JS'te daha yeni) görev sayısı. */
   tasks_skipped?: number;

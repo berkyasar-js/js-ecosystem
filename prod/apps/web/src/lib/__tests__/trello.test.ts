@@ -6,7 +6,7 @@ import { signTrello, verifyTrelloSignature } from '../hmac';
 import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
 import {
   classifyList, mapCard, matchBrand, memberKey, parseCardName, resolveEmployee, runImport,
-  type MapCtx, type StoreTask, type TaskDraft, type TrelloCard, type TrelloStore,
+  type MapCtx, type StoreProject, type StoreTask, type SyncLogDraft, type TaskDraft, type TrelloCard, type TrelloStore,
 } from '../integrations/trello-map';
 import { DemoRepo } from '../repo/demo';
 
@@ -96,9 +96,9 @@ describe('Trello · kişi eşleme', () => {
 describe('Trello · mapCard', () => {
   it('SM kartı: aylık proje, social_visual, iş no, checklist, gecikmiş → high', () => {
     const m = mapCard(card("184_Anova Kasım'26 SM", { due: '2026-10-01T00:00:00Z', labels: [{ name: 'Reels' }, { name: '', color: 'red' }], badges: { checkItems: 12, checkItemsChecked: 4 } }), ctx());
-    expect(m).toMatchObject({ skipped: false, ref: 'trello:c1', brandId: 'b1', projectName: "Anova Kasım'26 SM", projectType: 'social_monthly' });
+    expect(m).toMatchObject({ skipped: false, ref: 'trello:c1', brandId: 'b1', projectName: 'Anova · Trello', projectType: 'imported' });
     expect(m.draft).toMatchObject({ title: "Anova Kasım'26 SM", task_type: 'social_visual', priority: 'high', planned_minutes: 360, assignee_id: 'RV', state: 'production', source_ref: 'trello:c1' });
-    expect(m.draft.labels).toEqual(expect.arrayContaining(['trello', 'Reels', 'red', 'job:184', 'checklist 4/12', 'board:2_Tasarım&Produksiyon']));
+    expect(m.draft.labels).toEqual(expect.arrayContaining(['trello', 'Reels', 'red', 'job:184', 'sm:2026-11', 'checklist 4/12', 'board:2_Tasarım&Produksiyon']));
   });
   it('SM olmayan kart: marka başına "<Marka> · Trello", general; dueComplete gecikmiş sayılmaz', () => {
     const m = mapCard(card('253_Badem Satış Kampanyası', { due: '2026-01-01T00:00:00Z', dueComplete: true }), ctx());
@@ -131,11 +131,13 @@ describe('Trello · mapCard', () => {
 
 /** Bellek içi depo: runImport'un idempotentliğini sınar. */
 function memStore() {
-  const s = { brands: [...BRANDS], projects: [] as Array<{ id: string; name: string }>, tasks: [] as StoreTask[], createdBrands: [] as string[] };
+  const s = { brands: [...BRANDS], projects: [] as StoreProject[], logs: [] as SyncLogDraft[], tasks: [] as StoreTask[], createdBrands: [] as string[] };
   const store: TrelloStore = {
     load: async () => ({ employees: TEAM, brands: s.brands, projects: s.projects, tasks: s.tasks }),
     createBrand: async (name) => { const b = { id: `nb${s.brands.length}`, name }; s.brands.push(b); s.createdBrands.push(name); return b; },
-    createProject: async (p) => { const r = { id: `p${s.projects.length}`, name: p.name }; s.projects.push(r); return { id: r.id }; },
+    createProject: async (p) => { const r = { id: `p${s.projects.length}`, name: p.name, brand_id: p.brand_id, source_ref: p.source_ref ?? null, status: 'active' }; s.projects.push(r); return { id: r.id }; },
+    moveProjectTasks: async (from, to) => { const rows = s.tasks.filter((t) => t.project_id === from); rows.forEach((t) => { t.project_id = to; }); return rows.length; },
+    updateProject: async (id, patch) => { Object.assign(s.projects.find((x) => x.id === id)!, patch); },
     createTasks: async (rows: TaskDraft[]) => { rows.forEach((r) => s.tasks.push({ ...r, id: `t${s.tasks.length}` })); },
     updateTask: async (id, patch) => { Object.assign(s.tasks.find((t) => t.id === id)!, patch); },
   };
@@ -217,5 +219,92 @@ describe('Trello · migration 0007', () => {
     expect(sql).toMatch(/revoke select on public\.integrations from authenticated, anon/);
     const grant = sql.match(/grant select \(([^)]*)\) on public\.integrations/)![1];
     expect(grant).not.toMatch(/config/);
+  });
+});
+
+describe('Trello · marka başına tek proje', () => {
+  it('SM ayı ayrıştırma: Türkçe ay adları, 2 ve 4 haneli yıl → sm:YYYY-MM etiketi', () => {
+    const lab = (n: string) => mapCard(card(n), ctx()).draft.labels.filter((l) => l.startsWith('sm:'));
+    expect(lab("Anova Kasım'26 SM")).toEqual(['sm:2026-11']);
+    expect(lab("Noche Mart'25 SM")).toEqual(['sm:2025-03']);
+    expect(lab('Dora Şubat 2027 SM')).toEqual(['sm:2027-02']);
+    expect(lab("Dora Ağustos’26 SM")).toEqual(['sm:2026-08']);
+    expect(lab('Dora Rapor Tasarımı')).toEqual([]);
+  });
+  it('aylık SM kartları tek projede görev olur; başlık kart adını korur', async () => {
+    const { s, store } = memStore();
+    const snap = { ...TRELLO_FIXTURE, cards: [
+      { id: 'x1', idBoard: 'b1', idList: 'l7', name: "Anova Kasım'26 SM" }, { id: 'x2', idBoard: 'b1', idList: 'l7', name: "Anova Aralık'26 SM" },
+      { id: 'x3', idBoard: 'b1', idList: 'l7', name: "Anova Mart'25 SM" }, { id: 'x4', idBoard: 'b2', idList: 'l3', name: 'Anova Lansman' },
+    ] };
+    const r = await runImport(snap, store, { now: NOW });
+    const anova = s.projects.filter((p) => p.brand_id === 'b1');
+    expect(anova).toHaveLength(1);
+    expect(anova[0]).toMatchObject({ name: 'Anova · Trello', source_ref: 'trello:board:b1' });
+    expect(s.tasks.map((t) => t.title).sort()).toEqual(["Anova Aralık'26 SM", "Anova Kasım'26 SM", 'Anova Lansman', "Anova Mart'25 SM"]);
+    expect(s.tasks.find((t) => t.title === "Anova Mart'25 SM")!.labels).toContain('sm:2025-03');
+    expect(r.projects_created).toBe(1);
+  });
+  it('mevcut projeleri birleştirir: görevler taşınır, boşlar done + (birleştirildi), silinmez, günlük yazılır, idempotent', async () => {
+    const { s, store } = memStore();
+    s.projects.push(
+      { id: 'o1', name: "Anova Kasım'26 SM", brand_id: 'b1', source_ref: 'trello:board:b1', status: 'active' },
+      { id: 'o2', name: "Anova Mart'25 SM", brand_id: 'b1', source_ref: null, status: 'active' },
+      { id: 'o3', name: 'Anova · Trello', brand_id: 'b1', source_ref: 'trello:board:b2', status: 'active' },
+      { id: 'o4', name: "Dora Ekim'26 SM", brand_id: 'b4', source_ref: null, status: 'active' },
+      { id: 'o5', name: 'Anova Marka Filmi', brand_id: 'b1', source_ref: null, status: 'active' }, // Trello'dan değil: dokunulmaz
+    );
+    const tk = (id: string, project_id: string): StoreTask => ({ id, project_id, source_ref: `trello:${id}`, title: id, assignee_id: null, state: 'production', priority: 'normal', due_at: null, planned_minutes: 0, task_type: 'general', labels: ['trello'] });
+    s.tasks.push(tk('a', 'o1'), tk('b', 'o2'), tk('c', 'o3'), tk('d', 'o4'), tk('e', 'o5'));
+    const logs: SyncLogDraft[] = [];
+    const r1 = await runImport({ ...TRELLO_FIXTURE, cards: [] }, store, { now: NOW, onLog: (e) => logs.push(e) });
+    expect(r1.projects_merged).toBe(3);
+    const byId = (id: string) => s.projects.find((p) => p.id === id)!;
+    expect(s.tasks.filter((t) => ['a', 'b', 'c'].includes(t.id)).map((t) => t.project_id)).toEqual(['o3', 'o3', 'o3']);
+    expect(byId('o1')).toMatchObject({ status: 'done', name: "Anova Kasım'26 SM (birleştirildi)" });
+    expect(byId('o2').status).toBe('done');
+    expect(byId('o3')).toMatchObject({ status: 'active', name: 'Anova · Trello' });
+    expect(byId('o5')).toMatchObject({ status: 'active', name: 'Anova Marka Filmi' });
+    const dora = s.projects.find((p) => p.name === 'Dora · Trello')!; // kanonik yoksa oluşturulur
+    expect(dora).toBeTruthy();
+    expect(s.tasks.find((t) => t.id === 'd')!.project_id).toBe(dora.id);
+    expect(logs.filter((l) => l.action === 'merged' && l.direction === 'reconcile')).toHaveLength(3);
+    // ikinci çalıştırma: değişiklik yok
+    const snapshot = JSON.stringify([s.projects, s.tasks]);
+    const logs2: SyncLogDraft[] = [];
+    const r2 = await runImport({ ...TRELLO_FIXTURE, cards: [] }, store, { now: NOW, onLog: (e) => logs2.push(e) });
+    expect(r2.projects_merged).toBe(0); expect(r2.projects_created).toBe(0);
+    expect(logs2).toEqual([]);
+    expect(JSON.stringify([s.projects, s.tasks])).toBe(snapshot);
+  });
+  it('tam içe aktarma (fixture) iki kez: marka başına tek proje, ikinci çalıştırmada değişiklik yok', async () => {
+    const { s, store } = memStore();
+    await runImport(TRELLO_FIXTURE, store, { now: NOW });
+    const names = s.projects.map((p) => p.name);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.every((n) => n.endsWith(' · Trello'))).toBe(true);
+    const r2 = await runImport(TRELLO_FIXTURE, store, { now: NOW });
+    expect(r2).toMatchObject({ projects_created: 0, projects_merged: 0, tasks_created: 0, tasks_updated: 0 });
+  });
+});
+
+describe('Trello · kişi olmayan listeler', () => {
+  it('Ödüllü İşler = ideas (brief + ödül-fikri), kişi olarak raporlanmaz', () => {
+    expect(classifyList('Ödüllü İşler')).toEqual({ kind: 'ideas' });
+    const l = { id: 'l', idBoard: 'b1', name: 'Ödüllü İşler' };
+    const m = mapCard(card('Dora Ödül Fikri'), ctx({ list: l }));
+    expect(m.draft.state).toBe('brief'); expect(m.draft.labels).toContain('ödül-fikri'); expect(m.unmapped).toEqual([]);
+  });
+  it.each(['Acil İşler', 'Müşteri Onay', 'Müşteri Teslim', 'ŞABLONLAR', 'Bekleme Salonu <3', 'Kasım26 SM', 'Toplantı Salonu', 'Dora SM'])('"%s" kişi değil', (name) => {
+    expect(classifyList(name).kind).not.toBe('person');
+    const m = mapCard(card('Dora X'), ctx({ list: { id: 'l', idBoard: 'b1', name } }));
+    expect(m.unmapped).toEqual([]);
+  });
+  it('gerçek kişi (Berfin) hâlâ eşlenemeyen olarak raporlanır; Ödüllü İşler raporlanmaz', async () => {
+    const { store } = memStore();
+    const snap = { ...TRELLO_FIXTURE, lists: [...TRELLO_FIXTURE.lists, { id: 'l11', idBoard: 'b2', name: 'Ödüllü İşler' }, { id: 'l12', idBoard: 'b2', name: 'Acil İşler' }], cards: [...TRELLO_FIXTURE.cards, { id: 'c11', idBoard: 'b2', idList: 'l11', name: 'Dora Ödül' }, { id: 'c12', idBoard: 'b2', idList: 'l12', name: 'Dora Acil' }] };
+    const r = await runImport(snap, store, { now: NOW });
+    const names = r.unmapped_members.map((u) => u.name);
+    expect(names).toContain('Berfin'); expect(names).not.toContain('Ödüllü İşler'); expect(names).not.toContain('Acil İşler');
   });
 });

@@ -283,7 +283,7 @@ export class DemoRepo implements Repo {
       load: async () => ({
         employees: db.team.filter((m) => m.org_id === org && m.status === 'active').map((m) => ({ id: m.id, name: m.name })),
         brands: db.brands.filter((b) => b.org_id === org).map((b) => ({ id: b.id, name: b.name })),
-        projects: db.projects.filter((p) => p.org_id === org).map((p) => ({ id: p.id, name: p.name })),
+        projects: db.projects.filter((p) => p.org_id === org).map((p) => ({ id: p.id, name: p.name, brand_id: p.brand_id, source_ref: p.source_ref ?? null, status: p.status })),
         tasks: db.tasks.filter((t) => t.org_id === org && t.source_ref?.startsWith('trello:')).map(toDraft),
       }),
       createBrand: async (name) => {
@@ -295,9 +295,19 @@ export class DemoRepo implements Repo {
       },
       createProject: async (p) => {
         const id = this.nextId('p', db.projects.map((x) => x.id));
-        const row: Project = { id, org_id: org, brand_id: p.brand_id, name: p.name, type: p.type, status: 'active', flow_stage: 'brief', flow_owner: '', stage_plan: [], due_at: '', budget_minor: 0, summary: 'Trello içe aktarma', client_visible: false };
+        const row: Project = { id, org_id: org, brand_id: p.brand_id, name: p.name, type: p.type, status: 'active', flow_stage: 'brief', flow_owner: '', stage_plan: [], due_at: '', budget_minor: 0, summary: 'Trello içe aktarma', client_visible: false, source_ref: p.source_ref ?? null };
         db.projects.push(row);
         return { id };
+      },
+      moveProjectTasks: async (fromId, toId) => {
+        const rows = db.tasks.filter((t) => t.org_id === org && t.project_id === fromId);
+        for (const t of rows) t.project_id = toId;
+        return rows.length;
+      },
+      updateProject: async (id, patch) => {
+        const pr = db.projects.find((x) => x.id === id && x.org_id === org);
+        if (!pr) throw new NotFoundError('Proje');
+        Object.assign(pr, patch as Partial<Project>);
       },
       createTasks: async (rows: TaskDraft[]) => {
         for (const r of rows) {
