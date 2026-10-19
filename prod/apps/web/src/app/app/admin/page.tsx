@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { ROLE_LABELS, type OrgSettings } from '@jscore/contracts';
+import Link from 'next/link';
 import { Async, PageHeader, Tabs, fmtTime, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
 import { CapMeter } from '@/components/cap-meter';
@@ -20,7 +21,7 @@ export default function Admin() {
   };
   return (
     <>
-      <PageHeader title="JS Core · Admin" sub="Admin Control Center" />
+      <PageHeader title="JS Core · Admin" sub="Admin Control Center" actions={<Link className="btn" href="/app/theme-preview">ORBIT tema önizleme</Link>} />
       <Tabs<Tab> tabs={[['genel', 'Genel'], ['bildirimler', 'Bildirimler'], ['yapi', 'Yapı'], ['ai', 'Yapay zekâ'], ['kullanicilar', 'Kullanıcılar'], ['guvenlik', 'Güvenlik']]} value={tab} onChange={(t) => { setTab(t); setMsg(null); }} />
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={`mb-3 text-sm ${msg.ok ? 'text-[#3ddc97]' : 'text-magenta'}`}>{msg.text}</p>}
       <Async q={q}>{({ members, prompts, runs }) => s && (

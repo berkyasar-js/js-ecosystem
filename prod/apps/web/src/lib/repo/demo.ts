@@ -1,8 +1,8 @@
 import {
   COLLECTIONS, DEAL_STAGES, LEAVE_DECIDERS, canReadColl, canWriteColl, type AuditEvent, type Checklist, type CollKey, type Deal, type DealStage, type Leave, type Records, type SaveInput,
-  approvalCreateSchema, canDecideApproval, isClientRole, orgSettingsPatchSchema, taskCreateSchema, boardAnswerSchema,
+  approvalCreateSchema, canDecideApproval, isClientRole, orgSettingsPatchSchema, taskCreateSchema, taskPatchSchema, boardAnswerSchema,
   type AgentRun, type Approval, type ApprovalCreate, type BoardAnswer, type ConnectData, type Integration, type Me, type Message,
-  type OrgSettings, type Task, type Project, type Brand, type TrelloImportResult, type TrelloPublicState, type TrelloMode, type SyncLogEntry, TRELLO_MODES, maskTrelloConfig, type TaskCreate, type TaskState, type BoardDecision, type Role,
+  type OrgSettings, type Task, type Project, type Brand, type TrelloImportResult, type TrelloPublicState, type TrelloMode, type SyncLogEntry, TRELLO_MODES, maskTrelloConfig, type TaskCreate, type TaskPatch, type TaskState, type BoardDecision, type Role,
   BID_ROLES, TOKEN_ADMIN_ROLES, bidProposalSchema, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
 } from '@jscore/contracts';
 import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
@@ -114,6 +114,19 @@ export class DemoRepo implements Repo {
     const before = { ...t };
     t.state = state;
     this.log(db, 'task.move', `tasks/${id}`, { state });
+    await this.fire(db, 'tasks.update', 'tasks', t, before);
+    this.persist(db);
+    return { ...t };
+  }
+  async updateTask(id: string, patch: TaskPatch): Promise<Task> {
+    if (isClientRole(this.role) || this.role === 'auditor') throw new ForbiddenError();
+    const v = taskPatchSchema.parse(patch);
+    const db = this.db();
+    const t = db.tasks.find((x) => x.id === id && x.org_id === this.orgId);
+    if (!t) throw new NotFoundError('Görev');
+    const before = { ...t };
+    Object.assign(t, v);
+    this.log(db, 'task.update', `tasks/${id}`, v);
     await this.fire(db, 'tasks.update', 'tasks', t, before);
     this.persist(db);
     return { ...t };

@@ -1,7 +1,7 @@
 import type {
   AuditEvent, Checklist, CollKey, DealStage, Deal, Leave, Records, SaveInput,
   AgentPrompt, AgentRun, Approval, ApprovalCreate, BoardAnswer, BoardDecision, Brand, Channel, ConnectData, Integration, Me, Member,
-  Message, Organization, OrgSettings, Project, Task, TaskCreate, TaskState, TaskType, TeamMember, Twin, TwinBid,
+  Message, Organization, OrgSettings, Project, Task, TaskCreate, TaskPatch, TaskState, TaskType, TeamMember, Twin, TwinBid,
   AccessToken, BidAssignResult, BidProposal, TaskAssignment, TaskBid, TokenCreate,
   TrelloImportResult, TrelloMode, TrelloPublicState,
 } from '@jscore/contracts';
@@ -22,6 +22,8 @@ export interface Repo {
   listTasks(filter?: { project_id?: string }): Promise<Task[]>;
   createTask(input: TaskCreate): Promise<Task>;
   moveTask(id: string, state: TaskState): Promise<Task>;
+  /** Görev alanlarını (başlık, sorumlu, öncelik, bitiş) günceller; aşama değişimi için moveTask kullanılır. */
+  updateTask(id: string, patch: TaskPatch): Promise<Task>;
   // approvals
   listApprovals(): Promise<Approval[]>;
   createApproval(input: ApprovalCreate): Promise<Approval>;

@@ -236,6 +236,13 @@ export const taskCreateSchema = z.object({
   state: taskStateSchema.default('brief'),
 });
 export type TaskCreate = z.input<typeof taskCreateSchema>;
+export const taskPatchSchema = z.object({
+  title: z.string().trim().min(2).max(200).optional(),
+  assignee_id: z.string().min(1).nullable().optional(),
+  priority: z.enum(['low', 'normal', 'high']).optional(),
+  due_at: z.string().min(8).optional(),
+}).strict();
+export type TaskPatch = z.input<typeof taskPatchSchema>;
 export const taskMoveSchema = z.object({ id: z.string().min(1), state: taskStateSchema });
 export const approvalCreateSchema = z.object({
   action_type: z.enum(['content', 'budget', 'scope', 'client_decision', 'access']),

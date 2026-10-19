@@ -39,6 +39,18 @@ describe('DemoRepo', () => {
     expect((await again.listTasks()).find((x) => x.id === t.id)?.state).toBe('production');
   });
 
+  it('updateTask patches assignee/due/priority, validates, and is blocked for client roles', async () => {
+    const storage = mem();
+    const repo = new DemoRepo({ accountId: 'account', storage });
+    const t = await repo.createTask({ project_id: 'p1', title: 'Güncellenecek', due_at: '2026-10-20' });
+    const u = await repo.updateTask(t.id, { priority: 'high', due_at: '2026-10-25', assignee_id: null });
+    expect(u).toMatchObject({ priority: 'high', due_at: '2026-10-25', assignee_id: null, state: 'brief' });
+    expect((await new DemoRepo({ accountId: 'account', storage }).listTasks()).find((x) => x.id === t.id)?.priority).toBe('high');
+    await expect(repo.updateTask(t.id, { due_at: 'x' })).rejects.toThrow();
+    await expect(repo.updateTask('nope', { priority: 'low' })).rejects.toThrow();
+    await expect(new DemoRepo({ accountId: 'client_viewer' }).updateTask('t1', { priority: 'low' })).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
   it('server mode (no storage) is per-instance and stateless across instances', async () => {
     const a = new DemoRepo({ accountId: 'account' });
     await a.createTask({ project_id: 'p1', title: 'Geçici', due_at: '2026-10-20' });

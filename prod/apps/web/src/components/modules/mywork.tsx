@@ -5,6 +5,7 @@ import { Empty, PRIORITY, fmtDate, todayFor } from '../ui';
 import { useSession } from '../session';
 import { Await, Card, Chip, CsvButton, FormCard, Grid, ModulePage, Table, brandName, nameOf, useAct, useWorld } from '../mod';
 import { addDays, mondayOf } from '@/lib/domain';
+import { MyTasks } from '../work/MyTasks';
 
 const TABS: Array<[string, string]> = [['day', 'Benim günüm'], ['week', 'Haftam'], ['time', 'Zaman girişleri'], ['notifications', 'Bildirimler']];
 const hm = (min: number) => `${Math.floor(min / 60)}s ${String(min % 60).padStart(2, '0')}dk`;
@@ -43,6 +44,7 @@ export function MyWorkView({ tab }: { tab?: string }) {
                 <Card title="Kayıtlı süre"><div className="text-3xl font-bold">{hm(todayMin)}</div><p className="text-xs text-muted">{running ? 'Zamanlayıcı çalışıyor' : 'Zamanlayıcı kapalı'}</p></Card>
                 <Card title="Bekleyen taleplerim"><div className="text-3xl font-bold">{reqs.filter((r) => r.status === 'open').length}</div><p className="text-xs text-muted">erteleme / yardım</p></Card>
               </Grid>
+              <MyTasks allTasks={d.tasks} employeeId={emp} team={d.team} projects={d.projects} today={today} />
               <Card title="Önümüzdeki 48 saat">
                 {due.length === 0 ? <Empty>Yaklaşan teslim yok. Güzel gün.</Empty> : (
                   <ul className="grid gap-3">

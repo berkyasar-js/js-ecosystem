@@ -1,9 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   COLLECTIONS, DEAL_STAGES, LEAVE_DECIDERS, canWriteColl, type AuditEvent, type Checklist, type CollKey, type Deal, type DealStage, type Leave, type Records, type SaveInput, type TeamMember,
-  approvalCreateSchema, canDecideApproval, orgSettingsPatchSchema, taskCreateSchema, type AgentRun, type Approval, type ApprovalCreate, type BoardAnswer,
+  approvalCreateSchema, canDecideApproval, orgSettingsPatchSchema, taskCreateSchema, taskPatchSchema, type AgentRun, type Approval, type ApprovalCreate, type BoardAnswer,
   TOKEN_ADMIN_ROLES, bidProposalSchema, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
-  type BoardDecision, type ConnectData, type Integration, type Me, type Message, type OrgSettings, type Role, type Task, type TaskCreate, type TaskState,
+  type BoardDecision, type ConnectData, type Integration, type Me, type Message, type OrgSettings, type Role, type Task, type TaskCreate, type TaskPatch, type TaskState,
 } from '@jscore/contracts';
 import { DEFAULT_SETTINGS } from './defaults';
 import { addDaysIso, generateToken, sha256Hex, tokenPrefix } from '../token';
@@ -64,6 +64,10 @@ export class SupabaseRepo implements Repo {
     return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').insert({ ...v, org_id: await this.org() }).select().single()));
   }
   async moveTask(id: string, state: TaskState) { return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').update({ state }).eq('id', id).select().single())); }
+  async updateTask(id: string, patch: TaskPatch) {
+    const v = taskPatchSchema.parse(patch);
+    return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').update(v).eq('id', id).select().single()));
+  }
   /** Best-effort satır içi JS → Trello itmesi (tarayıcıda, beklemeden). Kaçırılırsa /api/events/dispatch cron'u olaydan yeniden itiyor; itme idempotent. */
   private pushSoon(t: Task): Task {
     if (typeof window !== 'undefined') {

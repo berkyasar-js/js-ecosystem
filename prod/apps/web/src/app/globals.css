@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./orbit-work.css";
 
 @font-face { font-family: "Plus Jakarta Sans"; src: url("/fonts/PlusJakartaSans-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "Plus Jakarta Sans"; src: url("/fonts/PlusJakartaSans-Medium.ttf") format("truetype"); font-weight: 500; font-display: swap; }
@@ -25,6 +26,43 @@
   --badge-bg: #e9ecf5; --badge-ink: #3b4060; --tab-on-bg: #10132a; --tab-on-ink: #eef0f6;
   color-scheme: light;
 }
+/* ---------- ORBIT work-surface theme (scoped; V6 brand stays: Plus Jakarta Sans, #1b25e0, #ff4200) ----------
+   Full colour values, no hsl(var()) wrapping. Conflicting V6 names (--card, --input) are NOT redefined here. */
+[data-js-theme="orbit"], .orbit-work {
+  color-scheme: dark;
+  --background: #10151f; --foreground: #f2f1ed;
+  --popover: #172237; --popover-foreground: #f2f1ed;
+  --primary: #1b25e0; --primary-foreground: #ffffff; --primary-hover: #315eff;
+  --secondary: #202d45; --secondary-foreground: #f2f1ed;
+  --muted: #172237; --muted-foreground: #a6b5cc;
+  --destructive: #b52b34; --destructive-foreground: #ffffff;
+  --border: #2d394e; --ring: #315eff;
+  --js-brand-accent: #ff4200; --js-on-accent: #090c12;
+  --js-success: #66ddbb; --js-warning: #edcc78; --js-danger: #ff9aa3; --js-info: #91b0ff;
+  --js-font: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --js-radius-sm: .5rem; --js-radius: .875rem; --js-radius-lg: 1.25rem;
+  --js-shadow-dialog: 0 32px 100px #00000080;
+  --js-duration-fast: 120ms; --js-duration: 180ms; --js-ease: cubic-bezier(.2,.8,.2,1);
+  --js-work-canvas: #10151f; --js-work-sidebar: #0b101a; --js-work-header: #111823; --js-work-detail: #131c2a;
+  --js-work-row-selected: #20335a; --js-work-border: #2d394e; --js-work-text: #e3eaf8; --js-work-muted: #a5b5d0;
+  --js-work-subtle: #8d9db9; --js-work-thead: #151f2e; --js-work-hover: #1b2a43; --js-work-column: #0d1521; --js-work-card: #182437;
+  --js-work-chip: #22334f; --js-work-chip-line: #435777; --js-work-control: #1a2436; --js-work-control-line: #3d4b63; --js-work-pressed: #2c4272;
+  --js-work-row-line: #273448; --js-work-accent-text: #91a9ff; --js-work-urgent: #ffba9f; --js-work-urgent-dot: #ff9e7c; --js-work-ok: #a4d4bb; --js-work-ok-bg: #203e34;
+  --js-work-banner: #1b2334; --js-work-banner-line: #393e64; --js-work-field: #243853; --js-work-field-line: #526887;
+  font-family: var(--js-font);
+}
+:root[data-theme="light"] [data-js-theme="orbit"], :root[data-theme="light"] .orbit-work {
+  color-scheme: light;
+  --background: #f5f7fb; --foreground: #141a2b; --muted-foreground: #566079; --border: #d9deea; --ring: #315eff;
+  --js-work-canvas: #f5f7fb; --js-work-sidebar: #eef1f7; --js-work-header: #ffffff; --js-work-detail: #ffffff;
+  --js-work-row-selected: #e4e9ff; --js-work-border: #d9deea; --js-work-text: #141a2b; --js-work-muted: #566079;
+  --js-work-subtle: #6a7390; --js-work-thead: #eef1f8; --js-work-hover: #eef2ff; --js-work-column: #eceff7; --js-work-card: #ffffff;
+  --js-work-chip: #e8ecf8; --js-work-chip-line: #cdd5ea; --js-work-control: #ffffff; --js-work-control-line: #c9d0e3; --js-work-pressed: #dfe6ff;
+  --js-work-row-line: #e3e7f1; --js-work-accent-text: #1b25e0; --js-work-urgent: #b83200; --js-work-urgent-dot: #ff4200; --js-work-ok: #18794e; --js-work-ok-bg: #dff5ea;
+  --js-work-banner: #f0f2ff; --js-work-banner-line: #cfd5f5; --js-work-field: #ffffff; --js-work-field-line: #c9d0e3;
+  --js-success: #18794e; --js-warning: #8a5a00; --js-danger: #c2123f; --js-info: #1b25e0;
+}
+
 @theme inline {
   --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
   --color-canvas: var(--canvas); --color-card: var(--card); --color-nested: var(--nested); --color-line: var(--line);
