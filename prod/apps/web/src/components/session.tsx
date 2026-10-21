@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useRouter } from 'next/navigation';
 import type { Me, Organization } from '@jscore/contracts';
 import { clearCookie, createClientRepo, readCookie, setCookie } from '@/lib/repo/client';
-import { DEMO_COOKIE, ORG_COOKIE, isSupabaseConfigured } from '@/lib/env';
+import { DEMO_COOKIE, ORG_COOKIE, isSupabaseConfigured, validOrgId } from '@/lib/env';
 import { createBrowser } from '@/lib/supabase/browser';
 import { DEMO_STORAGE_KEY } from '@/lib/repo/demo';
 import type { Repo } from '@/lib/repo/types';
@@ -36,14 +36,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    const r = createClientRepo(orgId || readCookie(ORG_COOKIE));
+    const r = createClientRepo(orgId || validOrgId(readCookie(ORG_COOKIE)));
     (async () => {
       try {
         const [m, o] = await Promise.all([r.me(), r.listOrgs()]);
         if (!alive) return;
         if (!m) { router.replace('/login'); return; }
         setRepo(r); setMe(m); setOrgs(o);
-        if (!orgId) setOrgId(readCookie(ORG_COOKIE) && o.some((x) => x.id === readCookie(ORG_COOKIE)) ? (readCookie(ORG_COOKIE) as string) : m.org_id);
+        if (!orgId) { const c = validOrgId(readCookie(ORG_COOKIE)); setOrgId(c && o.some((x) => x.id === c) ? c : m.org_id); }
       } catch { if (alive) router.replace('/login'); }
     })();
     return () => { alive = false; };

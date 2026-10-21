@@ -1,5 +1,5 @@
 'use client';
-import { DEMO_COOKIE, ORG_COOKIE, isSupabaseConfigured } from '../env';
+import { DEMO_COOKIE, ORG_COOKIE, isSupabaseConfigured, validOrgId } from '../env';
 import { createBrowser } from '../supabase/browser';
 import { DemoRepo } from './demo';
 import { SupabaseRepo } from './supabase';
@@ -12,6 +12,10 @@ export const clearCookie = (name: string) => { document.cookie = `${name}=; path
 
 /** Tarayıcı tarafı repo. Demo'da localStorage kalıcılığı kullanır. */
 export function createClientRepo(orgId?: string | null): Repo {
-  if (isSupabaseConfigured()) return new SupabaseRepo(createBrowser(), orgId ?? readCookie(ORG_COOKIE) ?? null);
+  if (isSupabaseConfigured()) {
+    const org = validOrgId(orgId ?? readCookie(ORG_COOKIE));
+    if (!org && readCookie(ORG_COOKIE)) clearCookie(ORG_COOKIE); // demo modundan kalan geçersiz cookie
+    return new SupabaseRepo(createBrowser(), org);
+  }
   return new DemoRepo({ accountId: readCookie(DEMO_COOKIE), orgId: orgId ?? readCookie(ORG_COOKIE), storage: window.localStorage });
 }
