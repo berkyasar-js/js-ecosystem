@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { Await, Card, Chip, CsvButton, FormCard, Grid, ModulePage, Table, brandName, nameOf, useAct, useWorld } from '../mod';
 import { addDays, mondayOf } from '@/lib/domain';
 import { MyTasks } from '../work/MyTasks';
+import { byDue, dueDay, isOverdue } from '../work/work-utils';
 
 const TABS: Array<[string, string]> = [['day', 'Benim günüm'], ['week', 'Haftam'], ['time', 'Zaman girişleri'], ['notifications', 'Bildirimler']];
 const hm = (min: number) => `${Math.floor(min / 60)}s ${String(min % 60).padStart(2, '0')}dk`;
@@ -35,12 +36,12 @@ export function MyWorkView({ tab }: { tab?: string }) {
 
         if (!emp) return <Empty>Bu hesap bir çalışan kaydına bağlı değil; kişisel iş listesi yok.</Empty>;
         if (t === 'day') {
-          const due = mine.filter((x) => x.due_at.slice(0, 10) <= addDays(today, 2)).sort((a, b) => a.due_at.localeCompare(b.due_at));
+          const due = mine.filter((x) => { const dd = dueDay(x); return !!dd && dd <= addDays(today, 2); }).sort(byDue);
           const todayMin = entries.filter((e) => e.worked_on === today).reduce((s, e) => s + e.minutes, 0);
           return (
             <div className="grid gap-4">{Err}
               <Grid cols={3}>
-                <Card title="Bugün"><div className="text-3xl font-bold">{due.filter((x) => x.due_at.slice(0, 10) <= today).length}</div><p className="text-xs text-muted">teslimi bugün/geçmiş görev</p></Card>
+                <Card title="Bugün"><div className="text-3xl font-bold">{due.filter((x) => { const dd = dueDay(x); return !!dd && dd <= today; }).length}</div><p className="text-xs text-muted">teslimi bugün/geçmiş görev</p></Card>
                 <Card title="Kayıtlı süre"><div className="text-3xl font-bold">{hm(todayMin)}</div><p className="text-xs text-muted">{running ? 'Zamanlayıcı çalışıyor' : 'Zamanlayıcı kapalı'}</p></Card>
                 <Card title="Bekleyen taleplerim"><div className="text-3xl font-bold">{reqs.filter((r) => r.status === 'open').length}</div><p className="text-xs text-muted">erteleme / yardım</p></Card>
               </Grid>
@@ -49,12 +50,12 @@ export function MyWorkView({ tab }: { tab?: string }) {
                 {due.length === 0 ? <Empty>Yaklaşan teslim yok. Güzel gün.</Empty> : (
                   <ul className="grid gap-3">
                     {due.map((x) => {
-                      const late = x.due_at.slice(0, 10) < today; const open = reqs.filter((r) => r.task_id === x.id && r.status === 'open');
+                      const late = isOverdue(x, today); const open = reqs.filter((r) => r.task_id === x.id && r.status === 'open');
                       return (
                         <li key={x.id} className="nested grid gap-2">
                           <div className="flex flex-wrap items-center gap-2"><strong className="text-[13px]">{x.title}</strong><Chip tone={PRIORITY[x.priority][1].includes('bad') ? 'bad' : undefined}>{PRIORITY[x.priority][0]}</Chip><Chip tone={late ? 'bad' : undefined}>{fmtDate(x.due_at)}</Chip>{open.map((r) => <Chip key={r.id} tone="warn">{r.kind === 'help' ? 'Yardım istendi' : 'Erteleme talebi'}</Chip>)}</div>
                           <div className="flex flex-wrap gap-2">
-                            <button className="btn btn-sm" disabled={busy} onClick={() => void request(x, 'snooze', '1 gün ertele', addDays(x.due_at, 1), null)}>Ertele (+1 gün)</button>
+                            <button className="btn btn-sm" disabled={busy} onClick={() => void request(x, 'snooze', '1 gün ertele', addDays(dueDay(x) ?? today, 1), null)}>Ertele (+1 gün)</button>
                             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); const v = String(new FormData(e.currentTarget).get('d')); if (v) void request(x, 'reschedule', 'Yeniden planlama', v, null); }}>
                               <input name="d" type="date" className="input min-h-8 w-auto py-0 text-xs" aria-label="Yeni tarih" min={today} required /><button className="btn btn-sm">Yeniden planla</button>
                             </form>
@@ -78,7 +79,7 @@ export function MyWorkView({ tab }: { tab?: string }) {
           return (
             <div className="grid gap-3 md:grid-cols-5">
               {days.map((day, i) => {
-                const list = mine.filter((x) => x.due_at.slice(0, 10) === day); const logged = entries.filter((e) => e.worked_on === day).reduce((s, e) => s + e.minutes, 0);
+                const list = mine.filter((x) => dueDay(x) === day); const logged = entries.filter((e) => e.worked_on === day).reduce((s, e) => s + e.minutes, 0);
                 return (
                   <section key={day} className={`card ${day === today ? 'border-accent' : ''}`} aria-label={fmtDate(day)}>
                     <h2 className="text-xs font-bold uppercase text-muted">{['Pzt', 'Sal', 'Çar', 'Per', 'Cum'][i]} · {fmtDate(day)}</h2>

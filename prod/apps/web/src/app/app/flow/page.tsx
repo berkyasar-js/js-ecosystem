@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { TASK_STATES, TASK_STATE_LABELS } from '@jscore/contracts';
 import { Async, PageHeader, fmtDate, todayFor, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
+import { isOverdue } from '@/components/work/work-utils';
 
 export default function Flow() {
   const { mode } = useSession();
@@ -20,7 +21,7 @@ export default function Flow() {
               <div className="grid grid-cols-4 gap-3 sm:grid-cols-8">
                 {TASK_STATES.map((s) => {
                   const n = tasks.filter((t) => t.state === s).length;
-                  const late = tasks.filter((t) => t.state === s && s !== 'archive' && t.due_at.slice(0, 10) < today).length;
+                  const late = tasks.filter((t) => t.state === s && s !== 'archive' && isOverdue(t, today)).length;
                   return (
                     <div key={s} className="text-center">
                       <div className="mx-auto flex h-24 w-8 items-end rounded-md bg-nested"><div className={`w-full rounded-md ${late ? 'bg-magenta' : 'bg-brand'}`} style={{ height: `${(n / max) * 100}%` }} /></div>

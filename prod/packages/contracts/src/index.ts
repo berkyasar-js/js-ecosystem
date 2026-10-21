@@ -145,13 +145,13 @@ export interface Brand {
 export interface StagePlanItem { stage: TaskState; owner: string; due_at: string; done: boolean }
 export interface Project {
   id: string; org_id: string; brand_id: string; name: string; type: string; status: 'planning' | 'active' | 'done' | 'paused';
-  flow_stage: TaskState; flow_owner: string; stage_plan: StagePlanItem[]; due_at: string; budget_minor: number; summary: string; client_visible: boolean;
+  flow_stage: TaskState; flow_owner: string; stage_plan: StagePlanItem[]; due_at: string | null; budget_minor: number; summary: string; client_visible: boolean;
   /** Trello içe aktarma bağı ('trello:board:<id>'). */
   source_ref?: string | null;
 }
 export interface Task {
   id: string; org_id: string; project_id: string; title: string; assignee_id: string | null; state: TaskState; priority: Priority;
-  due_at: string; planned_minutes: number; task_type: string; qty: number; source_ref: string | null; labels: string[]; client_visible: boolean; created_at: string;
+  due_at: string | null; planned_minutes: number; task_type: string; qty: number; source_ref: string | null; labels: string[]; client_visible: boolean; created_at: string;
   /** Trigger ile yazılır (0008): son-yazan-kazanır karşılaştırması için. */
   updated_at?: string; sync_origin?: string | null; synced_at?: string | null;
 }
@@ -242,7 +242,7 @@ export const taskPatchSchema = z.object({
   title: z.string().trim().min(2).max(200).optional(),
   assignee_id: z.string().min(1).nullable().optional(),
   priority: z.enum(['low', 'normal', 'high']).optional(),
-  due_at: z.string().min(8).optional(),
+  due_at: z.string().min(8).nullable().optional(),
 }).strict();
 export type TaskPatch = z.input<typeof taskPatchSchema>;
 export const taskMoveSchema = z.object({ id: z.string().min(1), state: taskStateSchema });

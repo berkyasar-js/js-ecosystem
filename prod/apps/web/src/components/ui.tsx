@@ -67,7 +67,7 @@ export function Stat({ label, value, hint, tone, href, icon }: { label: string; 
 }
 
 const TR_MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-export const fmtDate = (iso: string) => { const [, m, d] = iso.slice(0, 10).split('-'); return m ? `${Number(d)} ${TR_MONTHS[Number(m) - 1]}` : iso; };
+export const fmtDate = (iso: string | null | undefined) => { if (!iso) return '—'; const [, m, d] = iso.slice(0, 10).split('-'); return m ? `${Number(d)} ${TR_MONTHS[Number(m) - 1]}` : iso; };
 export const money = (minor: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(minor / 100);
 export const fmtTime = (iso: string) => `${fmtDate(iso)} ${iso.slice(11, 16)}`;
 export const initials = (n: string) => n.split(/\s+/).map((s) => s[0]).slice(0, 2).join('').toUpperCase();

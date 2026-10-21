@@ -5,6 +5,7 @@ import { ArrowRight, Sparkles, Users } from 'lucide-react';
 import { Avatar } from '@/components/avatar';
 import { Async, PageHeader, Stat, fmtDate, money, todayFor, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
+import { byDue, isOverdue } from '@/components/work/work-utils';
 
 export default function Overview() {
   const { me, mode } = useSession();
@@ -18,10 +19,10 @@ export default function Overview() {
       <PageHeader eyebrow={`${fmtDate(today)} · ANKARA`} title={`Merhaba, ${me?.name.split(' ')[0] ?? ''}`} sub={me?.title ?? ''} />
       <Async q={q}>{({ projects, tasks, approvals, brands, team }) => {
         const open = tasks.filter((t) => t.state !== 'archive');
-        const overdue = open.filter((t) => t.due_at.slice(0, 10) < today);
+        const overdue = open.filter((t) => isOverdue(t, today));
         const pending = approvals.filter((a) => a.status === 'pending');
         const mine = open.filter((t) => t.assignee_id && t.assignee_id === me?.employee_id);
-        const focus = (mine.length ? mine : open.filter((t) => t.priority === 'high')).sort((a, b) => a.due_at.localeCompare(b.due_at)).slice(0, 5);
+        const focus = (mine.length ? mine : open.filter((t) => t.priority === 'high')).sort(byDue).slice(0, 5);
         const scope = pending.filter((a) => a.action_type === 'scope');
         const risky = brands.filter((b) => b.status === 'risky');
         const client = isClientRole(me?.role ?? 'client_viewer');
@@ -64,7 +65,7 @@ export default function Overview() {
                     {focus.map((t) => (
                       <li key={t.id} className="nested flex items-center justify-between gap-3">
                         <span className="truncate">{t.title}</span>
-                        <span className={`chip ${t.due_at.slice(0, 10) < today ? 'chip-bad' : ''}`}>{fmtDate(t.due_at)}</span>
+                        <span className={`chip ${isOverdue(t, today) ? 'chip-bad' : ''}`}>{fmtDate(t.due_at)}</span>
                       </li>
                     ))}
                   </ul>

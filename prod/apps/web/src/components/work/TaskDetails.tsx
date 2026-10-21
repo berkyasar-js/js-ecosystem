@@ -4,7 +4,7 @@ import { Check, X } from 'lucide-react';
 import { TASK_STATES, TASK_STATE_LABELS, type AuditEvent, type Priority, type Task, type TaskPatch, type TaskState, type TeamMember } from '@jscore/contracts';
 import { Avatar } from '../avatar';
 import { fmtTime } from '../ui';
-import { PRIORITY_LABEL, isDone, isTrello } from './work-utils';
+import { PRIORITY_LABEL, dueDay, isDone, isTrello } from './work-utils';
 
 /** Kontrollü ayrıntı paneli. Sunucu durumu üst bileşende kalır; pending / error görünür. */
 export function TaskDetails({ task, team, context, typeLabel, activity, readonly = false, pending = false, error, onClose, onComplete, onStage, onPatch, headingRef }: {
@@ -37,7 +37,7 @@ export function TaskDetails({ task, team, context, typeLabel, activity, readonly
           </div>
           <div>
             <label htmlFor={`${id}-due`}>Bitiş tarihi</label>
-            <input id={`${id}-due`} type="date" className="wk-field" value={task.due_at.slice(0, 10)} disabled={disabled} onChange={(e) => { if (e.target.value) onPatch({ due_at: e.target.value }); }} />
+            <input id={`${id}-due`} type="date" className="wk-field" value={dueDay(task) ?? ''} disabled={disabled} onChange={(e) => onPatch({ due_at: e.target.value || null })} />
           </div>
           <div>
             <label htmlFor={`${id}-st`}>Aşama</label>

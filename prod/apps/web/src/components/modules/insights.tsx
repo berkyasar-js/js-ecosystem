@@ -6,6 +6,7 @@ import { Await, Card, Chip, CsvButton, Freshness, Gate, Grid, Metric, ModulePage
 import { BarChart, Funnel, LineChart } from '../charts';
 import { projectMargins } from './finance';
 import { accountHealth, surveyBelowThreshold, surveyStats, weeklyCapacity, weeksFrom } from '@/lib/domain';
+import { isOverdue } from '../work/work-utils';
 
 const TABS: Array<[string, string]> = [['executive', 'Executive'], ['profitability', 'Project Profitability'], ['resources', 'Resource Analytics'], ['funnel', 'Sales Funnel'], ['clients', 'Client Reports'], ['system', 'System Analytics']];
 const KINDS = ['crm_deals', 'mkt_leads', 'invoices', 'expenses', 'cost_rates', 'time_entries', 'allocations', 'leaves', 'surveys', 'survey_responses', 'campaigns', 'automation_runs'] as const;
@@ -79,7 +80,7 @@ export function InsightsView({ tab }: { tab?: string }) {
         if (t === 'clients') {
           const rows = d.brands.filter((b) => !b.internal).map((b) => {
             const pids = new Set(d.projects.filter((p) => p.brand_id === b.id).map((p) => p.id));
-            const late = d.tasks.filter((x) => pids.has(x.project_id) && x.state !== 'archive' && x.due_at.slice(0, 10) < today).length;
+            const late = d.tasks.filter((x) => pids.has(x.project_id) && x.state !== 'archive' && isOverdue(x, today)).length;
             const od = d.invoices.filter((i) => i.brand_id === b.id && i.status === 'overdue').length;
             const cs = respOf(csat?.id, b.id); const np = respOf(nps?.id, b.id);
             return { b, health: accountHealth(b.health, { overdueTasks: late, overdueInvoices: od, csat: cs.length ? surveyStats('csat', cs).value : undefined }), csat: cs.length ? surveyStats('csat', cs).value : null, nps: np.length ? surveyStats('nps', np).value : null, alert: surveyBelowThreshold('csat', cs, csat?.threshold ?? 4) || surveyBelowThreshold('nps', np, nps?.threshold ?? 0), late, od };

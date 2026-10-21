@@ -7,6 +7,7 @@ import { useSession } from '../session';
 import { Await, Bar, Card, Chip, Crud, FormCard, Gate, Grid, Kanban, Metric, ModulePage, Table, brandName, nameOf, tl, toneOf, useAct, useCan, useWorld } from '../mod';
 import { accountHealth, bumpProposal, contractUsage, dueDateFor, proposalTotals, surveyStats } from '@/lib/domain';
 import { usedThisMonth } from '@/lib/quota';
+import { isOverdue } from '../work/work-utils';
 
 const TABS: Array<[string, string]> = [['pipeline', 'Pipeline'], ['accounts', 'Müşteriler & Markalar'], ['contacts', 'Kişiler'], ['proposals', 'Teklifler'], ['contracts', 'Sözleşmeler & yenilemeler']];
 const STAGES = DEAL_STAGES.map((s) => [s, DEAL_STAGE_LABELS[s]] as [string, string]);
@@ -172,7 +173,7 @@ export function Account360({ brandId }: { brandId: string }) {
         if (!b) return <Empty>Marka bulunamadı veya görünür değil.</Empty>;
         const projects = d.projects.filter((p) => p.brand_id === b.id); const pids = new Set(projects.map((p) => p.id));
         const open = d.tasks.filter((t) => pids.has(t.project_id) && t.state !== 'archive');
-        const late = open.filter((t) => t.due_at.slice(0, 10) < today).length;
+        const late = open.filter((t) => isOverdue(t, today)).length;
         const inv = d.invoices.filter((i) => i.brand_id === b.id); const overdue = inv.filter((i) => i.status === 'overdue').length;
         const csatSurvey = d.surveys.find((s) => s.kind === 'csat'); const resp = d.survey_responses.filter((r) => r.brand_id === b.id && r.survey_id === csatSurvey?.id);
         const csat = surveyStats('csat', resp).value; const health = accountHealth(b.health, { overdueTasks: late, overdueInvoices: overdue, csat });
@@ -189,7 +190,7 @@ export function Account360({ brandId }: { brandId: string }) {
               {b.compliance_flags.length > 0 && <p className="mt-2">{b.compliance_flags.map((f) => <Chip key={f} tone="warn">{f}</Chip>)}</p>}
             </Card>
             <Card title="Projeler">{projects.length === 0 ? <Empty>Proje yok.</Empty> : <Table heads={['Proje', 'Durum', 'Teslim', 'Bütçe']}>{projects.map((p) => <tr key={p.id}><td><Link className="font-semibold hover:underline" href={`/app/projects/${p.id}`}>{p.name}</Link></td><td>{p.status}</td><td>{fmtDate(p.due_at)}</td><td>{money(p.budget_minor)}</td></tr>)}</Table>}</Card>
-            <Card title="Açık görevler">{open.length === 0 ? <Empty>Açık görev yok.</Empty> : <ul className="grid gap-2">{open.slice(0, 8).map((t) => <li key={t.id} className="nested flex justify-between gap-2 text-sm"><span>{t.title}</span><Chip tone={t.due_at.slice(0, 10) < today ? 'bad' : undefined}>{fmtDate(t.due_at)}</Chip></li>)}</ul>}</Card>
+            <Card title="Açık görevler">{open.length === 0 ? <Empty>Açık görev yok.</Empty> : <ul className="grid gap-2">{open.slice(0, 8).map((t) => <li key={t.id} className="nested flex justify-between gap-2 text-sm"><span>{t.title}</span><Chip tone={isOverdue(t, today) ? 'bad' : undefined}>{fmtDate(t.due_at)}</Chip></li>)}</ul>}</Card>
             <Grid cols={2}>
               <Card title="Kişiler">{d.crm_contacts.filter((c) => c.brand_id === b.id).map((c) => <p key={c.id} className="text-sm">{c.name} <span className="text-muted">· {c.title} · {c.email}</span></p>)}</Card>
               <Card title="Sözleşme">{d.crm_contracts.filter((c) => c.brand_id === b.id).map((c) => <p key={c.id} className="text-sm">{c.title} <span className="text-muted">· {fmtDate(c.end)} bitiş</span></p>)}{!d.crm_contracts.some((c) => c.brand_id === b.id) && <span className="text-sm text-muted">Sözleşme kaydı yok.</span>}</Card>

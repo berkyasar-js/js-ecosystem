@@ -73,8 +73,8 @@ export function PortalView({ tab }: { tab?: string }) {
           }
           if (t === 'files') return <Card title="Dosyalar">{files.length === 0 ? <Empty>Paylaşılan dosya yok.</Empty> : <Table heads={['Dosya', 'Tür', 'Sürüm', 'Boyut', '']}>{files.map((f) => <tr key={f.id}><td>{f.name}</td><td>{f.kind}</td><td>v{f.version}</td><td>{f.size_mb >= 1000 ? `${(f.size_mb / 1000).toFixed(1)} GB` : `${f.size_mb} MB`}</td><td>{f.kind === 'video' ? <Link className="btn btn-sm" href="/watch/demo">İzle</Link> : <span className="text-xs text-muted">İndirme bağlantısı üretimde</span>}</td></tr>)}</Table>}</Card>;
           if (t === 'reports') {
-            const rows = projects.map((p) => [p.name, TASK_STATE_LABELS[p.flow_stage], p.stage_plan.filter((s) => s.done).length, p.stage_plan.length, p.due_at]);
-            return <Card title="Durum raporu" aside={<CsvButton name={`${brand.name}-rapor.csv`} rows={[['Proje', 'Aşama', 'Biten adım', 'Toplam adım', 'Teslim'], ...rows]} />}>{rows.length === 0 ? <Empty>Rapor için proje yok.</Empty> : <Table heads={['Proje', 'Aşama', 'Adım', 'Teslim']}>{rows.map((r) => <tr key={String(r[0])}><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}/{r[3]}</td><td>{fmtDate(String(r[4]))}</td></tr>)}</Table>}</Card>;
+            const rows = projects.map((p) => [p.name, TASK_STATE_LABELS[p.flow_stage], p.stage_plan.filter((s) => s.done).length, p.stage_plan.length, p.due_at ?? '']);
+            return <Card title="Durum raporu" aside={<CsvButton name={`${brand.name}-rapor.csv`} rows={[['Proje', 'Aşama', 'Biten adım', 'Toplam adım', 'Teslim'], ...rows]} />}>{rows.length === 0 ? <Empty>Rapor için proje yok.</Empty> : <Table heads={['Proje', 'Aşama', 'Adım', 'Teslim']}>{rows.map((r) => <tr key={String(r[0])}><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}/{r[3]}</td><td>{fmtDate(String(r[4]) || null)}</td></tr>)}</Table>}</Card>;
           }
           if (t === 'surveys') {
             const mineResp = (sid: string) => d.survey_responses.filter((r) => r.survey_id === sid && r.brand_id === brand.id);

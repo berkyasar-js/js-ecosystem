@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { jsonRpcRequestSchema, mcpCreateTaskDraftArgs, mcpProjectStatusArgs } from '@jscore/contracts';
 import { DEMO_TODAY } from './agents/demo';
 import type { Repo } from './repo/types';
+import { isOverdue } from '@/components/work/work-utils';
 
 export const hashToken = (t: string) => createHash('sha256').update(t).digest('hex');
 
@@ -26,7 +27,7 @@ export class RepoMcpBackend implements McpBackend {
       return {
         id: p.id, name: p.name, status: p.status, flow_stage: p.flow_stage, due_at: p.due_at,
         tasks: ts.length, by_state: ts.reduce<Record<string, number>>((m, t) => ({ ...m, [t.state]: (m[t.state] ?? 0) + 1 }), {}),
-        overdue: ts.filter((t) => t.state !== 'archive' && t.due_at.slice(0, 10) < this.today).length,
+        overdue: ts.filter((t) => t.state !== 'archive' && isOverdue(t, this.today)).length,
       };
     });
   }

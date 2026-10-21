@@ -278,7 +278,7 @@ export class DemoRepo implements Repo {
     if (!TOKEN_ADMIN_ROLES.includes(this.role)) throw new ForbiddenError('Trello içe aktarma yalnızca owner / org_admin / entegrasyon admin');
     const db = this.db();
     const org = this.orgId;
-    const toDraft = (t: Task): StoreTask => ({ id: t.id, source_ref: t.source_ref ?? '', project_id: t.project_id, title: t.title, assignee_id: t.assignee_id, state: t.state, priority: t.priority, due_at: t.due_at || null, planned_minutes: t.planned_minutes, task_type: t.task_type, labels: t.labels });
+    const toDraft = (t: Task): StoreTask => ({ id: t.id, source_ref: t.source_ref ?? '', project_id: t.project_id, title: t.title, assignee_id: t.assignee_id, state: t.state, priority: t.priority, due_at: t.due_at ?? null, planned_minutes: t.planned_minutes, task_type: t.task_type, labels: t.labels });
     const store: TrelloStore = {
       load: async () => ({
         employees: db.team.filter((m) => m.org_id === org && m.status === 'active').map((m) => ({ id: m.id, name: m.name })),
@@ -295,7 +295,7 @@ export class DemoRepo implements Repo {
       },
       createProject: async (p) => {
         const id = this.nextId('p', db.projects.map((x) => x.id));
-        const row: Project = { id, org_id: org, brand_id: p.brand_id, name: p.name, type: p.type, status: 'active', flow_stage: 'brief', flow_owner: '', stage_plan: [], due_at: '', budget_minor: 0, summary: 'Trello içe aktarma', client_visible: false, source_ref: p.source_ref ?? null };
+        const row: Project = { id, org_id: org, brand_id: p.brand_id, name: p.name, type: p.type, status: 'active', flow_stage: 'brief', flow_owner: '', stage_plan: [], due_at: null, budget_minor: 0, summary: 'Trello içe aktarma', client_visible: false, source_ref: p.source_ref ?? null };
         db.projects.push(row);
         return { id };
       },
@@ -311,7 +311,7 @@ export class DemoRepo implements Repo {
       },
       createTasks: async (rows: TaskDraft[]) => {
         for (const r of rows) {
-          const t: Task = { id: this.nextId('t', db.tasks.map((x) => x.id)), org_id: org, ...r, due_at: r.due_at ?? '', qty: 1, client_visible: false, created_at: this.now() };
+          const t: Task = { id: this.nextId('t', db.tasks.map((x) => x.id)), org_id: org, ...r, due_at: r.due_at ?? null, qty: 1, client_visible: false, created_at: this.now() };
           db.tasks.push(t);
           await this.fire(db, 'tasks.insert', 'tasks', t);
         }
@@ -320,7 +320,7 @@ export class DemoRepo implements Repo {
         const t = db.tasks.find((x) => x.id === id && x.org_id === org);
         if (!t) throw new NotFoundError('Görev');
         const before = { ...t };
-        Object.assign(t, patch, patch.due_at !== undefined ? { due_at: patch.due_at ?? '' } : {});
+        Object.assign(t, patch, patch.due_at !== undefined ? { due_at: patch.due_at ?? null } : {});
         await this.fire(db, 'tasks.update', 'tasks', t, before);
       },
     };
@@ -424,7 +424,7 @@ export class DemoRepo implements Repo {
       if (gate?.status !== 'approved') {
         const who = db.team.find((m) => m.id === bid.employee_id)?.name ?? 'ikiz';
         const a = await this.pushApproval(db, approvalCreateSchema.parse({
-          action_type: 'scope', title: `Yüksek öncelikli atama: ${task.title} → ${who}`, required_role: 'operations', due_at: task.due_at,
+          action_type: 'scope', title: `Yüksek öncelikli atama: ${task.title} → ${who}`, required_role: 'operations', due_at: task.due_at ?? this.now().slice(0, 10),
           subject: { project_id: task.project_id, task_id: task.id, bid_id: bid.id, note: `Güven %${bid.confidence} · tahmini ${bid.eta_hours} sa` },
         }));
         this.log(db, 'twin_bid.approval_requested', `tasks/${task.id}`, { bid: bid.id, approval: a.id });

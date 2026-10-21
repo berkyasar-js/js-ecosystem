@@ -26,7 +26,7 @@ export function usedThisMonth(tasks: Task[], projectBrand: Record<string, string
   const used: Record<string, number> = {};
   for (const t of tasks) {
     if (projectBrand[t.project_id] !== brandId) continue;
-    if (!t.created_at.startsWith(ym) && !t.due_at.startsWith(ym)) continue;
+    if (!t.created_at.startsWith(ym) && !(t.due_at ?? '').startsWith(ym)) continue;
     used[t.task_type] = (used[t.task_type] ?? 0) + t.qty;
   }
   return used;
