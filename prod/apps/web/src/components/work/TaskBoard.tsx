@@ -1,21 +1,24 @@
 'use client';
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { GripVertical } from 'lucide-react';
-import { TASK_STATES, TASK_STATE_LABELS, type Task, type TaskState } from '@jscore/contracts';
+import { TASK_STATES, TASK_STATE_LABELS, type Task, type TaskBadges, type TaskState } from '@jscore/contracts';
 import { Avatar } from '../avatar';
 import { fmtDate } from '../ui';
+import { CardCover, TaskBadgeList } from './task-badges';
 import { PRIORITY_LABEL, isLate } from './work-utils';
 
-function Card({ t, who, today, selected, pending, readonly, onOpen }: { t: Task; who: string; today: string; selected: boolean; pending: boolean; readonly: boolean; onOpen: () => void }) {
+function Card({ t, who, today, selected, pending, readonly, onOpen, badges }: { badges?: TaskBadges; t: Task; who: string; today: string; selected: boolean; pending: boolean; readonly: boolean; onOpen: () => void }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } = useDraggable({ id: t.id, disabled: readonly || pending });
   const late = isLate(t, today);
   return (
     <div ref={setNodeRef} {...listeners} className="wk-card" data-selected={selected} data-dragging={isDragging} aria-busy={pending}
       style={{ ...(transform ? { transform: `translate3d(${transform.x}px,${transform.y}px,0)` } : {}), cursor: readonly ? 'default' : 'grab' }}>
+      <CardCover task={t} />
       <div className="wk-card-top">
         <button type="button" className="wk-card-title" data-task-open={t.id} onClick={onOpen}>{t.title}</button>
         {!readonly && <button type="button" ref={setActivatorNodeRef} {...attributes} className="wk-grip" aria-label={`${t.title} kartını taşı (Boşluk ile tut, oklarla taşı)`}><GripVertical size={15} aria-hidden /></button>}
       </div>
+      <TaskBadgeList task={t} badges={badges} />
       <div className="wk-card-bottom">
         {t.assignee_id ? <Avatar id={t.assignee_id} name={who} size="xs" /> : null}
         <span className="wk-muted" style={{ fontSize: 12 }}>{who.split(' ')[0]}</span>
@@ -37,7 +40,8 @@ function Column({ state, count, children }: { state: TaskState; count: number; c
 }
 
 /** Sekiz aşamalı pano (dnd-kit). Klavye eşdeğeri: kart tutamacı (Boşluk + oklar) ve ayrıntı panelindeki Aşama seçimi. */
-export function TaskBoard({ tasks, nameOf, today, selectedId, pendingIds, readonly, onOpen, onMove }: {
+export function TaskBoard({ tasks, nameOf, today, selectedId, pendingIds, readonly, onOpen, onMove, badges }: {
+  badges?: Record<string, TaskBadges>;
   tasks: Task[]; nameOf: (id: string | null) => string; today: string; selectedId: string | null; pendingIds: ReadonlySet<string>; readonly: boolean;
   onOpen: (t: Task) => void; onMove: (t: Task, to: TaskState) => void;
 }) {
@@ -57,7 +61,7 @@ export function TaskBoard({ tasks, nameOf, today, selectedId, pendingIds, readon
             const col = tasks.filter((t) => t.state === s);
             return (
               <Column key={s} state={s} count={col.length}>
-                {col.map((t) => <Card key={t.id} t={t} who={nameOf(t.assignee_id)} today={today} selected={selectedId === t.id} pending={pendingIds.has(t.id)} readonly={readonly} onOpen={() => onOpen(t)} />)}
+                {col.map((t) => <Card key={t.id} t={t} who={nameOf(t.assignee_id)} today={today} selected={selectedId === t.id} pending={pendingIds.has(t.id)} readonly={readonly} onOpen={() => onOpen(t)} badges={badges?.[t.id]} />)}
               </Column>
             );
           })}

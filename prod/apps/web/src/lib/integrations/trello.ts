@@ -2,46 +2,25 @@ import { randomBytes } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { trelloConfigSchema, type SyncLogEntry, type TrelloConfig, type TrelloImportResult } from '@jscore/contracts';
 import {
-  buildListMap, buildMemberIds, memberKey, runImport,
+  buildListMap, buildMemberIds, memberKey, runImport, type CardDetailsHook,
   type StoreTask, type SyncLogDraft, type TaskDraft, type TrelloBoard, type TrelloCard, type TrelloList, type TrelloMember, type TrelloSnapshot, type TrelloStore,
 } from './trello-map';
+import { TrelloApiError, trelloFetch, type TrelloCreds } from './trello-http';
+import { SupabaseDetailStore, applyWebhookOp, memberEmployeesOf, pullCardDetails } from './trello-details-supabase';
+import { addDetails, emptyDetailsSummary, planWebhookAction, syncCardDetails, type DetailOp } from './trello-details';
 
 export * from './trello-map';
+export * from './trello-http';
 
 /**
  * Trello HTTP istemcisi + Supabase (servis rolü) deposu. YALNIZCA SUNUCU: api_key/token integrations.config içinde
  * saklanır, istemciye hiç gönderilmez (bkz. maskTrelloConfig). Panolar sıralı, kartlar tek istek/pano → hız sınırına duyarlı.
  */
-const API = 'https://api.trello.com/1';
-export interface TrelloCreds { api_key: string; token: string }
-export class TrelloApiError extends Error {
-  constructor(public status: number, msg: string) { super(msg); this.name = 'TrelloApiError'; }
-}
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-export async function trelloFetch<T>(c: TrelloCreds, path: string, opts: { params?: Record<string, string>; method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; fetchImpl?: typeof fetch } = {}): Promise<T> {
-  const url = new URL(API + path);
-  for (const [k, v] of Object.entries(opts.params ?? {})) url.searchParams.set(k, v);
-  const f = opts.fetchImpl ?? fetch;
-  for (let attempt = 0; ; attempt++) {
-    const r = await f(url, {
-      method: opts.method ?? 'GET',
-      headers: { authorization: `OAuth oauth_consumer_key="${c.api_key}", oauth_token="${c.token}"`, accept: 'application/json', ...(opts.body ? { 'content-type': 'application/json' } : {}) },
-      body: opts.body ? JSON.stringify(opts.body) : undefined, signal: AbortSignal.timeout(25_000), cache: 'no-store',
-    });
-    if (r.status === 429 && attempt < 3) { await sleep(1500 * (attempt + 1)); continue; }
-    if (!r.ok) {
-      const t = (await r.text().catch(() => '')).slice(0, 200);
-      throw new TrelloApiError(r.status, r.status === 401 ? 'Trello anahtarı/token geçersiz' : `Trello ${r.status}: ${t}`);
-    }
-    return (await r.json()) as T;
-  }
-}
 
 export const verifyCredentials = (c: TrelloCreds) => trelloFetch<{ id: string; fullName: string; username: string }>(c, '/members/me', { params: { fields: 'fullName,username' } });
 export const listBoards = (c: TrelloCreds) => trelloFetch<Array<TrelloBoard & { closed?: boolean }>>(c, '/members/me/boards', { params: { filter: 'open', fields: 'name,closed' } });
 
-export const CARD_FIELDS = 'name,idList,idBoard,due,dueComplete,labels,idMembers,dateLastActivity,desc,shortLink,badges,idChecklists,closed';
+export const CARD_FIELDS = 'name,idList,idBoard,due,dueComplete,labels,idMembers,dateLastActivity,desc,shortLink,badges,idChecklists,closed,cover';
 export async function fetchBoard(c: TrelloCreds, board: TrelloBoard): Promise<TrelloSnapshot> {
   const lists = await trelloFetch<TrelloList[]>(c, `/boards/${board.id}/lists`, { params: { filter: 'all', fields: 'name,closed,idBoard' } });
   const cards = await trelloFetch<TrelloCard[]>(c, `/boards/${board.id}/cards`, { params: { filter: 'open', fields: CARD_FIELDS } });
@@ -158,6 +137,7 @@ export async function loadSyncLog(admin: SupabaseClient, orgId: string, limit = 
 }
 
 /* ───────── Üst düzey akışlar ───────── */
+const DETAIL_BUDGET_MS = 230_000;
 const credsOf = (c: TrelloConfig | null): TrelloCreds => { if (!c) throw new TrelloApiError(400, 'Trello bağlı değil'); return { api_key: c.api_key, token: c.token }; };
 
 /** Tam içe aktarma: seçili panolar (yoksa tüm açık panolar). Sonunda last_sync_at yazılır. */
@@ -171,7 +151,15 @@ export async function importFromTrello(admin: SupabaseClient, orgId: string): Pr
   const now = new Date().toISOString();
   const store = new SupabaseTrelloStore(admin, orgId);
   const logs: SyncLogDraft[] = [];
-  const res = await runImport(snap, store, { now, memberMap: cfg?.member_map, onLog: (e) => logs.push(e) });
+  // Kart ayrıntıları (açıklama, kapak, checklist, yorum, ek): kart başına sıralı çekim; süre bütçesi aşılırsa kalanlar bir sonraki çalıştırmaya kalır.
+  const t0 = Date.now(); const dsum = emptyDetailsSummary(); let pending = 0;
+  const details: CardDetailsHook = async (info) => {
+    if (Date.now() - t0 > DETAIL_BUDGET_MS) { pending++; return; }
+    addDetails(dsum, await pullCardDetails(admin, orgId, cfg!, info, (e) => logs.push(e)));
+  };
+  const res = await runImport(snap, store, { now, memberMap: cfg?.member_map, onLog: (e) => logs.push(e), details });
+  res.details = dsum;
+  if (pending) res.errors.push(`${pending} kartın ayrıntıları süre sınırı nedeniyle çekilmedi — içe aktarmayı tekrar çalıştır (idempotent)`);
   const { employees } = await store.load();
   await saveTrelloConfig(admin, orgId, { last_sync_at: now, list_map: buildListMap(snap.lists, employees, cfg?.member_map), member_ids: buildMemberIds(snap.members, employees, cfg?.member_map) });
   await writeSyncLog(admin, orgId, logs);
@@ -193,7 +181,11 @@ export async function syncCard(admin: SupabaseClient, orgId: string, cardId: str
   const members = await trelloFetch<TrelloMember[]>(creds, `/boards/${boardId}/members`, { params: { fields: 'fullName,username' } });
   const store = new SupabaseTrelloStore(admin, orgId);
   const logs: SyncLogDraft[] = [];
-  await runImport({ boards: [board], lists: [list], cards: [card], members }, store, { now: new Date().toISOString(), memberMap: cfg?.member_map, onLog: (e) => logs.push(e) });
+  // Genel kart olayları (taşıma, ad, tarih…) için yalnızca kartın kendi alanları: açıklama + kapak. Checklist / yorum / ek ayrıntı eylemleri `applyDetailAction` ile.
+  const details: CardDetailsHook = async ({ card: c, taskId, jsNewer }) => {
+    await syncCardDetails(new SupabaseDetailStore(admin, orgId), taskId, { desc: c.desc ?? '', cover: c.cover ?? null }, { memberEmployees: memberEmployeesOf(cfg), jsNewer, cardActivity: c.dateLastActivity, log: (e) => logs.push(e) });
+  };
+  await runImport({ boards: [board], lists: [list], cards: [card], members }, store, { now: new Date().toISOString(), memberMap: cfg?.member_map, onLog: (e) => logs.push(e), details });
   await writeSyncLog(admin, orgId, logs);
   // Yeni liste / üye görüldüyse tersinir eşlemeleri tamamla (kısmi güncelleme; mevcut kayıtlar korunur).
   if (!cfg?.list_map?.[list.id] || members.some((m) => !Object.values(cfg?.member_ids ?? {}).includes(m.id))) {
@@ -204,6 +196,25 @@ export async function syncCard(admin: SupabaseClient, orgId: string, cardId: str
     }).catch(() => undefined);
   }
   return 'synced';
+}
+/**
+ * Webhook ayrıntı eylemi (yorum / checklist / madde / ek): ilgili satırı doğrudan uygular; eylem yetersizse (ek bilgisi, madde due/üye…)
+ * ilgili parçayı Trello'dan yeniden çeker. Görev yoksa önce kart içe aktarılır.
+ */
+export async function applyDetailAction(admin: SupabaseClient, orgId: string, cardId: string, action: Parameters<typeof planWebhookAction>[0]): Promise<'applied' | 'unchanged' | 'ignored' | 'no_task'> {
+  const op: DetailOp | null = planWebhookAction(action);
+  if (!op) return 'ignored';
+  const cfg = await loadTrelloConfig(admin, orgId);
+  const creds = credsOf(cfg);
+  const find = async () => (await admin.from('tasks').select('id').eq('org_id', orgId).eq('source_ref', `trello:${cardId}`).maybeSingle()).data as { id: string } | null;
+  let task = await find();
+  if (!task) { if ((await syncCard(admin, orgId, cardId)) !== 'synced') return 'no_task'; task = await find(); }
+  if (!task) return 'no_task';
+  const logs: SyncLogDraft[] = [];
+  const getCard = () => trelloFetch<TrelloCard>(creds, `/cards/${cardId}`, { params: { fields: CARD_FIELDS } });
+  const r = await applyWebhookOp(admin, orgId, cfg!, task.id, op, { activity: (action as { date?: string }).date, getCard, onLog: (e) => logs.push(e) });
+  await writeSyncLog(admin, orgId, logs);
+  return r.applied || r.resync ? 'applied' : 'unchanged';
 }
 /** deleteCard: görevi silmeden arşive alır. */
 export async function archiveCardTask(admin: SupabaseClient, orgId: string, cardId: string) {

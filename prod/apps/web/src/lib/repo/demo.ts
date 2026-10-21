@@ -1,16 +1,18 @@
 import {
   COLLECTIONS, DEAL_STAGES, LEAVE_DECIDERS, canReadColl, canWriteColl, type AuditEvent, type Checklist, type CollKey, type Deal, type DealStage, type Leave, type Records, type SaveInput,
-  approvalCreateSchema, canDecideApproval, isClientRole, orgSettingsPatchSchema, taskCreateSchema, taskPatchSchema, boardAnswerSchema,
+  approvalCreateSchema, canDecideApproval, isClientRole, checkItemCreateSchema, checkItemPatchSchema, checklistNameSchema, commentBodySchema, MAX_ATTACHMENT_BYTES, orgSettingsPatchSchema, taskCreateSchema, taskPatchSchema, boardAnswerSchema,
   type AgentRun, type Approval, type ApprovalCreate, type BoardAnswer, type ConnectData, type Integration, type Me, type Message,
   type OrgSettings, type Task, type Project, type Brand, type TrelloImportResult, type TrelloPublicState, type TrelloMode, type SyncLogEntry, TRELLO_MODES, maskTrelloConfig, type TaskCreate, type TaskPatch, type TaskState, type BoardDecision, type Role,
+  type AttachmentInput, type CheckItemCreate, type CheckItemPatch, type TaskAttachment, type TaskBadges, type TaskCheckItem, type TaskChecklist, type TaskComment,
   BID_ROLES, TOKEN_ADMIN_ROLES, bidProposalSchema, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
 } from '@jscore/contracts';
 import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
-import { memberKey, runImport, type StoreTask, type TaskDraft, type TrelloSnapshot, type TrelloStore } from '../integrations/trello-map';
+import { addDetails, emptyDetailsSummary, syncCardDetails, type DetailStore } from '../integrations/trello-details';
+import { memberKey, resolveEmployee, runImport, type CardDetailsHook, type StoreTask, type TaskDraft, type TrelloSnapshot, type TrelloStore } from '../integrations/trello-map';
 import { demoTwinBids, type TwinBidInput } from '../agents/demo';
 import { dispatchEvent, type AutomationEvent, type DispatchPorts } from '../automations/dispatch';
 import { addDaysIso, generateToken, tokenPrefix } from '../token';
-import { DEMO_ACCOUNTS, ORG_JOBS, accountToMe, makeDemoDb, type DemoAccount, type DemoDb } from '../demo-seed';
+import { DEMO_ACCOUNTS, ORG_JOBS, accountToMe, makeDemoDb, type DemoAccount, type DemoDb, type DemoDetails } from '../demo-seed';
 import { makeModuleSeed } from '../demo-seed-modules';
 import { offerToEmployee } from '../domain';
 import { validateRecord } from './validate';
@@ -24,6 +26,8 @@ const listeners = new Map<string, Set<(m: Message) => void>>();
 
 /** Otomasyon bildirimlerinin alıcıları (in-app). */
 const NOTIFY_ROLES: Role[] = ['owner', 'org_admin', 'operations'];
+/** 0012 RLS: yorum / checklist / ek yazabilen iç roller (freelancer yalnızca kendi ya da atanmamış görevde). */
+const DETAIL_WRITE_ROLES: Role[] = ['owner', 'org_admin', 'operations', 'account', 'pm', 'creative', 'freelancer'];
 
 export interface DemoOptions { accountId?: string; orgId?: string; storage?: KV | null; now?: () => string }
 
@@ -130,6 +134,114 @@ export class DemoRepo implements Repo {
     await this.fire(db, 'tasks.update', 'tasks', t, before);
     this.persist(db);
     return { ...t };
+  }
+
+  /* ───────── Görev ayrıntıları (0012): yorum, checklist, ek — bellek içi; RLS kuralları DemoRepo'da yeniden uygulanır ───────── */
+  private det(db: DemoDb): DemoDetails { return (db.details ??= { comments: [], checklists: [], items: [], attachments: [] }); }
+  private detailTask(db: DemoDb, taskId: string, write: boolean): Task {
+    if (isClientRole(this.role)) throw new ForbiddenError();
+    const t = db.tasks.find((x) => x.id === taskId && x.org_id === this.orgId);
+    if (!t) throw new NotFoundError('Görev');
+    if (write && (!DETAIL_WRITE_ROLES.includes(this.role) || (this.role === 'freelancer' && t.assignee_id && t.assignee_id !== this.account.employee_id))) throw new ForbiddenError('Bu görevde değişiklik yetkin yok');
+    return t;
+  }
+  private detailId(prefix: string, rows: Array<{ id: string }>) { return this.nextId(prefix, rows.map((r) => r.id)); }
+  private checklistWithItems(d: DemoDetails, c: Omit<TaskChecklist, 'items'>): TaskChecklist { return { ...c, items: d.items.filter((i) => i.checklist_id === c.id).sort((a, b) => a.position - b.position) }; }
+  async listComments(taskId: string) { const db = this.db(); this.detailTask(db, taskId, false); return this.det(db).comments.filter((c) => c.task_id === taskId).sort((a, b) => a.created_at.localeCompare(b.created_at)); }
+  async addComment(taskId: string, body: string) {
+    const db = this.db(); const t = this.detailTask(db, taskId, true);
+    const c: TaskComment = { id: this.detailId('tcm', this.det(db).comments), org_id: this.orgId, task_id: taskId, author_id: `u_${this.account.id}`, author_name: this.account.name, body: commentBodySchema.parse(body), created_at: this.now(), updated_at: this.now(), external_id: null };
+    this.det(db).comments.push(c);
+    this.log(db, 'task.comment', `tasks/${taskId}`, { comment: c.id });
+    await this.fire(db, 'task.commented', 'tasks', { ...c, id: t.id });
+    this.persist(db);
+    return { ...c };
+  }
+  private ownComment(db: DemoDb, id: string): TaskComment {
+    const c = this.det(db).comments.find((x) => x.id === id && x.org_id === this.orgId);
+    if (!c) throw new NotFoundError('Yorum');
+    this.detailTask(db, c.task_id, true);
+    if (c.author_id !== `u_${this.account.id}` && !['owner', 'org_admin', 'operations'].includes(this.role)) throw new ForbiddenError('Yalnızca kendi yorumunu düzenleyebilirsin');
+    return c;
+  }
+  async updateComment(id: string, body: string) { const db = this.db(); const c = this.ownComment(db, id); c.body = commentBodySchema.parse(body); c.updated_at = this.now(); this.persist(db); return { ...c }; }
+  async deleteComment(id: string) { const db = this.db(); const c = this.ownComment(db, id); this.det(db).comments = this.det(db).comments.filter((x) => x.id !== c.id); this.persist(db); }
+  async listChecklists(taskId: string) {
+    const db = this.db(); this.detailTask(db, taskId, false); const d = this.det(db);
+    return d.checklists.filter((c) => c.task_id === taskId).sort((a, b) => a.position - b.position).map((c) => this.checklistWithItems(d, c));
+  }
+  async addChecklist(taskId: string, name: string) {
+    const db = this.db(); this.detailTask(db, taskId, true); const d = this.det(db);
+    const mine = d.checklists.filter((c) => c.task_id === taskId);
+    const c = { id: this.detailId('tcl', d.checklists), org_id: this.orgId, task_id: taskId, name: checklistNameSchema.parse(name), position: mine.reduce((m, x) => Math.max(m, x.position + 1), 0), external_id: null as string | null, updated_at: this.now() };
+    d.checklists.push(c); this.persist(db);
+    return this.checklistWithItems(d, c);
+  }
+  private checklistOf(db: DemoDb, id: string) {
+    const c = this.det(db).checklists.find((x) => x.id === id && x.org_id === this.orgId);
+    if (!c) throw new NotFoundError('Checklist');
+    this.detailTask(db, c.task_id, true);
+    return c;
+  }
+  async updateChecklist(id: string, patch: { name: string }) { const db = this.db(); const c = this.checklistOf(db, id); c.name = checklistNameSchema.parse(patch.name); c.updated_at = this.now(); this.persist(db); return this.checklistWithItems(this.det(db), c); }
+  async deleteChecklist(id: string) {
+    const db = this.db(); const c = this.checklistOf(db, id); const d = this.det(db);
+    d.checklists = d.checklists.filter((x) => x.id !== c.id); d.items = d.items.filter((i) => i.checklist_id !== c.id); this.persist(db);
+  }
+  async addCheckItem(checklistId: string, input: CheckItemCreate) {
+    const db = this.db(); const c = this.checklistOf(db, checklistId); const d = this.det(db); const v = checkItemCreateSchema.parse(input);
+    const it: TaskCheckItem = { id: this.detailId('tci', d.items), org_id: this.orgId, checklist_id: c.id, name: v.name, checked: false, position: d.items.filter((i) => i.checklist_id === c.id).reduce((m, x) => Math.max(m, x.position + 1), 0), due_at: v.due_at ?? null, assignee_id: v.assignee_id ?? null, external_id: null, updated_at: this.now() };
+    d.items.push(it); this.persist(db);
+    return { ...it };
+  }
+  private itemOf(db: DemoDb, id: string) {
+    const it = this.det(db).items.find((x) => x.id === id && x.org_id === this.orgId);
+    if (!it) throw new NotFoundError('Madde');
+    this.checklistOf(db, it.checklist_id);
+    return it;
+  }
+  async updateCheckItem(id: string, patch: CheckItemPatch) { const db = this.db(); const it = this.itemOf(db, id); Object.assign(it, checkItemPatchSchema.parse(patch), { updated_at: this.now() }); this.persist(db); return { ...it }; }
+  async deleteCheckItem(id: string) { const db = this.db(); const it = this.itemOf(db, id); this.det(db).items = this.det(db).items.filter((x) => x.id !== it.id); this.persist(db); }
+  async listAttachments(taskId: string) { const db = this.db(); this.detailTask(db, taskId, false); return this.det(db).attachments.filter((a) => a.task_id === taskId).sort((a, b) => a.created_at.localeCompare(b.created_at)); }
+  async addAttachment(taskId: string, input: AttachmentInput) {
+    const db = this.db(); this.detailTask(db, taskId, true); const d = this.det(db);
+    let url = input.url?.trim() ?? ''; let name = input.name?.trim() ?? ''; let mime = input.mime ?? ''; let bytes = 0;
+    if (input.file) {
+      if (input.file.size > MAX_ATTACHMENT_BYTES) throw new Error('Dosya 25 MB sınırını aşıyor');
+      const f = input.file as Blob & { name?: string };
+      name ||= f.name ?? 'dosya'; mime ||= f.type; bytes = f.size;
+      url = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(input.file) : '';
+    } else {
+      if (!/^https?:\/\/\S+$/i.test(url)) throw new Error('Geçerli bir http(s) bağlantısı gir');
+      name ||= url.replace(/^https?:\/\//i, '').split('/')[0];
+    }
+    const a: TaskAttachment = { id: this.detailId('tat', d.attachments), org_id: this.orgId, task_id: taskId, name: name.slice(0, 500), url, mime, bytes, storage_path: null, uploaded_by: `u_${this.account.id}`, created_at: this.now(), external_id: null };
+    d.attachments.push(a); this.log(db, 'task.attach', `tasks/${taskId}`, { name: a.name }); this.persist(db);
+    return { ...a };
+  }
+  private attachmentOf(db: DemoDb, id: string) {
+    const a = this.det(db).attachments.find((x) => x.id === id && x.org_id === this.orgId);
+    if (!a) throw new NotFoundError('Dosya');
+    this.detailTask(db, a.task_id, true);
+    return a;
+  }
+  async updateAttachment(id: string, patch: { name: string }) { const db = this.db(); const a = this.attachmentOf(db, id); a.name = checklistNameSchema.parse(patch.name); this.persist(db); return { ...a }; }
+  async deleteAttachment(id: string) {
+    const db = this.db(); const a = this.attachmentOf(db, id); const t = db.tasks.find((x) => x.id === a.task_id);
+    this.det(db).attachments = this.det(db).attachments.filter((x) => x.id !== a.id);
+    if (t?.cover?.attachment_id === a.id) t.cover = {};
+    this.persist(db);
+  }
+  async attachmentUrl(a: TaskAttachment) { return a.url; }
+  async taskBadges(taskIds: string[]) {
+    const db = this.db(); const d = this.det(db); const out: Record<string, TaskBadges> = {};
+    if (isClientRole(this.role)) return Object.fromEntries(taskIds.map((id) => [id, { comments: 0, attachments: 0, checkTotal: 0, checkDone: 0 }]));
+    for (const id of taskIds) {
+      const lists = d.checklists.filter((c) => c.task_id === id).map((c) => c.id);
+      const items = d.items.filter((i) => lists.includes(i.checklist_id));
+      out[id] = { comments: d.comments.filter((c) => c.task_id === id).length, attachments: d.attachments.filter((a) => a.task_id === id).length, checkTotal: items.length, checkDone: items.filter((i) => i.checked).length };
+    }
+    return out;
   }
 
   async listApprovals() {
@@ -259,6 +371,33 @@ export class DemoRepo implements Repo {
     t.mode = mode;
     this.persist(db);
   }
+  /** Demo ayrıntı deposu: aynı çekirdek (`syncCardDetails`) bellek içi tablolara yazar. Trello kaynaklı satırlar `sync_origin='trello'`. */
+  private demoDetailStore(db: DemoDb): DetailStore {
+    const d = this.det(db); const org = this.orgId; const now = () => this.now();
+    const tag = { sync_origin: 'trello', synced_at: this.now() };
+    return {
+      load: async (taskId) => {
+        const t = db.tasks.find((x) => x.id === taskId);
+        return {
+          description: t?.description ?? null, cover: t?.cover ?? null, comments: d.comments.filter((c) => c.task_id === taskId), attachments: d.attachments.filter((a) => a.task_id === taskId),
+          checklists: d.checklists.filter((c) => c.task_id === taskId).sort((a, b) => a.position - b.position).map((c) => this.checklistWithItems(d, c)),
+        };
+      },
+      setTaskFields: async (taskId, patch) => { const t = db.tasks.find((x) => x.id === taskId); if (t) Object.assign(t, patch); },
+      addComment: async (taskId, c) => { const r: TaskComment = { id: this.detailId('tcm', d.comments), org_id: org, task_id: taskId, author_id: null, updated_at: now(), ...tag, ...c }; d.comments.push(r); return { id: r.id }; },
+      updateComment: async (id, p) => { const r = d.comments.find((x) => x.id === id); if (r) Object.assign(r, p, tag); },
+      deleteComment: async (id) => { d.comments = d.comments.filter((x) => x.id !== id); },
+      addChecklist: async (taskId, c) => { const r = { id: this.detailId('tcl', d.checklists), org_id: org, task_id: taskId, updated_at: now(), ...tag, ...c }; d.checklists.push(r); return { id: r.id }; },
+      updateChecklist: async (id, p) => { const r = d.checklists.find((x) => x.id === id); if (r) Object.assign(r, p, tag); },
+      deleteChecklist: async (id) => { d.checklists = d.checklists.filter((x) => x.id !== id); d.items = d.items.filter((i) => i.checklist_id !== id); },
+      addCheckItem: async (checklistId, i) => { const r: TaskCheckItem = { id: this.detailId('tci', d.items), org_id: org, checklist_id: checklistId, updated_at: now(), ...tag, ...i }; d.items.push(r); return { id: r.id }; },
+      updateCheckItem: async (id, p) => { const r = d.items.find((x) => x.id === id); if (r) Object.assign(r, p, tag); },
+      deleteCheckItem: async (id) => { d.items = d.items.filter((x) => x.id !== id); },
+      addAttachment: async (taskId, a) => { const r: TaskAttachment = { id: this.detailId('tat', d.attachments), org_id: org, task_id: taskId, uploaded_by: null, updated_at: now(), ...tag, ...a }; d.attachments.push(r); return { id: r.id }; },
+      updateAttachment: async (id, p) => { const r = d.attachments.find((x) => x.id === id); if (r) Object.assign(r, p, tag); },
+      deleteAttachment: async (id) => { d.attachments = d.attachments.filter((x) => x.id !== id); },
+    };
+  }
   private importing = false;
   private demoSyncLog(db: DemoDb, e: Omit<SyncLogEntry, 'provider' | 'created_at'>) {
     const t = (db.trello ??= { last_sync_at: null, member_map: {} });
@@ -325,9 +464,19 @@ export class DemoRepo implements Repo {
       },
     };
     const tr = (db.trello ??= { last_sync_at: null, member_map: {} });
+    const employees = db.team.filter((m) => m.org_id === org && m.status === 'active').map((m) => ({ id: m.id, name: m.name }));
+    const memberEmployees: Record<string, string> = {};
+    for (const m of fixture.members) { const e = resolveEmployee(m.fullName, employees, tr.member_map); if (e) memberEmployees[m.id] = e; }
+    const dsum = emptyDetailsSummary();
+    const detailStore = this.demoDetailStore(db);
+    const details: CardDetailsHook = async ({ card, taskId, jsNewer }) => {
+      // Tam kart çekimi gibi: yoksa boş liste (Trello'da silinmişler JS'ten kalkar); JS'te açılmış (external_id'siz) satırlara dokunulmaz.
+      const raw = { desc: card.desc ?? '', cover: card.cover ?? null, checklists: [], comments: [], attachments: [], ...(fixture.details?.[card.id] ?? {}) };
+      addDetails(dsum, await syncCardDetails(detailStore, taskId, raw, { memberEmployees, jsNewer, cardActivity: card.dateLastActivity, log: (e) => this.demoSyncLog(db, e) }));
+    };
     this.importing = true;
     let res: TrelloImportResult;
-    try { res = await runImport(fixture, store, { now: this.now(), memberMap: tr.member_map, concurrency: 1, onLog: (e) => this.demoSyncLog(db, e) }); }
+    try { res = await runImport(fixture, store, { now: this.now(), memberMap: tr.member_map, concurrency: 1, onLog: (e) => this.demoSyncLog(db, e), details }); res.details = dsum; }
     finally { this.importing = false; }
     tr.last_sync_at = this.now();
     this.log(db, 'trello.import', 'integrations/trello', { tasks_created: res.tasks_created, tasks_updated: res.tasks_updated, cards: res.cards_seen });

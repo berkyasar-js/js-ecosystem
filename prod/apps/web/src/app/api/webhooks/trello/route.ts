@@ -1,7 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import { fail, json } from '@/lib/api';
 import { verifyTrelloSignature } from '@/lib/hmac';
-import { archiveCardTask, loadTrelloConfig, syncCard } from '@/lib/integrations/trello';
+import { archiveCardTask, applyDetailAction, loadTrelloConfig, syncCard } from '@/lib/integrations/trello';
+import { DETAIL_ACTIONS } from '@/lib/integrations/trello-details';
 import { isOwnTrelloAction } from '@/lib/integrations/trello-push';
 import { createAdmin } from '@/lib/supabase/admin';
 
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
       if (!k || !cfg.webhook_key || !eq(k, cfg.webhook_key)) return json({ error: 'Yetkisiz' }, 401);
     }
     if (cfg.mode === 'off') return json({ ok: true, ignored: 'mode_off' });
-    let body: { action?: { type?: string; idMemberCreator?: string; data?: { card?: { id?: string } } } };
+    let body: { action?: { id?: string; type?: string; date?: string; idMemberCreator?: string; memberCreator?: { fullName?: string; username?: string }; data?: { card?: { id?: string } } & Record<string, unknown> } };
     try { body = JSON.parse(raw); } catch { return json({ error: 'JSON bekleniyor' }, 400); }
     const type = body.action?.type ?? '';
     const cardId = body.action?.data?.card?.id;
@@ -43,6 +44,8 @@ export async function POST(req: Request) {
     // Döngü koruması: entegrasyon token'ının kendi yazdığı (JS → Trello) eylemler geri çekilmez.
     if (isOwnTrelloAction(body.action, cfg)) return json({ ok: true, ignored: 'own_action', type });
     if (type === 'deleteCard') { await archiveCardTask(admin, orgId, cardId); return json({ ok: true, type, result: 'archived' }); }
+    // Yorum / ek / checklist / madde eylemleri: satır bazlı uygula (updateCard açıklama + kapak dahil kartı yeniden çeker).
+    if (DETAIL_ACTIONS.has(type)) return json({ ok: true, type, result: await applyDetailAction(admin, orgId, cardId, body.action as never) });
     if (!/Card|CheckItem|Checklist/.test(type)) return json({ ok: true, ignored: type });
     return json({ ok: true, type, result: await syncCard(admin, orgId, cardId) });
   } catch (e) { return fail(e); }

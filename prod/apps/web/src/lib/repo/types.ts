@@ -4,6 +4,7 @@ import type {
   Message, Organization, OrgSettings, Project, Task, TaskCreate, TaskPatch, TaskState, TaskType, TeamMember, Twin, TwinBid,
   AccessToken, BidAssignResult, BidProposal, TaskAssignment, TaskBid, TokenCreate,
   TrelloImportResult, TrelloMode, TrelloPublicState,
+  AttachmentInput, CheckItemCreate, CheckItemPatch, TaskAttachment, TaskBadges, TaskCheckItem, TaskChecklist, TaskComment,
 } from '@jscore/contracts';
 import type { TrelloSnapshot } from '../integrations/trello-map';
 
@@ -24,6 +25,27 @@ export interface Repo {
   moveTask(id: string, state: TaskState): Promise<Task>;
   /** Görev alanlarını (başlık, sorumlu, öncelik, bitiş) günceller; aşama değişimi için moveTask kullanılır. */
   updateTask(id: string, patch: TaskPatch): Promise<Task>;
+  // görev ayrıntıları (0012): yorum, checklist, ek. Yazma başarısı sunucu onayıyla döner; hata fırlatır.
+  listComments(taskId: string): Promise<TaskComment[]>;
+  addComment(taskId: string, body: string): Promise<TaskComment>;
+  updateComment(id: string, body: string): Promise<TaskComment>;
+  deleteComment(id: string): Promise<void>;
+  listChecklists(taskId: string): Promise<TaskChecklist[]>;
+  addChecklist(taskId: string, name: string): Promise<TaskChecklist>;
+  updateChecklist(id: string, patch: { name: string }): Promise<TaskChecklist>;
+  deleteChecklist(id: string): Promise<void>;
+  addCheckItem(checklistId: string, input: CheckItemCreate): Promise<TaskCheckItem>;
+  updateCheckItem(id: string, patch: CheckItemPatch): Promise<TaskCheckItem>;
+  deleteCheckItem(id: string): Promise<void>;
+  listAttachments(taskId: string): Promise<TaskAttachment[]>;
+  /** Dosya (≤25 MB; Supabase: Storage `task-files`, demo: nesne adresi) ya da bağlantı ekler. */
+  addAttachment(taskId: string, input: AttachmentInput): Promise<TaskAttachment>;
+  updateAttachment(id: string, patch: { name: string }): Promise<TaskAttachment>;
+  deleteAttachment(id: string): Promise<void>;
+  /** Açılır / indirilir adres: Storage dosyasında imzalı (1 sa), bağlantıda url. */
+  attachmentUrl(a: TaskAttachment, opts?: { download?: boolean }): Promise<string>;
+  /** TaskRow / pano rozetleri için sayımlar (yorum, ek, checklist 4/12). */
+  taskBadges(taskIds: string[]): Promise<Record<string, TaskBadges>>;
   // approvals
   listApprovals(): Promise<Approval[]>;
   createApproval(input: ApprovalCreate): Promise<Approval>;

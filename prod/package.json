@@ -2,14 +2,24 @@
   "name": "jscore",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["apps/*", "packages/*"],
-  "engines": { "node": ">=20" },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "npm -w apps/web run dev",
     "build": "npm -w apps/web run build",
     "lint": "npm -w apps/web run lint",
     "test": "npm -w apps/web run test",
     "typecheck": "npm -w apps/web run typecheck",
-    "prompts:sql": "npm -w packages/prompts run emit-sql"
+    "prompts:sql": "npm -w packages/prompts run emit-sql",
+    "dev:rea": "npm -w apps/rea run dev",
+    "build:rea": "npm -w apps/rea run build",
+    "lint:rea": "npm -w apps/rea run lint",
+    "typecheck:rea": "npm -w apps/rea run typecheck",
+    "test:rea": "npm -w apps/rea run test"
   }
 }

@@ -154,7 +154,24 @@ export interface Task {
   due_at: string | null; planned_minutes: number; task_type: string; qty: number; source_ref: string | null; labels: string[]; client_visible: boolean; created_at: string;
   /** Trigger ile yazılır (0008): son-yazan-kazanır karşılaştırması için. */
   updated_at?: string; sync_origin?: string | null; synced_at?: string | null;
+  /** 0012: Trello kartı açıklaması + kapağı (renk ya da görev eki). */
+  description?: string | null; cover?: TaskCover | null;
 }
+/* ───────── Görev ayrıntıları (0012): yorum, checklist, ek, kapak ───────── */
+export const COVER_COLORS = ['green', 'yellow', 'orange', 'red', 'purple', 'blue', 'sky', 'lime', 'pink', 'black'] as const;
+export type CoverColor = (typeof COVER_COLORS)[number];
+export const COVER_COLOR_LABELS: Record<CoverColor, string> = { green: 'Yeşil', yellow: 'Sarı', orange: 'Turuncu', red: 'Kırmızı', purple: 'Mor', blue: 'Mavi', sky: 'Gökyüzü', lime: 'Limon', pink: 'Pembe', black: 'Siyah' };
+/** Kapak: renk ya da bir görev ekinin id'si (görsel). İkisi birden yok → kapaksız (null). */
+export interface TaskCover { color?: CoverColor | null; attachment_id?: string | null }
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+/** Eşzamanlı Trello eşlemesi için ortak alanlar: external_id (Trello id) + döngü işaretçisi. */
+interface SyncFields { external_id?: string | null; sync_origin?: string | null; synced_at?: string | null; updated_at?: string }
+export interface TaskComment extends SyncFields { id: string; org_id: string; task_id: string; author_id: string | null; author_name: string; body: string; created_at: string }
+export interface TaskCheckItem extends SyncFields { id: string; org_id: string; checklist_id: string; name: string; checked: boolean; position: number; due_at: string | null; assignee_id: string | null; created_at?: string }
+export interface TaskChecklist extends SyncFields { id: string; org_id: string; task_id: string; name: string; position: number; created_at?: string; items: TaskCheckItem[] }
+export interface TaskAttachment extends SyncFields { id: string; org_id: string; task_id: string; name: string; url: string; mime: string; bytes: number; storage_path: string | null; uploaded_by: string | null; created_at: string }
+/** TaskRow / pano kartı rozetleri (Trello rozetleri gibi). */
+export interface TaskBadges { comments: number; attachments: number; checkTotal: number; checkDone: number }
 export interface TaskType { key: string; label: string; sla_hours: number; default_minutes: number; unit_price_minor: number }
 export type ApprovalAction = 'content' | 'budget' | 'scope' | 'client_decision' | 'access';
 export interface Approval {
@@ -243,7 +260,20 @@ export const taskPatchSchema = z.object({
   assignee_id: z.string().min(1).nullable().optional(),
   priority: z.enum(['low', 'normal', 'high']).optional(),
   due_at: z.string().min(8).nullable().optional(),
+  description: z.string().max(20000).nullable().optional(),
+  cover: z.object({ color: z.enum(COVER_COLORS).nullable().optional(), attachment_id: z.string().min(1).nullable().optional() }).nullable().optional(),
 }).strict();
+export const commentBodySchema = z.string().trim().min(1, 'Yorum boş olamaz').max(20000);
+export const checklistNameSchema = z.string().trim().min(1, 'Ad boş olamaz').max(500);
+export const checkItemCreateSchema = z.object({ name: z.string().trim().min(1, 'Madde boş olamaz').max(1000), due_at: z.string().min(8).nullable().optional(), assignee_id: z.string().min(1).nullable().optional() });
+export const checkItemPatchSchema = z.object({
+  name: z.string().trim().min(1).max(1000).optional(), checked: z.boolean().optional(),
+  due_at: z.string().min(8).nullable().optional(), assignee_id: z.string().min(1).nullable().optional(),
+}).strict();
+export type CheckItemCreate = z.input<typeof checkItemCreateSchema>;
+export type CheckItemPatch = z.input<typeof checkItemPatchSchema>;
+/** Ek ekleme girdisi: dosya (Blob/File) ya da bağlantı. Dosya >25 MB reddedilir. */
+export interface AttachmentInput { name?: string; url?: string; file?: Blob; mime?: string }
 export type TaskPatch = z.input<typeof taskPatchSchema>;
 export const taskMoveSchema = z.object({ id: z.string().min(1), state: taskStateSchema });
 export const approvalCreateSchema = z.object({
@@ -396,6 +426,8 @@ export interface TrelloImportResult {
   tasks_skipped?: number;
   /** Eşlenemeyen kişi adları (kart üyesi veya kişi listesi) ve etkilenen kart sayısı. */
   unmapped_members: Array<{ name: string; cards: number }>;
+  /** Kart ayrıntıları (0012): bu çalıştırmada DEĞİŞEN açıklama / kapak / yorum / checklist / madde / ek sayıları. */
+  details?: { cards: number; description: number; cover: number; comments: number; checklists: number; check_items: number; attachments: number; skipped_conflicts: number; errors: number };
   errors: string[];
 }
 export const trelloMemberMapSchema = z.object({ member_map: z.record(z.string().min(1), z.string().min(1)) });

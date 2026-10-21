@@ -1,10 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { TrelloApiError, SupabaseTrelloStore, fetchSnapshot, listBoards, loadTrelloConfig, saveTrelloConfig, trelloFetch, writeSyncLog } from './trello';
-import { buildListMap, buildMemberIds, reconcilePlan, runImport, type SyncLogDraft, type TrelloCard } from './trello-map';
+import { addDetails, emptyDetailsSummary } from './trello-details';
+import { pullCardDetails, pushUnsyncedDetails } from './trello-details-supabase';
+import { buildListMap, buildMemberIds, reconcilePlan, runImport, type CardDetailsHook, type SyncLogDraft, type TrelloCard } from './trello-map';
 import { pushTaskNow } from './trello-push';
 
 export interface ReconcileSummary {
   org_id: string; skipped?: 'off' | 'not_connected'; pulled: number; pushed: number; created_cards: number; archived: number; vanished: number; skipped_conflicts: number; errors: string[];
+  /** Kart ayrıntıları: değişen kartlarda çekilen / JS'ten itilen satır sayıları. */
+  details_pulled?: number; details_pushed?: number;
 }
 const CAP = { push: 150, missing: 40, unlinked: 60 };
 
@@ -49,9 +53,17 @@ export async function reconcileTrello(admin: SupabaseClient, orgId: string): Pro
       if (r === 'updated') out.pushed++; else if (r === 'skipped') out.skipped_conflicts++; else if (r === 'error') out.errors.push(`itme: ${t.id}`);
     }
     for (const t of unlinkedTasks) if ((await pushTaskNow(admin, orgId, t.id, cfg)) === 'created') out.created_cards++;
+    // Olay hattının kaçırdığı yorum / checklist / madde / ek satırları (Trello kartlı görevlerde external_id'si olmayanlar).
+    const up = await pushUnsyncedDetails(admin, orgId, cfg);
+    out.details_pushed = up.pushed;
+    out.errors.push(...up.errors.map((e) => `ayrıntı itme: ${e}`));
   }
 
-  const imp = await runImport({ ...snap, cards: plan.pullCards }, store, { now, memberMap: cfg.member_map, onLog: (e) => logs.push({ ...e, direction: 'reconcile' }) });
+  const dsum = emptyDetailsSummary();
+  const cfgNow = cfg;
+  const details: CardDetailsHook = async (info) => { addDetails(dsum, await pullCardDetails(admin, orgId, cfgNow, info, (e) => logs.push({ ...e, direction: 'reconcile' }))); };
+  const imp = await runImport({ ...snap, cards: plan.pullCards }, store, { now, memberMap: cfg.member_map, onLog: (e) => logs.push({ ...e, direction: 'reconcile' }), details });
+  out.details_pulled = dsum.comments + dsum.checklists + dsum.check_items + dsum.attachments + dsum.description + dsum.cover;
   out.pulled = imp.tasks_created + imp.tasks_updated;
   out.skipped_conflicts += imp.tasks_skipped ?? 0;
   out.errors.push(...imp.errors);
@@ -74,7 +86,7 @@ export async function reconcileTrello(admin: SupabaseClient, orgId: string): Pro
     } catch (e) { out.errors.push(`${cardId}: ${e instanceof Error ? e.message : String(e)}`); }
   }
 
-  logs.push({ direction: 'reconcile', entity: 'integration', entity_id: null, external_id: null, action: 'reconcile', ok: out.errors.length === 0, message: `çekilen ${out.pulled} · itilen ${out.pushed} · yeni kart ${out.created_cards} · arşiv ${out.archived} · kayıp ${out.vanished} · atlanan ${out.skipped_conflicts}${out.errors.length ? ` · hata ${out.errors.length}` : ''}` });
+  logs.push({ direction: 'reconcile', entity: 'integration', entity_id: null, external_id: null, action: 'reconcile', ok: out.errors.length === 0, message: `çekilen ${out.pulled} · itilen ${out.pushed} · yeni kart ${out.created_cards} · arşiv ${out.archived} · kayıp ${out.vanished} · atlanan ${out.skipped_conflicts} · ayrıntı ↓${out.details_pulled ?? 0} ↑${out.details_pushed ?? 0}${out.errors.length ? ` · hata ${out.errors.length}` : ''}` });
   await writeSyncLog(admin, orgId, logs);
   await saveTrelloConfig(admin, orgId, { last_sync_at: now });
   return out;

@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { TaskState, TrelloConfig } from '@jscore/contracts';
+import type { TaskCover, TaskState, TrelloConfig } from '@jscore/contracts';
 import { CARD_FIELDS, TrelloApiError, loadTrelloConfig, trelloFetch, writeSyncLog, type TrelloCreds } from './trello';
+import { DETAIL_TABLES, detailChangeOf, shouldPushDetail } from './trello-details';
+import { pushDetailNow } from './trello-details-supabase';
 import { isTrelloOriginWrite, trelloIsNewer, type ListMapEntry, type SyncLogDraft, type TrelloCard } from './trello-map';
 
 /**
@@ -17,8 +19,11 @@ import { isTrelloOriginWrite, trelloIsNewer, type ListMapEntry, type SyncLogDraf
 export interface PushTask {
   id: string; org_id?: string; project_id: string; title: string; assignee_id: string | null; state: TaskState; due_at: string | null;
   labels: string[]; source_ref: string | null; updated_at?: string | null; synced_at?: string | null; sync_origin?: string | null;
+  /** 0012. `null`/yok = Trello ile hiç eşlenmedi (itilmez); '' / {} = bilerek boşaltıldı (itilir). */
+  description?: string | null; cover?: TaskCover | null;
 }
-export interface CardPatch { name?: string; idList?: string; due?: string | null; dueComplete?: boolean; idMembers?: string[]; closed?: boolean }
+export interface CoverPatch { color: string | null; idAttachment: string | null; size?: string }
+export interface CardPatch { name?: string; idList?: string; due?: string | null; dueComplete?: boolean; idMembers?: string[]; closed?: boolean; desc?: string; cover?: CoverPatch }
 export type ListMap = NonNullable<TrelloConfig['list_map']>;
 
 /* ───────── Saf yardımcılar ───────── */
@@ -57,9 +62,17 @@ export function chooseList(task: Pick<PushTask, 'state' | 'assignee_id'>, boardI
   return best ? lists.find(([, e]) => best(e))![0] : null;
 }
 
-export interface PatchEnv { listMap: ListMap; memberIds: Record<string, string>; boardId: string; prevAssignee?: string | null }
+export interface PatchEnv { listMap: ListMap; memberIds: Record<string, string>; boardId: string; prevAssignee?: string | null; /** JS ek id → Trello ek id (kapak için) */ attachmentExt?: Record<string, string> }
+const nlf = (s: string | null | undefined) => (s ?? '').replace(/\r\n?/g, '\n').trim();
+/** JS kapağı → Trello kapak hedefi; undefined = dokunma (eşlenmemiş / ek henüz Trello'da yok). */
+export function wantedCover(cover: TaskCover | null | undefined, attachmentExt: Record<string, string> = {}): CoverPatch | undefined {
+  if (cover == null) return undefined;
+  if (cover.attachment_id) { const ext = attachmentExt[cover.attachment_id]; return ext ? { color: null, idAttachment: ext, size: 'normal' } : undefined; }
+  if (cover.color) return { color: cover.color, idAttachment: null, size: 'normal' };
+  return { color: null, idAttachment: null };
+}
 /** Görev → kart yaması (yalnızca FARK içerir; boş = yapılacak bir şey yok). */
-export function buildCardPatch(task: PushTask, card: Pick<TrelloCard, 'name' | 'idList' | 'due' | 'dueComplete' | 'idMembers' | 'closed'>, env: PatchEnv): CardPatch {
+export function buildCardPatch(task: PushTask, card: Pick<TrelloCard, 'name' | 'idList' | 'due' | 'dueComplete' | 'idMembers' | 'closed'> & Partial<Pick<TrelloCard, 'desc' | 'cover'>>, env: PatchEnv): CardPatch {
   const patch: CardPatch = {};
   const archived = task.state === 'archive';
   const name = cardNameFor(task);
@@ -73,6 +86,9 @@ export function buildCardPatch(task: PushTask, card: Pick<TrelloCard, 'name' | '
     const target = chooseList(task, env.boardId, env.listMap, card.idList);
     if (target && target !== card.idList) patch.idList = target;
   }
+  if (task.description != null && nlf(task.description) !== nlf(card.desc)) patch.desc = task.description.replace(/\r\n?/g, '\n');
+  const wc = wantedCover(task.cover, env.attachmentExt);
+  if (wc && ((wc.color ?? null) !== (card.cover?.color ?? null) || (wc.idAttachment ?? null) !== (card.cover?.idAttachment ?? null))) patch.cover = wc;
   const mine = task.assignee_id ? env.memberIds[task.assignee_id] : undefined;
   if (mine && !archived) {
     const prev = env.prevAssignee && env.prevAssignee !== task.assignee_id ? env.memberIds[env.prevAssignee] : undefined;
@@ -82,14 +98,14 @@ export function buildCardPatch(task: PushTask, card: Pick<TrelloCard, 'name' | '
   }
   return patch;
 }
-const patchBody = (p: CardPatch) => {
+export const patchBody = (p: CardPatch) => {
   const { idMembers, ...rest } = p;
   return { ...rest, ...(idMembers ? { idMembers: idMembers.join(',') } : {}) };
 };
 
 /* ───────── Olay süzgeci + döngü koruması ───────── */
 export interface SyncEventLike { type: string; aggregate: string; payload: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null } & Record<string, unknown> }
-const RELEVANT = ['state', 'assignee_id', 'due_at', 'title'] as const;
+const RELEVANT = ['state', 'assignee_id', 'due_at', 'title', 'description', 'cover'] as const;
 export function shouldPushEvent(ev: SyncEventLike, cfg: Pick<TrelloConfig, 'mode'> | null): { push: boolean; reason: string } {
   if (!cfg || cfg.mode !== 'two_way') return { push: false, reason: 'mode' };
   if (ev.aggregate !== 'tasks' || !/\.(insert|update)$/.test(ev.type)) return { push: false, reason: 'not_task' };
@@ -118,6 +134,8 @@ export interface PushPorts {
   /** source_ref'i yazar (null = serbest bırak); yazma sync_origin='trello' ile işaretlenir. */
   linkCard(taskId: string, cardId: string | null): Promise<void>;
   getCard(cardId: string): Promise<TrelloCard | null>;
+  /** JS ek id → Trello ek id (yalnızca kapak ek ise gerekir). */
+  attachmentExt?(taskId: string): Promise<Record<string, string>>;
   putCard(cardId: string, body: Record<string, unknown>): Promise<void>;
   postCard(body: Record<string, unknown>): Promise<{ id: string }>;
   log(e: SyncLogDraft): void | Promise<void>;
@@ -139,7 +157,8 @@ export async function pushTaskWith(ports: PushPorts, taskId: string, opts: { pre
       const cardId = ref.slice(7);
       const card = await ports.getCard(cardId);
       if (!card) { await log('vanished', false, 'Kart Trello’da bulunamadı', cardId); return 'error'; }
-      const patch = buildCardPatch(task, card, { listMap, memberIds: cfg.member_ids ?? {}, boardId: card.idBoard ?? '', prevAssignee: opts.prevAssignee });
+      const attachmentExt = task.cover?.attachment_id && ports.attachmentExt ? await ports.attachmentExt(task.id) : undefined;
+      const patch = buildCardPatch(task, card, { listMap, memberIds: cfg.member_ids ?? {}, boardId: card.idBoard ?? '', prevAssignee: opts.prevAssignee, attachmentExt });
       const keys = Object.keys(patch);
       if (!keys.length) return 'noop';
       if (trelloIsNewer(task.updated_at, card.dateLastActivity)) { await log('skipped_conflict', true, `Trello daha yeni (${card.dateLastActivity}) · ${keys.join(', ')} itilmedi`, cardId); return 'skipped'; }
@@ -177,7 +196,7 @@ export function supabasePushPorts(admin: SupabaseClient, orgId: string, cfg: Tre
   return {
     cfg,
     async loadTask(id) {
-      const { data, error } = await admin.from('tasks').select('id,project_id,title,assignee_id,state,due_at,labels,source_ref,updated_at,synced_at,sync_origin').eq('id', id).eq('org_id', orgId).maybeSingle();
+      const { data, error } = await admin.from('tasks').select('id,project_id,title,assignee_id,state,due_at,labels,source_ref,updated_at,synced_at,sync_origin,description,cover').eq('id', id).eq('org_id', orgId).maybeSingle();
       if (error) throw new Error(error.message);
       return (data as PushTask | null) ?? null;
     },
@@ -197,6 +216,10 @@ export function supabasePushPorts(admin: SupabaseClient, orgId: string, cfg: Tre
       try { return await trelloFetch<TrelloCard>(creds, `/cards/${cardId}`, { params: { fields: CARD_FIELDS }, fetchImpl }); }
       catch (e) { if (e instanceof TrelloApiError && e.status === 404) return null; throw e; }
     },
+    async attachmentExt(taskId) {
+      const { data } = await admin.from('task_attachments').select('id,external_id').eq('task_id', taskId).eq('org_id', orgId).not('external_id', 'is', null);
+      return Object.fromEntries(((data ?? []) as Row[]).filter((r) => !String(r.external_id).startsWith('pending:')).map((r) => [r.id as string, r.external_id as string]));
+    },
     async putCard(cardId, body) { await trelloFetch(creds, `/cards/${cardId}`, { method: 'PUT', body, fetchImpl }); },
     postCard: (body) => trelloFetch<{ id: string }>(creds, '/cards', { method: 'POST', body, fetchImpl }),
     log: (e) => writeSyncLog(admin, orgId, [e]),
@@ -215,9 +238,33 @@ export async function pushTaskNow(admin: SupabaseClient, orgId: string, taskId: 
  * hata dispatcher'ı durdurmaz (günlüğe yazılır). `cache`: aynı partide org başına tek yapılandırma okuması.
  */
 export async function syncEvent(admin: SupabaseClient, ev: SyncEventLike & { org_id: string; aggregate_id: string }, cache: Map<string, TrelloConfig | null> = new Map()): Promise<PushResult> {
+  if (detailChangeOf(ev as never)) {
+    if (!cache.has(ev.org_id)) cache.set(ev.org_id, await loadTrelloConfig(admin, ev.org_id).catch(() => null));
+    const cfgD = cache.get(ev.org_id) ?? null;
+    const d = shouldPushDetail(ev as never, cfgD);
+    if (!d.push || !d.change) return 'skipped';
+    const r = await pushDetailNow(admin, ev.org_id, d.change, cfgD);
+    return r === 'pushed' ? 'updated' : r === 'error' ? 'error' : r === 'skipped' ? 'skipped' : 'noop';
+  }
   if (ev.aggregate !== 'tasks') return 'skipped';
   if (!cache.has(ev.org_id)) cache.set(ev.org_id, await loadTrelloConfig(admin, ev.org_id).catch(() => null));
   const cfg = cache.get(ev.org_id) ?? null;
   if (!shouldPushEvent(ev, cfg).push) return 'skipped';
   return pushTaskNow(admin, ev.org_id, ev.aggregate_id, cfg, { prevAssignee: (ev.payload.old?.assignee_id as string | null | undefined) ?? null });
+}
+
+/**
+ * Satır içi ayrıntı itmesi: tarayıcıdan yorum / checklist / ek yazıldıktan sonra son birkaç dakikanın ayrıntı olaylarını işler
+ * (silmede güvenilir `old` satırı olaydan gelir; istemci kimlik göndermez). Cron aynı olayları tekrar işler; itme idempotenttir.
+ */
+export async function pushRecentDetailEvents(admin: SupabaseClient, orgId: string, windowMs = 3 * 60_000): Promise<{ processed: number; pushed: number }> {
+  const cfg = await loadTrelloConfig(admin, orgId).catch(() => null);
+  if (!cfg || cfg.mode !== 'two_way') return { processed: 0, pushed: 0 };
+  const since = new Date(Date.now() - windowMs).toISOString();
+  const { data } = await admin.from('events').select('id,org_id,type,aggregate,aggregate_id,payload').eq('org_id', orgId).gte('occurred_at', since)
+    .or(`aggregate.in.(${DETAIL_TABLES.join(',')}),type.eq.task.commented`).order('occurred_at').limit(50);
+  const cache = new Map<string, TrelloConfig | null>([[orgId, cfg]]);
+  let pushed = 0;
+  for (const ev of (data ?? []) as Array<SyncEventLike & { org_id: string; aggregate_id: string }>) if ((await syncEvent(admin, ev, cache)) === 'updated') pushed++;
+  return { processed: data?.length ?? 0, pushed };
 }

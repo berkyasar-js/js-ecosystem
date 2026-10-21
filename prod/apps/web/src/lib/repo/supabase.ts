@@ -3,6 +3,8 @@ import {
   COLLECTIONS, DEAL_STAGES, LEAVE_DECIDERS, canWriteColl, type AuditEvent, type Checklist, type CollKey, type Deal, type DealStage, type Leave, type Records, type SaveInput, type TeamMember,
   approvalCreateSchema, canDecideApproval, orgSettingsPatchSchema, taskCreateSchema, taskPatchSchema, type AgentRun, type Approval, type ApprovalCreate, type BoardAnswer,
   TOKEN_ADMIN_ROLES, bidProposalSchema, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
+  checkItemCreateSchema, checkItemPatchSchema, checklistNameSchema, commentBodySchema, MAX_ATTACHMENT_BYTES, type AttachmentInput, type CheckItemCreate, type CheckItemPatch,
+  type TaskAttachment, type TaskBadges, type TaskCheckItem, type TaskChecklist, type TaskComment,
   type BoardDecision, type ConnectData, type Integration, type Me, type Message, type OrgSettings, type Role, type Task, type TaskCreate, type TaskPatch, type TaskState,
 } from '@jscore/contracts';
 import { DEFAULT_SETTINGS } from './defaults';
@@ -11,6 +13,7 @@ import { ForbiddenError, NotFoundError, type Repo } from './types';
 import { validateRecord } from './validate';
 
 type Row = Record<string, unknown>;
+const FILES_BUCKET = 'task-files';
 const TOKEN_COLS = 'id,org_id,name,token_prefix,scopes,created_at,last_used_at,user_id,expires_at,revoked_at';
 /** RLS bilinçli: her sorgu kullanıcının JWT'si ile çalışır; ek filtre yalnızca aktif organizasyonu seçmek içindir. */
 export class SupabaseRepo implements Repo {
@@ -74,6 +77,118 @@ export class SupabaseRepo implements Repo {
       void fetch('/api/integrations/trello/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ task_id: t.id }), keepalive: true }).catch(() => undefined);
     }
     return t;
+  }
+
+  /* ───────── Görev ayrıntıları (0012): yorum, checklist, ek. RLS ile korunur; 0 satır etkilenirse yetki/yok hatası verir. ───────── */
+  /** Best-effort satır içi itme: son dakikaların ayrıntı olaylarını Trello'ya iter (cron aynı olayları yeniden işler; idempotent). */
+  private detailsSoon<T>(v: T): T {
+    if (typeof window !== 'undefined') void fetch('/api/integrations/trello/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ details: true }), keepalive: true }).catch(() => undefined);
+    return v;
+  }
+  private async one<T>(p: PromiseLike<{ data: T[] | null; error: { message: string; code?: string } | null }>, what = 'Kayıt'): Promise<T> {
+    const rows = await this.ok<T[]>(p);
+    if (!rows?.length) throw new ForbiddenError(`${what} bulunamadı ya da değiştirme yetkin yok`);
+    return rows[0];
+  }
+  async listComments(taskId: string) { return this.ok<TaskComment[]>(this.sb.from('task_comments').select('*').eq('task_id', taskId).order('created_at')); }
+  async addComment(taskId: string, body: string) {
+    const me = await this.me();
+    if (!me) throw new ForbiddenError();
+    const row = { org_id: me.org_id, task_id: taskId, author_id: me.id, author_name: me.name, body: commentBodySchema.parse(body) };
+    return this.detailsSoon(await this.one<TaskComment>(this.sb.from('task_comments').insert(row).select(), 'Görev'));
+  }
+  async updateComment(id: string, body: string) { return this.detailsSoon(await this.one<TaskComment>(this.sb.from('task_comments').update({ body: commentBodySchema.parse(body) }).eq('id', id).select(), 'Yorum')); }
+  async deleteComment(id: string) { await this.one(this.sb.from('task_comments').delete().eq('id', id).select('id'), 'Yorum'); this.detailsSoon(0); }
+
+  private withItems(r: Row): TaskChecklist {
+    const { task_check_items, ...rest } = r;
+    return { ...(rest as Omit<TaskChecklist, 'items'>), items: ((task_check_items as TaskCheckItem[] | null) ?? []).slice().sort((a, b) => a.position - b.position) };
+  }
+  async listChecklists(taskId: string) {
+    const rows = await this.ok<Row[]>(this.sb.from('task_checklists').select('*, task_check_items(*)').eq('task_id', taskId).order('position'));
+    return rows.map((r) => this.withItems(r));
+  }
+  async addChecklist(taskId: string, name: string) {
+    const cur = await this.ok<Array<{ position: number }>>(this.sb.from('task_checklists').select('position').eq('task_id', taskId).order('position', { ascending: false }).limit(1));
+    const row = await this.one<Row>(this.sb.from('task_checklists').insert({ org_id: await this.org(), task_id: taskId, name: checklistNameSchema.parse(name), position: (cur[0]?.position ?? -1) + 1 }).select('*, task_check_items(*)'), 'Görev');
+    return this.detailsSoon(this.withItems(row));
+  }
+  async updateChecklist(id: string, patch: { name: string }) {
+    return this.detailsSoon(this.withItems(await this.one<Row>(this.sb.from('task_checklists').update({ name: checklistNameSchema.parse(patch.name) }).eq('id', id).select('*, task_check_items(*)'), 'Checklist')));
+  }
+  async deleteChecklist(id: string) { await this.one(this.sb.from('task_checklists').delete().eq('id', id).select('id'), 'Checklist'); this.detailsSoon(0); }
+  async addCheckItem(checklistId: string, input: CheckItemCreate) {
+    const v = checkItemCreateSchema.parse(input);
+    const cur = await this.ok<Array<{ position: number }>>(this.sb.from('task_check_items').select('position').eq('checklist_id', checklistId).order('position', { ascending: false }).limit(1));
+    return this.detailsSoon(await this.one<TaskCheckItem>(this.sb.from('task_check_items').insert({ org_id: await this.org(), checklist_id: checklistId, name: v.name, due_at: v.due_at ?? null, assignee_id: v.assignee_id ?? null, position: (cur[0]?.position ?? -1) + 1 }).select(), 'Checklist'));
+  }
+  async updateCheckItem(id: string, patch: CheckItemPatch) { return this.detailsSoon(await this.one<TaskCheckItem>(this.sb.from('task_check_items').update(checkItemPatchSchema.parse(patch)).eq('id', id).select(), 'Madde')); }
+  async deleteCheckItem(id: string) { await this.one(this.sb.from('task_check_items').delete().eq('id', id).select('id'), 'Madde'); this.detailsSoon(0); }
+
+  async listAttachments(taskId: string) { return this.ok<TaskAttachment[]>(this.sb.from('task_attachments').select('*').eq('task_id', taskId).order('created_at')); }
+  /** Dosya: Storage `task-files` (<org>/<görev>/<uuid>-<ad>) + satır; bağlantı: yalnızca satır. Satır yazılamazsa yüklenen dosya geri silinir. */
+  async addAttachment(taskId: string, input: AttachmentInput) {
+    const me = await this.me();
+    if (!me) throw new ForbiddenError();
+    let row: Row;
+    let path: string | null = null;
+    if (input.file) {
+      if (input.file.size > MAX_ATTACHMENT_BYTES) throw new Error('Dosya 25 MB sınırını aşıyor');
+      const f = input.file as Blob & { name?: string };
+      const name = (input.name?.trim() || f.name || 'dosya').slice(0, 500);
+      const safe = name.normalize('NFKD').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 100) || 'dosya';
+      path = `${me.org_id}/${taskId}/${crypto.randomUUID()}-${safe}`;
+      const mime = input.mime || f.type || 'application/octet-stream';
+      const up = await this.sb.storage.from(FILES_BUCKET).upload(path, input.file, { contentType: mime, upsert: false });
+      if (up.error) throw new Error(`Dosya yüklenemedi: ${up.error.message}`);
+      row = { name, mime, bytes: f.size, storage_path: path, url: '' };
+    } else {
+      const url = input.url?.trim() ?? '';
+      if (!/^https?:\/\/\S+$/i.test(url)) throw new Error('Geçerli bir http(s) bağlantısı gir');
+      row = { name: (input.name?.trim() || url.replace(/^https?:\/\//i, '').split('/')[0]).slice(0, 500), url, mime: '', bytes: 0, storage_path: null };
+    }
+    try {
+      return this.detailsSoon(await this.one<TaskAttachment>(this.sb.from('task_attachments').insert({ ...row, org_id: me.org_id, task_id: taskId, uploaded_by: me.id }).select(), 'Görev'));
+    } catch (e) {
+      if (path) await this.sb.storage.from(FILES_BUCKET).remove([path]).then(() => undefined, () => undefined);
+      throw e;
+    }
+  }
+  async updateAttachment(id: string, patch: { name: string }) { return this.detailsSoon(await this.one<TaskAttachment>(this.sb.from('task_attachments').update({ name: checklistNameSchema.parse(patch.name) }).eq('id', id).select(), 'Dosya')); }
+  async deleteAttachment(id: string) {
+    const a = await this.one<TaskAttachment>(this.sb.from('task_attachments').select('*').eq('id', id), 'Dosya');
+    await this.one(this.sb.from('task_attachments').delete().eq('id', id).select('id'), 'Dosya');
+    if (a.storage_path) await this.sb.storage.from(FILES_BUCKET).remove([a.storage_path]).then(() => undefined, () => undefined);
+    // Kapak olarak kullanılan ek silindiyse kapağı kaldır.
+    const t = await this.ok<Row | null>(this.sb.from('tasks').select('cover').eq('id', a.task_id).maybeSingle());
+    if ((t?.cover as { attachment_id?: string } | null)?.attachment_id === id) await this.ok(this.sb.from('tasks').update({ cover: {} }).eq('id', a.task_id).select('id'));
+    this.detailsSoon(0);
+  }
+  async attachmentUrl(a: TaskAttachment, opts: { download?: boolean } = {}) {
+    if (!a.storage_path) return a.url;
+    const { data, error } = await this.sb.storage.from(FILES_BUCKET).createSignedUrl(a.storage_path, 3600, opts.download ? { download: a.name } : undefined);
+    if (error || !data) throw new Error(`Dosya adresi alınamadı: ${error?.message ?? ''}`);
+    return data.signedUrl;
+  }
+  async taskBadges(taskIds: string[]) {
+    const out: Record<string, TaskBadges> = Object.fromEntries(taskIds.map((id) => [id, { comments: 0, attachments: 0, checkTotal: 0, checkDone: 0 }]));
+    // PostgREST satır sınırı (1000) için sayfalı okuma
+    const pages = async <T,>(mk: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string; code?: string } | null }>) => {
+      const rows: T[] = [];
+      for (let from = 0; ; from += 1000) { const r = await this.ok<T[]>(mk(from, from + 999)); rows.push(...r); if (r.length < 1000) return rows; }
+    };
+    for (let i = 0; i < taskIds.length; i += 100) {
+      const ids = taskIds.slice(i, i + 100);
+      const [cm, at, cl] = await Promise.all([
+        pages<{ task_id: string }>((f, t) => this.sb.from('task_comments').select('task_id').in('task_id', ids).order('id').range(f, t)),
+        pages<{ task_id: string }>((f, t) => this.sb.from('task_attachments').select('task_id').in('task_id', ids).order('id').range(f, t)),
+        pages<{ task_id: string; task_check_items: Array<{ checked: boolean }> | null }>((f, t) => this.sb.from('task_checklists').select('task_id, task_check_items(checked)').in('task_id', ids).order('id').range(f, t)),
+      ]);
+      for (const r of cm) out[r.task_id].comments++;
+      for (const r of at) out[r.task_id].attachments++;
+      for (const r of cl) for (const it of r.task_check_items ?? []) { out[r.task_id].checkTotal++; if (it.checked) out[r.task_id].checkDone++; }
+    }
+    return out;
   }
 
   async listApprovals() { return this.ok(this.sb.from('approvals').select('*').eq('org_id', await this.org()).order('created_at', { ascending: false })); }

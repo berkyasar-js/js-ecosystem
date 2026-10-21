@@ -1,5 +1,5 @@
 import { fail, json } from '@/lib/api';
-import { pushTaskNow } from '@/lib/integrations/trello-push';
+import { pushRecentDetailEvents, pushTaskNow } from '@/lib/integrations/trello-push';
 import { getRepo } from '@/lib/repo';
 import { createAdmin } from '@/lib/supabase/admin';
 
@@ -16,7 +16,8 @@ export async function POST(req: Request) {
     const me = await (await getRepo()).me();
     if (!me) return json({ error: 'Oturum yok' }, 401);
     if (!PUSH_ROLES.includes(me.role)) return json({ ok: true, result: 'skipped' });
-    const body = (await req.json().catch(() => null)) as { task_id?: unknown; prev_assignee?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as { task_id?: unknown; prev_assignee?: unknown; details?: unknown } | null;
+    if (body?.details === true) return json({ ok: true, ...(await pushRecentDetailEvents(admin, me.org_id)) });
     if (!body || typeof body.task_id !== 'string') return json({ error: 'task_id gerekli' }, 400);
     const result = await pushTaskNow(admin, me.org_id, body.task_id, undefined, { prevAssignee: typeof body.prev_assignee === 'string' ? body.prev_assignee : null });
     return json({ ok: true, result });

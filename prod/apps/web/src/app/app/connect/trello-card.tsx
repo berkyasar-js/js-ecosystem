@@ -151,7 +151,7 @@ export function TrelloCard() {
         <div className="mt-5 grid gap-3" data-testid="trello-result">
           <h3 className="text-sm font-bold">Sonuç</h3>
           <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-            {([['Pano', res.boards], ['Liste', res.lists], ['Kart', res.cards_seen], ['Şablon (atlandı)', res.skipped_templates], ['Proje yeni/mevcut', `${res.projects_created}/${res.projects_updated}`], ['Görev yeni', res.tasks_created], ['Görev güncel', res.tasks_updated], ['Görev değişmedi', res.tasks_unchanged]] as Array<[string, string | number]>).map(([l, v]) => (
+            {([['Pano', res.boards], ['Liste', res.lists], ['Kart', res.cards_seen], ['Şablon (atlandı)', res.skipped_templates], ['Proje yeni/mevcut', `${res.projects_created}/${res.projects_updated}`], ['Görev yeni', res.tasks_created], ['Görev güncel', res.tasks_updated], ['Görev değişmedi', res.tasks_unchanged], ...(res.details ? [['Açıklama/kapak', `${res.details.description}/${res.details.cover}`], ['Yorum', res.details.comments], ['Checklist/madde', `${res.details.checklists}/${res.details.check_items}`], ['Ek', res.details.attachments]] : [])] as Array<[string, string | number]>).map(([l, v]) => (
               <div key={l} className="rounded-control bg-nested p-2"><dt className="text-xs text-muted">{l}</dt><dd className="font-bold">{v}</dd></div>
             ))}
           </dl>

@@ -1,6 +1,6 @@
 import type {
   AuditEvent, AccessToken, SyncLogEntry, AgentPrompt, AgentRun, Approval, BoardDecision, Brand, Channel, Integration, McpServer, Me, Member, Message,
-  Organization, OrgSettings, Project, Role, StagePlanItem, Task, TaskAssignment, TaskBid, TaskState, TaskType, TeamMember, Twin, TwinBid, Webhook,
+  Organization, OrgSettings, Project, Role, StagePlanItem, Task, TaskAssignment, TaskAttachment, TaskBid, TaskCheckItem, TaskChecklist, TaskComment, TaskState, TaskType, TeamMember, Twin, TwinBid, Webhook,
 } from '@jscore/contracts';
 import { TASK_STATES } from '@jscore/contracts';
 import { makeModuleSeed, type ModuleCols } from './demo-seed-modules';
@@ -237,12 +237,15 @@ const settings = (name: string): OrgSettings => ({
   security: { mfa_required: true, session_hours: 12, ip_allowlist: [] },
 });
 
+export interface DemoDetails { comments: TaskComment[]; checklists: Array<Omit<TaskChecklist, 'items'>>; items: TaskCheckItem[]; attachments: TaskAttachment[] }
 export interface DemoDb {
   orgs: Organization[]; team: TeamMember[]; brands: Brand[]; projects: Project[]; tasks: Task[]; taskTypes: TaskType[]; approvals: Approval[];
   channels: Channel[]; messages: Message[]; settings: Record<string, OrgSettings>; members: Member[]; prompts: AgentPrompt[]; runs: AgentRun[];
   cols: ModuleCols; audit: AuditEvent[];
   /** İhale teklifleri / atamalar: eski localStorage kayıtlarında yoktur → DemoRepo `??=` ile açar. */
   taskBids?: TaskBid[]; assignments?: TaskAssignment[];
+  /** Görev ayrıntıları (0012): eski localStorage kayıtlarında yoktur → DemoRepo `??=` ile açar. */
+  details?: DemoDetails;
   /** Trello demo durumu: örnek içe aktarma zamanı + kişi eşlemeleri (anahtar = memberKey(ad) → çalışan id). */
   trello?: { last_sync_at: string | null; member_map: Record<string, string>; mode?: 'two_way' | 'pull_only' | 'off'; sync_log?: SyncLogEntry[] };
   board: BoardDecision[]; twins: Twin[]; bids: TwinBid[]; connect: { integrations: Integration[]; mcp_servers: McpServer[]; webhooks: Webhook[]; tokens: AccessToken[] };

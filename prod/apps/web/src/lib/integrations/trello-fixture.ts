@@ -1,7 +1,31 @@
 import type { TrelloSnapshot } from './trello-map';
+import type { CardDetails } from './trello-details';
 
 /** Demo için küçük Trello örneği: gerçek çalışma alanındaki adlandırma kalıplarını yansıtır (10 kart, 1 şablon, 1 arşivli liste). */
+/** Demo kart ayrıntıları: açıklama, kapak, checklist (durum / bitiş / üye), yorum ve ek (bağlantı). */
+const DETAILS: Record<string, CardDetails> = {
+  c01: {
+    desc: "**Kasım içerik planı**\n- 12 gönderi, 4 reels\n- Ürün lansmanı 5 Kasım\n\nMarka rehberi: https://example.com/anova-rehber",
+    cover: { color: 'blue' },
+    checklists: [
+      { id: 'cl01', name: 'Üretim', pos: 1, checkItems: [
+        { id: 'ci01', name: 'Moodboard onayı', state: 'complete', pos: 1 }, { id: 'ci02', name: 'Çekim planı', state: 'complete', pos: 2, idMember: 'm1' },
+        { id: 'ci03', name: 'Reels kurgusu', state: 'incomplete', pos: 3, due: '2026-10-30T09:00:00.000Z', idMember: 'm1' },
+      ] },
+      { id: 'cl02', name: 'Teslim', pos: 2, checkItems: [
+        { id: 'ci04', name: 'Müşteri onayı', state: 'incomplete', pos: 1 }, { id: 'ci05', name: 'Takvime yükle', state: 'incomplete', pos: 2 }, { id: 'ci06', name: 'Raporla', state: 'incomplete', pos: 3 },
+      ] },
+    ],
+    comments: [
+      { id: 'cm01', date: '2026-10-10T08:30:00.000Z', memberCreator: { fullName: 'Selin Kutlutürk' }, data: { text: 'Moodboard Notion’da, @seda göz atabilir mi?' } },
+      { id: 'cm02', date: '2026-10-11T12:05:00.000Z', memberCreator: { fullName: 'Raif Vural' }, data: { text: 'Renk paleti onaylandı.' } },
+    ],
+    attachments: [{ id: 'at01', name: 'Anova rehber', url: 'https://example.com/anova-rehber', bytes: 0, mimeType: '', isUpload: false, date: '2026-10-09T09:00:00.000Z' }],
+  },
+  c02: { desc: 'Badem Pınarı Eylül kampanyası: 3 görsel + 1 video.', cover: { color: 'red' }, comments: [{ id: 'cm03', date: '2026-09-20T10:00:00.000Z', memberCreator: { fullName: 'Öykü' }, data: { text: 'Metinler müşteriye gitti.' } }] },
+};
 export const TRELLO_FIXTURE: TrelloSnapshot = {
+  details: DETAILS,
   boards: [{ id: 'b1', name: '2_Tasarım&Produksiyon' }, { id: 'b2', name: '3_Müşteri İlişkileri' }],
   lists: [
     { id: 'l1', idBoard: 'b1', name: 'Selin T.' },

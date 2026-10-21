@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Flame, Plus, Search, User } from 'lucide-react';
-import { TASK_STATE_LABELS, isClientRole, type AuditEvent, type Priority, type Project, type Task, type TaskPatch, type TaskState, type TaskType, type TeamMember } from '@jscore/contracts';
+import { TASK_STATE_LABELS, isClientRole, type AuditEvent, type Priority, type Project, type Task, type TaskBadges, type TaskPatch, type TaskState, type TaskType, type TeamMember } from '@jscore/contracts';
 import { TaskBids } from '../modules/bids';
 import { useSession } from '../session';
 import { OrbitDialog } from '../dialog';
@@ -38,6 +38,7 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view,
   const [newOpen, setNewOpen] = useState(false);
   const [bidOpen, setBidOpen] = useState<string | null>(null);
   const [audit, setAudit] = useState<AuditEvent[] | null>([]);
+  const [badges, setBadges] = useState<Record<string, TaskBadges>>({});
   const wrapRef = useRef<HTMLDivElement>(null);
   const addBtn = useRef<HTMLButtonElement>(null);
 
@@ -54,6 +55,17 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view,
     repo.listAudit().then((a) => alive && setAudit(a.filter((e) => e.resource === `tasks/${selId}`)), () => alive && setAudit(null));
     return () => { alive = false; };
   }, [repo, selId, tasks]);
+
+  // Rozet sayımları (yorum / ek / checklist): görev kimlikleri değişince bir kez; ayrıntı paneli açıkken kendi sayımını günceller.
+  const idsKey = useMemo(() => tasks.map((t) => t.id).join(','), [tasks]);
+  useEffect(() => {
+    if (!repo || !idsKey) return;
+    let alive = true;
+    repo.taskBadges(idsKey.split(',')).then((b) => { if (alive) setBadges((cur) => ({ ...cur, ...b })); }, () => undefined);
+    return () => { alive = false; };
+  }, [repo, idsKey]);
+  const onBadges = useCallback((taskId: string, b: TaskBadges) => setBadges((cur) => (JSON.stringify(cur[taskId]) === JSON.stringify(b) ? cur : { ...cur, [taskId]: b })), []);
+  const onLocalPatch = useCallback((taskId: string, p: Partial<Task>) => setTasks((ts) => ts.map((x) => (x.id === taskId ? { ...x, ...p } : x))), [setTasks]);
 
   const focusOpener = (id: string | null) => requestAnimationFrame(() => {
     const el = id ? wrapRef.current?.querySelector<HTMLElement>(`[data-task-open="${CSS.escape(id)}"]`) : null;
@@ -84,7 +96,9 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view,
       optimistic ? () => setTasks((ts) => ts.map((x) => (x.id === t.id ? { ...x, state: prev } : x))) : undefined);
   };
   const complete = (t: Task) => move(t, 'delivery');
-  const patch = (t: Task, p: TaskPatch) => { if (repo) void run(t.id, () => repo.updateTask(t.id, p), (n) => ['Görev güncellendi', n.title]); };
+  const patch = (t: Task, p: TaskPatch) => {
+    if (repo) void run(t.id, () => repo.updateTask(t.id, p), (n) => ['description' in p ? 'Açıklama kaydedildi' : 'cover' in p ? 'Kapak güncellendi' : 'Görev güncellendi', n.title]);
+  };
   const create = async (input: { project_id: string; title: string; assignee_id: string | null; priority: Priority; due_at: string }) => {
     if (!repo) throw new Error('Oturum hazır değil');
     const t = await repo.createTask(input);
@@ -100,7 +114,7 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view,
 
   const detail = sel && (
     <TaskDetails task={sel} team={team} context={projectName(sel.project_id) || '—'} typeLabel={typeLabel(sel)} activity={audit} readonly={readonly} pending={pendingIds.has(sel.id)}
-      error={err?.id === sel.id ? err.msg : undefined} onClose={close} onComplete={() => void complete(sel)} onStage={(s) => void move(sel, s)} onPatch={(p) => patch(sel, p)} />
+      error={err?.id === sel.id ? err.msg : undefined} onClose={close} onComplete={() => void complete(sel)} onStage={(s) => void move(sel, s)} onPatch={(p) => patch(sel, p)} onBadges={onBadges} onLocalPatch={onLocalPatch} />
   );
   const filtered = filters.mine || filters.high || filters.q.trim() !== '';
   const cols = canBid ? 7 : 6;
@@ -124,7 +138,7 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view,
         ) : visible.length === 0 ? (
           <div className="wk-empty"><h3>Filtreyle eşleşen görev yok</h3><p>Filtreleri gevşetmeyi ya da aramayı temizlemeyi dene.</p><button type="button" className="wk-btn" onClick={() => setFilters({ mine: false, high: false, q: '' })}>Filtreleri temizle</button></div>
         ) : view === 'board' ? (
-          <TaskBoard tasks={visible} nameOf={nameOf} today={today} selectedId={selId} pendingIds={pendingIds} readonly={readonly} onOpen={open} onMove={(t, to) => void move(t, to, true)} />
+          <TaskBoard tasks={visible} nameOf={nameOf} today={today} selectedId={selId} pendingIds={pendingIds} readonly={readonly} onOpen={open} onMove={(t, to) => void move(t, to, true)} badges={badges} />
         ) : (
           <div className="wk-table-wrap">
             <table className="wk-task-table">
@@ -133,7 +147,7 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view,
               <tbody>
                 {visible.map((t) => (
                   <RowGroup key={t.id}>
-                    <TaskRow task={t} assignee={nameOf(t.assignee_id)} today={today} selected={selId === t.id} pending={pendingIds.has(t.id)} readonly={readonly}
+                    <TaskRow task={t} badges={badges[t.id]} assignee={nameOf(t.assignee_id)} today={today} selected={selId === t.id} pending={pendingIds.has(t.id)} readonly={readonly}
                       category={[showProject ? projectName(t.project_id) : '', typeLabel(t)].filter(Boolean).join(' · ')} onOpen={() => open(t)} onComplete={() => void complete(t)}
                       extra={canBid ? <button type="button" className="wk-btn" data-sm aria-expanded={bidOpen === t.id} onClick={() => setBidOpen(bidOpen === t.id ? null : t.id)}>İhale</button> : undefined} />
                     {canBid && bidOpen === t.id && <tr className="wk-expand"><td colSpan={cols} style={{ padding: '4px 10px 14px' }}><TaskBids task={t} /></td></tr>}

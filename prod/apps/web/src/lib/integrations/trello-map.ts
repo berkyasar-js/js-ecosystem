@@ -12,10 +12,16 @@ export interface TrelloLabel { id?: string; name?: string; color?: string | null
 export interface TrelloCard {
   id: string; name: string; idList: string; idBoard?: string; due?: string | null; dueComplete?: boolean; labels?: TrelloLabel[];
   idMembers?: string[]; dateLastActivity?: string; desc?: string; shortLink?: string; closed?: boolean;
-  badges?: { checkItems?: number; checkItemsChecked?: number }; idChecklists?: string[];
+  badges?: { checkItems?: number; checkItemsChecked?: number; comments?: number; attachments?: number }; idChecklists?: string[];
+  /** Kapak: renk ya da görsel ek (idAttachment). */
+  cover?: { color?: string | null; idAttachment?: string | null; size?: string | null } | null;
 }
 export interface TrelloMember { id: string; fullName: string; username?: string }
-export interface TrelloSnapshot { boards: TrelloBoard[]; lists: TrelloList[]; cards: TrelloCard[]; members: TrelloMember[] }
+export interface TrelloSnapshot {
+  boards: TrelloBoard[]; lists: TrelloList[]; cards: TrelloCard[]; members: TrelloMember[];
+  /** Kart ayrıntıları (cardId → checklist/yorum/ek): yalnızca demo örneği ve testlerde dolu; sunucu bunları kart başına ayrıca çeker. */
+  details?: Record<string, import('./trello-details').CardDetails>;
+}
 
 /* ───────── Metin yardımcıları ───────── */
 const TR_FOLD: Record<string, string> = { ı: 'i', İ: 'i', ş: 's', Ş: 's', ğ: 'g', Ğ: 'g', ü: 'u', Ü: 'u', ö: 'o', Ö: 'o', ç: 'c', Ç: 'c', â: 'a', Â: 'a', î: 'i', û: 'u' };
@@ -378,7 +384,9 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await fn(items[i++]); }));
 }
 
-export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: { now: string; memberMap?: Record<string, string>; concurrency?: number; onLog?: (e: SyncLogDraft) => void }): Promise<TrelloImportResult> {
+/** Görev yazıldıktan sonra kart başına çağrılır (ayrıntı eşlemesi: açıklama, kapak, checklist, yorum, ek). Sıralı; hata içe aktarmayı durdurmaz. */
+export type CardDetailsHook = (info: { card: TrelloCard; ref: string; taskId: string; jsNewer: boolean }) => Promise<void>;
+export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: { now: string; memberMap?: Record<string, string>; concurrency?: number; onLog?: (e: SyncLogDraft) => void; details?: CardDetailsHook }): Promise<TrelloImportResult> {
   const res: TrelloImportResult = {
     boards: snap.boards.length, lists: snap.lists.length, cards_seen: snap.cards.length, skipped_templates: 0, brands_created: [],
     projects_created: 0, projects_updated: 0, tasks_created: 0, tasks_updated: 0, tasks_unchanged: 0, tasks_skipped: 0, unmapped_members: [], errors: [],
@@ -401,6 +409,8 @@ export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: 
   const creates: TaskDraft[] = [];
   const updates: Array<[string, Partial<TaskDraft>]> = [];
   const seenRefs = new Set<string>();
+  const done: Array<{ card: TrelloCard; ref: string }> = [];
+  const jsNewer = new Set<string>();
 
   for (const card of snap.cards) {
     try {
@@ -410,6 +420,7 @@ export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: 
       if (m.skipped) { res.skipped_templates++; continue; }
       if (seenRefs.has(m.ref)) continue; // aynı kart iki kez gelirse
       seenRefs.add(m.ref);
+      done.push({ card, ref: m.ref });
       let brandId = m.brandId;
       if (!brandId) {
         const b = await store.createBrand(m.brandName);
@@ -423,6 +434,7 @@ export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: 
       for (const n of uniq(m.unmapped)) unmapped.set(n, (unmapped.get(n) ?? 0) + 1);
       const draft: TaskDraft = { ...m.draft, project_id: pid };
       const cur = existing.get(m.ref);
+      if (cur && resolveConflict(cur.updated_at, card.dateLastActivity, cur.synced_at) === 'push') jsNewer.add(m.ref);
       if (!cur) { creates.push(draft); log({ direction: 'pull', entity: 'task', entity_id: null, external_id: card.id, action: 'created', ok: true, message: draft.title }); }
       else {
         const patch = taskChanges(cur, draft);
@@ -441,6 +453,14 @@ export async function runImport(snap: TrelloSnapshot, store: TrelloStore, opts: 
   await pool(updates, opts.concurrency ?? 3, async ([id, patch]) => {
     try { await store.updateTask(id, patch); res.tasks_updated++; } catch (e) { if (res.errors.length < 20) res.errors.push(`güncelleme: ${e instanceof Error ? e.message : String(e)}`); }
   });
+  if (opts.details && done.length) {
+    const ids = new Map((await store.load()).tasks.map((t) => [t.source_ref, t.id]));
+    for (const { card, ref } of done) {
+      const taskId = ids.get(ref);
+      if (!taskId) continue;
+      try { await opts.details({ card, ref, taskId, jsNewer: jsNewer.has(ref) }); } catch (e) { if (res.errors.length < 20) res.errors.push(`ayrıntı ${card.name}: ${e instanceof Error ? e.message : String(e)}`); }
+    }
+  }
   res.unmapped_members = [...unmapped].map(([name, cards]) => ({ name, cards })).sort((a, b) => b.cards - a.cards || a.name.localeCompare(b.name));
   return res;
 }
