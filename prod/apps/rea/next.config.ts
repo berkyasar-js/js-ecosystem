@@ -6,7 +6,9 @@ const config: NextConfig = {
   // REA CLI ve asar paketlenmez, çalışma zamanında node_modules'tan okunur (child_process ile çalıştırılır).
   serverExternalPackages: ['rea-agents', '@electron/asar'],
   // Monorepo: izleme kökü repo kökü; REA'nın tüm dosyaları analiz fonksiyonlarının paketine dahil edilir.
-  outputFileTracingRoot: path.join(__dirname, '../..'),
+  // Vercel'de depo kökü `prod/`un bir üstüdür (prod/apps/rea); izleme kökü depo köküyle eşleşmeli,
+  // yoksa izlenen yollar /vercel/path0/apps/rea gibi yanlış çözülür (MODULE_NOT_FOUND).
+  outputFileTracingRoot: path.join(__dirname, process.env.VERCEL ? '../../..' : '../..'),
   outputFileTracingIncludes: {
     '/api/projects/[id]/run': ['../../node_modules/rea-agents/**/*', '../../node_modules/@electron/asar/**/*'],
   },
