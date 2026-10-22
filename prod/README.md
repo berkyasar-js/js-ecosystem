@@ -12,6 +12,16 @@ prod/
   packages/prompts      Ajan promptları (md) + SQL üretici
 ```
 
+## Canlı dağıtımlar (Vercel · JS Coding takımı · depo `berkyasar-js/js-ecosystem`, dal `main`)
+| Uygulama | Vercel projesi | Root Directory | Adres |
+|---|---|---|---|
+| Kullanıcı uygulaması | `js-ecosystem-app` | `prod/apps/web` | https://js-ecosystem-app.vercel.app |
+| Ana Yönetim Paneli | `js-ecosystem-admin` | `prod/apps/admin` | https://js-ecosystem-admin.vercel.app |
+| Ters Mühendislik Stüdyosu (REA) | `js-rea-studio` | `prod/apps/rea` | https://js-rea-studio.vercel.app |
+| Statik prototip | `js-ecosystem` | `/` | https://js-ecosystem.vercel.app |
+
+Üçü de aynı Supabase projesini (`yogsseitjaqyhwflwinu`) kullanır; her birinin `/auth/callback` adresi Supabase → Authentication → URL Configuration'da kayıtlıdır. `js-ecosystem-app.vercel.app` ve `js-ecosystem.vercel.app` alan adları hâlâ eski (`*-old`) projelerde kayıtlı olduğundan her üretim dağıtımından sonra `vercel alias set <deployment> <alan>` gerekir; eski projeler silinince alan adları yeni projelere taşınır ve bu adım kalkar.
+
 ## Hızlı başlangıç (DEMO — env gerekmez)
 ```bash
 cd prod && npm install
