@@ -4,7 +4,7 @@ import type { Task, TimeEntry } from '@jscore/contracts';
 import { Empty, PRIORITY, fmtDate, todayFor } from '../ui';
 import { useSession } from '../session';
 import { Await, Card, Chip, CsvButton, FormCard, Grid, ModulePage, Table, brandName, nameOf, useAct, useWorld } from '../mod';
-import { addDays, mondayOf } from '@/lib/domain';
+import { addDays, mondayOf } from '@jscore/core/domain';
 import { MyTasks } from '../work/MyTasks';
 import { byDue, dueDay, isOverdue } from '../work/work-utils';
 

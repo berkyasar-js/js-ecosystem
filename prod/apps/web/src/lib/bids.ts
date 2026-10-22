@@ -1,5 +1,5 @@
 import { twinBidOutputSchema, type Task, type TaskBid } from '@jscore/contracts';
-import type { Repo } from './repo/types';
+import type { Repo } from '@jscore/core/repo/types';
 
 /**
  * Görevi ihaleye açar. Demo: DemoRepo deterministik teklifleri kendi üretir (agents/demo.ts).

@@ -3,9 +3,9 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { DEAL_STAGES, DEAL_STAGE_LABELS, type Deal, type DealStage, type Proposal, type QuoteLine } from '@jscore/contracts';
 import { Empty, fmtDate, money, todayFor } from '../ui';
-import { useSession } from '../session';
+import { useFeature, useSession } from '../session';
 import { Await, Bar, Card, Chip, Crud, FormCard, Gate, Grid, Kanban, Metric, ModulePage, Table, brandName, nameOf, tl, toneOf, useAct, useCan, useWorld } from '../mod';
-import { accountHealth, bumpProposal, contractUsage, dueDateFor, proposalTotals, surveyStats } from '@/lib/domain';
+import { accountHealth, bumpProposal, contractUsage, dueDateFor, proposalTotals, surveyStats } from '@jscore/core/domain';
 import { usedThisMonth } from '@/lib/quota';
 import { isOverdue } from '../work/work-utils';
 
@@ -15,6 +15,7 @@ const STATUS: Record<string, [string, 'ok' | 'bad' | 'warn']> = { active: ['Akti
 
 export function CrmView({ tab }: { tab?: string }) {
   const { mode, repo } = useSession();
+  const healthOn = useFeature('crm.health_scores');
   const can = useCan();
   const q = useWorld(['crm_deals', 'crm_contacts', 'crm_proposals', 'crm_contracts']);
   const { act, busy, Err } = useAct();
@@ -54,7 +55,7 @@ export function CrmView({ tab }: { tab?: string }) {
                   <tr key={b.id}>
                     <td><Link className="font-semibold hover:underline" href={`/app/crm/${b.id}`}>{b.name}</Link></td><td className="text-muted">{b.sector}</td>
                     <td><Chip tone={STATUS[b.status][1]}>{STATUS[b.status][0]}</Chip></td><td>{nameOf(team, b.account_owner).split(' ')[0]}</td><td>{nameOf(team, b.art_director).split(' ')[0]}</td>
-                    <td className="min-w-24"><Bar pct={b.health} tone={b.health < 55 ? 'bad' : b.health < 70 ? 'warn' : 'ok'} /></td>
+                    <td className="min-w-24">{healthOn ? <Bar pct={b.health} tone={b.health < 55 ? 'bad' : b.health < 70 ? 'warn' : 'ok'} /> : <span className="text-muted">—</span>}</td>
                     <td>{b.compliance_flags.length ? b.compliance_flags.map((f) => <Chip key={f} tone="warn">{f}</Chip>) : <span className="text-muted">—</span>}</td>
                   </tr>
                 ))}
@@ -164,6 +165,7 @@ function ProposalEditor({ proposal, brands, deals, today, canEdit, busy, onSave,
 
 export function Account360({ brandId }: { brandId: string }) {
   const { mode } = useSession();
+  const healthOn = useFeature('crm.health_scores');
   const q = useWorld(['crm_contacts', 'crm_contracts', 'invoices', 'survey_responses', 'surveys']);
   const today = todayFor(mode);
   return (
@@ -180,7 +182,7 @@ export function Account360({ brandId }: { brandId: string }) {
         return (
           <div className="grid gap-4">
             <Grid cols={4}>
-              <Metric label="Sağlık skoru" value={health} tone={health < 55 ? 'bad' : health < 70 ? 'warn' : 'ok'} def={`Marka bazı (${b.health}) − geciken görev × 4 − geciken fatura × 6 ± CSAT sapması (4 üzeri +5/puan).`} />
+              {healthOn && <Metric label="Sağlık skoru" value={health} tone={health < 55 ? 'bad' : health < 70 ? 'warn' : 'ok'} def={`Marka bazı (${b.health}) − geciken görev × 4 − geciken fatura × 6 ± CSAT sapması (4 üzeri +5/puan).`} />}
               <Metric label="Memnuniyet (CSAT)" value={resp.length ? csat : '—'} tone={resp.length && csat < 4 ? 'warn' : 'ok'} def="Teslim sonrası anket cevaplarının ortalaması (1–5)." hint={`${resp.length} cevap`} />
               <Metric label="Açık görev" value={open.length} hint={`${late} gecikmiş`} tone={late ? 'bad' : undefined} def="Arşivlenmemiş görev sayısı." />
               <Metric label="Geciken fatura" value={overdue} tone={overdue ? 'bad' : 'ok'} def="Vadesi geçmiş ve ödenmemiş fatura sayısı." />

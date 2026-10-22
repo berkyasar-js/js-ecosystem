@@ -12,14 +12,16 @@
   "scripts": {
     "dev": "npm -w apps/web run dev",
     "build": "npm -w apps/web run build",
-    "lint": "npm -w apps/web run lint",
-    "test": "npm -w apps/web run test",
-    "typecheck": "npm -w apps/web run typecheck",
+    "lint": "npm -w apps/web run lint && npm -w apps/admin run lint",
+    "test": "npm -w apps/web run test && npm -w apps/admin run test",
+    "typecheck": "npm -w apps/web run typecheck && npm -w apps/admin run typecheck",
     "prompts:sql": "npm -w packages/prompts run emit-sql",
     "dev:rea": "npm -w apps/rea run dev",
     "build:rea": "npm -w apps/rea run build",
     "lint:rea": "npm -w apps/rea run lint",
     "typecheck:rea": "npm -w apps/rea run typecheck",
-    "test:rea": "npm -w apps/rea run test"
+    "test:rea": "npm -w apps/rea run test",
+    "dev:admin": "npm -w apps/admin run dev",
+    "build:admin": "npm -w apps/admin run build"
   }
 }

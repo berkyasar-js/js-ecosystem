@@ -2,7 +2,7 @@
 import { useId, useRef, useState } from 'react';
 import { Download, ExternalLink, File as FileIcon, FileText, Image as ImageIcon, Link2, Paperclip, Trash2 } from 'lucide-react';
 import { MAX_ATTACHMENT_BYTES, type TaskAttachment } from '@jscore/contracts';
-import type { Repo } from '@/lib/repo/types';
+import type { Repo } from '@jscore/core/repo/types';
 import { fmtDate } from '../ui';
 import { fmtBytes, isImage, resolveUrl, useAttachmentUrl, type TaskExtras } from './use-task-extras';
 

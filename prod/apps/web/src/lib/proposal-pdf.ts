@@ -1,5 +1,5 @@
 import type { Proposal } from '@jscore/contracts';
-import { dueDateFor, proposalTotals } from './domain';
+import { dueDateFor, proposalTotals } from '@jscore/core/domain';
 import { buildPdf, type PdfDoc } from './pdf';
 
 const tl = (minor: number) => `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(minor / 100)} TL`;

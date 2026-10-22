@@ -7,7 +7,7 @@ import { Empty, fmtDate, fmtTime, todayFor, useData } from '../ui';
 import { useSession } from '../session';
 import { Await, Bar, Card, Chip, Crud, Gate, Grid, Metric, ModulePage, Table, nameOf, toneOf, useAct, useCan, useWorld } from '../mod';
 import { BarChart, Donut } from '../charts';
-import { downloadCsv } from '@/lib/domain';
+import { downloadCsv } from '@jscore/core/domain';
 import { CsvButton } from '../mod';
 
 const TABS: Array<[string, string]> = [['overview', 'Genel bakış'], ['employees', 'Çalışanlar'], ['archive', 'Personel Arşivi'], ['leave', 'İzin / Mesai / Vardiya'], ['expenses', 'Masraf / Avans / Zimmet / Eğitim'], ['reports', 'HR Reports'], ['import', 'Kolay İK Aktarım']];

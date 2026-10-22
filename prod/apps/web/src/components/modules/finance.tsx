@@ -6,7 +6,7 @@ import { Empty, fmtDate, money, todayFor, useData } from '../ui';
 import { useSession } from '../session';
 import { Await, Bar, Card, Chip, Crud, FormCard, Gate, Grid, Metric, ModulePage, Table, brandName, nameOf, tl, toneOf, useAct, useCan, useWorld } from '../mod';
 import { BarChart } from '../charts';
-import { MARGIN_EXPLAIN, addDays, marginFormula, proposalTotals } from '@/lib/domain';
+import { MARGIN_EXPLAIN, addDays, marginFormula, proposalTotals } from '@jscore/core/domain';
 
 const TABS: Array<[string, string]> = [['summary', 'Özet'], ['quotes', 'Teklifler'], ['budgets', 'Bütçeler'], ['expenses', 'Giderler'], ['purchasing', 'Satın alma'], ['suppliers', 'Tedarikçiler'], ['invoices', 'Faturalar & tahsilat'], ['margin', 'Marj'], ['ledger', 'Şirket defteri']];
 export const OPENING_CASH_MINOR = 150000000; // 1,5 M ₺ — demo açılış bakiyesi

@@ -320,14 +320,25 @@ export const AGENT_OUTPUT_SCHEMAS = {
 export const outputSchemaFor = (a: AgentName) => (a in AGENT_OUTPUT_SCHEMAS ? AGENT_OUTPUT_SCHEMAS[a as keyof typeof AGENT_OUTPUT_SCHEMAS] : boardProposalOutputSchema);
 
 export const orgSettingsSchema = z.object({
-  general: z.object({ name: z.string().min(1), locale: z.string().default('tr-TR'), timezone: z.string().default('Europe/Istanbul'), currency: z.string().default('TRY') }),
+  general: z.object({ name: z.string().min(1), locale: z.string().default('tr-TR'), timezone: z.string().default('Europe/Istanbul'), currency: z.string().default('TRY'), logo_url: z.string().max(500).optional() }),
   notifications: z.object({ rules: z.array(z.object({ event: z.string(), channel: z.enum(['in_app', 'email', 'slack']), enabled: z.boolean() })) }),
   structure: z.object({ flow_stages: z.array(z.string()), work_hours: z.string().default('09:00-18:00') }),
   /** monthly_cap_usd: 0 = tavan yok. usd_try: ₺ gösterimi için kur (varsayılan 40). */
   ai: z.object({ monthly_cap_usd: z.number().min(0), default_model: z.string(), board_enabled: z.boolean(), usd_try: z.number().positive().optional() }),
-  security: z.object({ mfa_required: z.boolean(), session_hours: z.number().int().min(1).max(720), ip_allowlist: z.array(z.string()) }),
-  /** Ürün paketi yetkilendirmesi: false → ilgili modül menüden düşer (marketplace). */
+  security: z.object({
+    mfa_required: z.boolean(), session_hours: z.number().int().min(1).max(720), ip_allowlist: z.array(z.string()),
+    /** Ana Yönetim Paneli: true → kullanıcı uygulaması her kullanıcıdan TOTP (MFA) kaydı/doğrulaması ister. Varsayılan kapalı (eski `mfa_required` yalnızca bilgi amaçlıydı). */
+    require_mfa: z.boolean().optional(),
+    /** Google ile girişte izin verilen e-posta alan adları (boş/yok = kısıtlama yok). */
+    allowed_email_domains: z.array(z.string()).optional(),
+    /** API anahtarı politikası: en uzun ömür (gün; 0/yok = sınırsız izinli) ve izinli kapsamlar (yok = hepsi). */
+    token_max_days: z.number().int().min(0).max(3650).optional(),
+    token_allowed_scopes: z.array(z.string()).optional(),
+  }),
+  /** Modül yetkilendirmesi: false → ilgili modül menüden düşer, rotası genel bakışa yönlenir. Anahtar = ürün kimliği (MODULE_PRODUCT) ya da modül kimliği. */
   feature_flags: z.record(z.string(), z.boolean()).optional(),
+  /** Modül içi özellik anahtarları (`<modül>.<özellik>`, bkz. FEATURES). false → ilgili düğme/sekme gizlenir. Yoksa açık. */
+  feature_toggles: z.record(z.string(), z.boolean()).optional(),
   plan: z.object({ name: z.string(), seats: z.number().int().min(1), period: z.enum(['monthly', 'yearly']) }).optional(),
   industry_packs: z.array(z.string()).optional(),
   white_label: z.object({ enabled: z.boolean(), name: z.string(), color: z.string(), domain: z.string() }).optional(),
@@ -358,6 +369,7 @@ export const mcpCreateTaskDraftArgs = z.object({
 export const mcpProjectStatusArgs = z.object({ project_id: z.string().optional() });
 
 export * from './modules';
+export * from './admin';
 
 /* ───────── Trello entegrasyonu ───────── */
 /** integrations.config (provider='trello'). Gizli alanlar yalnızca sunucuda (servis rolü) okunur/yazılır; istemciye `maskTrelloConfig` görünümü gider. */

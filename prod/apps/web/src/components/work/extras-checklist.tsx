@@ -2,7 +2,7 @@
 import { useId, useRef, useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import type { TaskChecklist, TaskCheckItem, TeamMember } from '@jscore/contracts';
-import type { Repo } from '@/lib/repo/types';
+import type { Repo } from '@jscore/core/repo/types';
 import { fmtDate } from '../ui';
 import type { TaskExtras } from './use-task-extras';
 

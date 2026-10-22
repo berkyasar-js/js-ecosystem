@@ -4,11 +4,11 @@ import { parseBlocks, parseInline } from '../../components/work/md-parse';
 import {
   addDetails, applyDetailOp, attachmentUrlBody, checkItemBody, checklistBody, commentBody, detailChangeOf, emptyDetailsSummary, mapCover, planWebhookAction, pushDetailWith, shouldPushDetail, syncCardDetails,
   type CardDetails, type DetailPushPorts, type DetailStore, type DetailTable, type JsDetails,
-} from '../integrations/trello-details';
-import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
-import { runImport, type StoreProject, type StoreTask, type SyncLogDraft, type TaskDraft, type TrelloCard, type TrelloStore } from '../integrations/trello-map';
-import { buildCardPatch, shouldPushEvent, wantedCover, type PushTask } from '../integrations/trello-push';
-import { DemoRepo } from '../repo/demo';
+} from '@jscore/core/integrations/trello-details';
+import { TRELLO_FIXTURE } from '@jscore/core/integrations/trello-fixture';
+import { runImport, type StoreProject, type StoreTask, type SyncLogDraft, type TaskDraft, type TrelloCard, type TrelloStore } from '@jscore/core/integrations/trello-map';
+import { buildCardPatch, shouldPushEvent, wantedCover, type PushTask } from '@jscore/core/integrations/trello-push';
+import { DemoRepo } from '@jscore/core/repo/demo';
 
 /* ───────── Bellek içi ayrıntı deposu (DetailStore) ───────── */
 type Row = Record<string, unknown>;

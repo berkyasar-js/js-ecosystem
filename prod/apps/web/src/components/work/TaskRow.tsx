@@ -2,6 +2,7 @@
 import { Check } from 'lucide-react';
 import { TASK_STATE_LABELS, type Task, type TaskBadges } from '@jscore/contracts';
 import { Avatar } from '../avatar';
+import { useFeature } from '../session';
 import { fmtDate } from '../ui';
 import { TaskBadgeList } from './task-badges';
 import { PRIORITY_LABEL, isDone, isLate, isTrello } from './work-utils';
@@ -13,6 +14,7 @@ export function TaskRow({ task, assignee, category, today, selected = false, pen
 }) {
   const done = isDone(task);
   const late = isLate(task, today);
+  const trelloOn = useFeature('tasks.trello_sync');
   return (
     <tr aria-selected={selected} aria-busy={pending} onClick={(e) => { if (!(e.target as HTMLElement).closest('button')) onOpen(); }}>
       <td>
@@ -24,7 +26,7 @@ export function TaskRow({ task, assignee, category, today, selected = false, pen
         <button type="button" className="wk-task-title" data-task-open={task.id} onClick={onOpen}>{task.title}</button>
         <span className="wk-category">
           {category}
-          {isTrello(task) && <span className="wk-chip" data-tone="info">Trello</span>}
+          {trelloOn && isTrello(task) && <span className="wk-chip" data-tone="info">Trello</span>}
           {task.client_visible && <span className="wk-chip">Müşteriye açık</span>}
         </span>
         <TaskBadgeList task={task} badges={badges} />

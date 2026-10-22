@@ -55,7 +55,7 @@ export default function Overview() {
               <Stat label="Aktif proje" value={projects.filter((p) => p.status === 'active').length} hint={`${money(projects.reduce((s, p) => s + p.budget_minor, 0))} toplam bütçe`} />
               <Stat label="Açık görev" value={open.length} />
               <Stat label="Geciken" value={overdue.length} tone={overdue.length ? 'bad' : 'ok'} hint="Teslim tarihi geçmiş" />
-              <Stat label="Bekleyen onay" value={pending.length} tone={pending.length ? 'warn' : 'ok'} href={me?.role === 'owner' ? '/app/board' : '/app/approvals'} hint={me?.role === 'owner' ? 'Yönetim Kurulu →' : 'Onay Merkezi →'} />
+              <Stat label="Bekleyen onay" value={pending.length} tone={pending.length ? 'warn' : 'ok'} href="/app/approvals" hint="Onay Merkezi →" />
             </div>
             <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
               <section className="card">

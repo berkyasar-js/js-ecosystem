@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { proposalSchema } from '@jscore/contracts';
-import { fail, json } from '@/lib/api';
-import { getRepo } from '@/lib/repo';
+import { fail, json } from '@jscore/core/api';
+import { getRepo } from '@jscore/core/repo';
 import { proposalPdfBytes } from '@/lib/proposal-pdf';
 
 const body = z.object({ proposal: proposalSchema.extend({ id: z.string().optional(), org_id: z.string().optional(), created_at: z.string().optional() }), brand: z.string().max(120).default('Müşteri') });

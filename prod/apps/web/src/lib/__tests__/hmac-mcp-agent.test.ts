@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { signBody, verifyHmac } from '../hmac';
+import { signBody, verifyHmac } from '@jscore/core/hmac';
 import { RepoMcpBackend, handleMcp, hashToken } from '../mcp';
-import { DemoRepo } from '../repo/demo';
-import { runAgent, type MessagesClient } from '../agents/run';
-import type { Repo } from '../repo/types';
+import { DemoRepo } from '@jscore/core/repo/demo';
+import { runAgent, type MessagesClient } from '@jscore/core/agents/run';
+import type { Repo } from '@jscore/core/repo/types';
 
 describe('HMAC verify', () => {
   const body = JSON.stringify({ event: 'invoice.paid', id: 7 });

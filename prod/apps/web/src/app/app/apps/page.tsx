@@ -1,13 +1,13 @@
 'use client';
 import Link from 'next/link';
-import { MODULES, canAccessModule } from '@jscore/contracts';
+import { MODULES, canAccessModule, isAdminOnlyModule, moduleEntitled } from '@jscore/contracts';
 import { ICONS } from '@/components/icons';
 import { PageHeader } from '@/components/ui';
 import { useSession } from '@/components/session';
 
 export default function Apps() {
-  const { me } = useSession();
-  const mods = MODULES.filter((m) => m.id !== 'apps' && (!me || canAccessModule(me.role, m.id)));
+  const { me, features } = useSession();
+  const mods = MODULES.filter((m) => m.id !== 'apps' && !isAdminOnlyModule(m.id) && moduleEntitled(m.id, features.flags) && (!me || canAccessModule(me.role, m.id)));
   return (
     <>
       <PageHeader title="Uygulamalar" sub="Rolüne açık tüm modüller" />

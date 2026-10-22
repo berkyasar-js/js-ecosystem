@@ -2,13 +2,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { maskTrelloConfig, trelloConfigSchema } from '@jscore/contracts';
-import { signTrello, verifyTrelloSignature } from '../hmac';
-import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
+import { signTrello, verifyTrelloSignature } from '@jscore/core/hmac';
+import { TRELLO_FIXTURE } from '@jscore/core/integrations/trello-fixture';
 import {
   classifyList, mapCard, matchBrand, memberKey, parseCardName, resolveEmployee, runImport,
   type MapCtx, type StoreProject, type StoreTask, type SyncLogDraft, type TaskDraft, type TrelloCard, type TrelloStore,
-} from '../integrations/trello-map';
-import { DemoRepo } from '../repo/demo';
+} from '@jscore/core/integrations/trello-map';
+import { DemoRepo } from '@jscore/core/repo/demo';
 
 const BRANDS = ['Badem Pınarı', 'Anova', 'Noche', 'Premium İşitme', 'Dora', 'Jobs Studio', 'Ebrusu Tekstil', 'Ran Sigorta'].map((name, i) => ({ id: `b${i}`, name }));
 const TEAM = [

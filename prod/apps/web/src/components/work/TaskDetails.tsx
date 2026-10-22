@@ -3,6 +3,7 @@ import { useId } from 'react';
 import { Check, X } from 'lucide-react';
 import { TASK_STATES, TASK_STATE_LABELS, type AuditEvent, type Priority, type Task, type TaskBadges, type TaskPatch, type TaskState, type TeamMember } from '@jscore/contracts';
 import { Avatar } from '../avatar';
+import { useFeature } from '../session';
 import { TaskExtras } from './task-extras';
 import { PRIORITY_LABEL, dueDay, isDone, isTrello } from './work-utils';
 
@@ -12,6 +13,7 @@ export function TaskDetails({ task, team, context, typeLabel, activity, readonly
   onClose: () => void; onComplete: () => void; onStage: (s: TaskState) => void; onPatch: (p: TaskPatch) => void; onBadges: (taskId: string, b: TaskBadges) => void; onLocalPatch: (taskId: string, p: Partial<Task>) => void; headingRef?: React.Ref<HTMLHeadingElement>;
 }) {
   const id = useId();
+  const trelloOn = useFeature('tasks.trello_sync');
   const done = isDone(task);
   const disabled = pending || readonly;
   const assignee = team.find((m) => m.id === task.assignee_id);
@@ -63,7 +65,7 @@ export function TaskDetails({ task, team, context, typeLabel, activity, readonly
             <li><span className="wk-muted">Planlanan süre</span><span>{task.planned_minutes ? `${Math.round((task.planned_minutes / 60) * 10) / 10} sa` : '—'}</span></li>
             {task.qty > 1 && <li><span className="wk-muted">Adet</span><span>×{task.qty}</span></li>}
             {task.labels.length > 0 && <li><span className="wk-muted">Etiketler</span><span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{task.labels.map((l) => <span key={l} className="wk-chip">{l}</span>)}</span></li>}
-            {isTrello(task) && <li><span className="wk-muted">Kaynak</span><span className="wk-chip" data-tone="info">Trello</span></li>}
+            {trelloOn && isTrello(task) && <li><span className="wk-muted">Kaynak</span><span className="wk-chip" data-tone="info">Trello</span></li>}
             <li><span className="wk-muted">Görünürlük</span><span>{task.client_visible ? 'Müşteriye açık' : 'Yalnızca ekip'}</span></li>
           </ul>
         </section>

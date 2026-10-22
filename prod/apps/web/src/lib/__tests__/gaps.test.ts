@@ -2,17 +2,17 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { Automation, Task } from '@jscore/contracts';
-import { CapExceededError, capLabel, capStatus, enforceAgentCap, estimateRunCostUsd } from '../agents/cap';
-import { demoTwinBids } from '../agents/demo';
-import { fail } from '../api';
-import { dispatchEvent, isSafeWebhookUrl, matches, resolveRule, type AutomationEvent, type DispatchPorts } from '../automations/dispatch';
+import { CapExceededError, capLabel, capStatus, enforceAgentCap, estimateRunCostUsd } from '@jscore/core/agents/cap';
+import { demoTwinBids } from '@jscore/core/agents/demo';
+import { fail } from '@jscore/core/api';
+import { dispatchEvent, isSafeWebhookUrl, matches, resolveRule, type AutomationEvent, type DispatchPorts } from '@jscore/core/automations/dispatch';
 import { supabasePorts } from '../automations/supabase-ports';
 import { requestBids } from '../bids';
-import { signBody, verifyHmac } from '../hmac';
+import { signBody, verifyHmac } from '@jscore/core/hmac';
 import { hashToken } from '../mcp';
-import { DemoRepo, DEMO_STORAGE_KEY, type KV } from '../repo/demo';
-import { ForbiddenError, type Repo } from '../repo/types';
-import { sha256Hex, tokenUsable } from '../token';
+import { DemoRepo, DEMO_STORAGE_KEY, type KV } from '@jscore/core/repo/demo';
+import { ForbiddenError, type Repo } from '@jscore/core/repo/types';
+import { sha256Hex, tokenUsable } from '@jscore/core/token';
 
 const mem = (): KV & { data: Record<string, string> } => {
   const data: Record<string, string> = {};

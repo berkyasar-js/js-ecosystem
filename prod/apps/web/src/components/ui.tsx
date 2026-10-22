@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useSession } from './session';
-import type { Repo } from '@/lib/repo/types';
+import type { Repo } from '@jscore/core/repo/types';
 
 export function useData<T>(fn: (repo: Repo) => Promise<T>, deps: unknown[] = []) {
   const { repo, rev } = useSession();

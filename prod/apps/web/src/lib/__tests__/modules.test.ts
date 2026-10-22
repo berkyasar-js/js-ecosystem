@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COLLECTIONS, COLL_KEYS, canReadColl, leaveSchema, moduleEntitled, type Proposal } from '@jscore/contracts';
-import { DemoRepo, type KV } from '../repo/demo';
-import { ForbiddenError } from '../repo/types';
-import { bumpProposal, contractUsage, marginFormula, offerToEmployee, proposalTotals, surveyBelowThreshold, surveyStats, toCsv, weeklyCapacity } from '../domain';
+import { DemoRepo, type KV } from '@jscore/core/repo/demo';
+import { ForbiddenError } from '@jscore/core/repo/types';
+import { bumpProposal, contractUsage, marginFormula, offerToEmployee, proposalTotals, surveyBelowThreshold, surveyStats, toCsv, weeklyCapacity } from '@jscore/core/domain';
 import { evaluateQuota } from '../quota';
 import { buildPdf } from '../pdf';
 import { proposalPdfBytes } from '../proposal-pdf';
@@ -167,7 +167,7 @@ describe('entitlement → menü', () => {
   it('feature_flags false olan ürünün modülü menüden düşer; owner flag’i kaydedebilir, creative kaydedemez', async () => {
     expect(navModules('owner', {}).some((m) => m.id === 'crm')).toBe(true);
     const hidden = navModules('owner', { crm: false, finance: false }).map((m) => m.id);
-    expect(hidden).not.toContain('crm'); expect(hidden).not.toContain('finance'); expect(hidden).toContain('marketplace');
+    expect(hidden).not.toContain('crm'); expect(hidden).not.toContain('finance'); expect(hidden).toContain('overview'); expect(hidden).not.toContain('marketplace'); // Ürünler & Paketler Ana Yönetim Paneli'ne taşındı
     expect(moduleEntitled('overview', { crm: false })).toBe(true);
     const owner = new DemoRepo({ accountId: 'owner' });
     await owner.saveSettings({ feature_flags: { hire: false } });

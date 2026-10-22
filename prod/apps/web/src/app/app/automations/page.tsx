@@ -1,7 +1,3 @@
-import { AutomationsView } from '@/components/modules/automations';
+import { MovedNotice } from '@/components/moved-notice';
 
-/** Sunucu bileşeni: ?tab= çözümler; veri, oturumun repo'su üzerinden istemci bileşeninde yüklenir (demo verisi tarayıcıda kalıcıdır). */
-export default async function Page({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  const { tab } = await searchParams;
-  return <AutomationsView tab={tab} />;
-}
+export default function Page() { return <MovedNotice name="JS Automation" path="automations" />; }

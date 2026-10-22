@@ -4,7 +4,7 @@ import { LEAVE_DECIDERS, LEAVE_TYPES } from '@jscore/contracts';
 import { Empty, fmtDate, todayFor } from '../ui';
 import { useSession } from '../session';
 import { Await, Card, Chip, Crud, FormCard, Gate, Metric, ModulePage, Table, nameOf, useAct, useCan, useWorld } from '../mod';
-import { addDays, mondayOf, weekdaysOverlap, weeklyCapacity, weeksFrom } from '@/lib/domain';
+import { addDays, mondayOf, weekdaysOverlap, weeklyCapacity, weeksFrom } from '@jscore/core/domain';
 
 const TABS: Array<[string, string]> = [['planner', 'Resource Planner'], ['capacity', 'Kapasite düzenleme'], ['leave', 'İzin takvimi'], ['skills', 'Yetkinlik havuzu'], ['equipment', 'Ekipman'], ['rates', 'Freelancer rate card']];
 const heat = (pct: number) => (pct > 110 ? 'rgba(255,51,102,.55)' : pct > 100 ? 'rgba(255,51,102,.35)' : pct >= 85 ? 'rgba(255,176,32,.35)' : pct > 0 ? 'rgba(61,220,151,.25)' : 'transparent');

@@ -3,10 +3,10 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { Info } from 'lucide-react';
-import { canAccessModule, canReadColl, canWriteColl, moduleEntitled, MODULES, type Brand, type CollKey, type Project, type Records, type SaveInput, type Task, type TeamMember } from '@jscore/contracts';
+import { canAccessModule, canReadColl, canWriteColl, moduleEntitled, MODULES, tabEnabled, type Brand, type CollKey, type Project, type Records, type SaveInput, type Task, type TeamMember } from '@jscore/contracts';
 import { Empty, ErrorBox, Loading, PageHeader, useData } from './ui';
 import { useSession } from './session';
-import { downloadCsv } from '@/lib/domain';
+import { downloadCsv } from '@jscore/core/domain';
 
 /* ───────── Veri: dünya (marka/proje/görev/ekip) + istenen koleksiyonlar ───────── */
 export type World<K extends CollKey> = { brands: Brand[]; projects: Project[]; tasks: Task[]; team: TeamMember[] } & { [P in K]: Records[P][] };
@@ -36,11 +36,11 @@ export function useAct() {
 }
 
 /* ───────── Sayfa iskeleti: başlık + ?tab= sekmeleri + erişim/entitlement kapısı ───────── */
-export function ModulePage({ id, title, sub, tabs, tab, actions, children }: { id: string; title: string; sub?: string; tabs: Array<[string, string]>; tab?: string; actions?: ReactNode; children: (tab: string) => ReactNode }) {
-  const { me, repo, rev } = useSession();
-  const [flags, setFlags] = useState<Record<string, boolean> | undefined>();
-  const [ready, setReady] = useState(false);
-  useEffect(() => { if (!repo) return; repo.getSettings().then((s) => setFlags(s.feature_flags), () => undefined).finally(() => setReady(true)); }, [repo, rev]);
+export function ModulePage({ id, title, sub, tabs: allTabs, tab, actions, children }: { id: string; title: string; sub?: string; tabs: Array<[string, string]>; tab?: string; actions?: ReactNode; children: (tab: string) => ReactNode }) {
+  const { me, features } = useSession();
+  const flags = features.flags;
+  // Yönetim panelinde kapatılan özelliğe bağlı sekmeler düşer.
+  const tabs = allTabs.filter(([t]) => tabEnabled(features.toggles, id, t));
   const active = tabs.some(([t]) => t === tab) ? (tab as string) : tabs[0][0];
   const mod = MODULES.find((m) => m.id === id);
   const href = `/app/${mod?.slug ?? id}`;
@@ -52,8 +52,8 @@ export function ModulePage({ id, title, sub, tabs, tab, actions, children }: { i
           {tabs.map(([t, label]) => <Link key={t} role="tab" href={`${href}?tab=${t}`} aria-selected={active === t} className="tab" scroll={false}>{label}</Link>)}
         </nav>
       )}
-      {!me || !ready ? <Loading /> : !canAccessModule(me.role, id) ? <div className="card max-w-2xl text-sm text-muted">Bu modüle erişim yetkin yok.</div>
-        : !moduleEntitled(id, flags) ? <div className="card max-w-2xl text-sm"><strong>Bu modül paketinizde kapalı.</strong> <span className="text-muted">Ürünler & Paketler üzerinden açılabilir.</span> <Link className="underline" href="/app/marketplace">Pakete git</Link></div>
+      {!me || !features.loaded ? <Loading /> : !canAccessModule(me.role, id) ? <div className="card max-w-2xl text-sm text-muted">Bu modüle erişim yetkin yok.</div>
+        : !moduleEntitled(id, flags) ? <div className="card max-w-2xl text-sm"><strong>Bu modül kapalı.</strong> <span className="text-muted">Yöneticin Ana Yönetim Paneli’nden açabilir.</span></div>
         : children(active)}
     </>
   );

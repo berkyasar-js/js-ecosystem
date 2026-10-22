@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TaskAttachment, TaskBadges, TaskChecklist, TaskComment } from '@jscore/contracts';
-import type { Repo } from '@/lib/repo/types';
+import type { Repo } from '@jscore/core/repo/types';
 import { useToast } from '../toasts';
 
 export type Section = 'description' | 'checklist' | 'comments' | 'files' | 'cover';

@@ -1,11 +1,11 @@
-import { fail, json } from '@/lib/api';
+import { fail, json } from '@jscore/core/api';
 import { handleMcp, hashToken, RepoMcpBackend } from '@/lib/mcp';
-import { DemoRepo } from '@/lib/repo/demo';
-import { SupabaseRepo } from '@/lib/repo/supabase';
-import { DEMO_MCP_TOKEN } from '@/lib/demo-seed';
-import { isSupabaseConfigured } from '@/lib/env';
-import { createAdmin } from '@/lib/supabase/admin';
-import { authenticateBearer } from '@/lib/tokens-server';
+import { DemoRepo } from '@jscore/core/repo/demo';
+import { SupabaseRepo } from '@jscore/core/repo/supabase';
+import { DEMO_MCP_TOKEN } from '@jscore/core/demo-seed';
+import { isSupabaseConfigured } from '@jscore/core/env';
+import { createAdmin } from '@jscore/core/supabase/admin';
+import { authenticateBearer } from '@jscore/core/tokens-server';
 
 /** Token doğrulama: Authorization: Bearer <token>; sha256(token) ↔ access_tokens.token_hash. Demo: DEMO_MCP_TOKEN. */
 export async function POST(req: Request) {

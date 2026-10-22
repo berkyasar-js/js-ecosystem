@@ -5,7 +5,7 @@ import { useSession } from '../session';
 import { Await, Card, Chip, CsvButton, Freshness, Gate, Grid, Metric, ModulePage, Table, brandName, nameOf, tl, useCan, useWorld } from '../mod';
 import { BarChart, Funnel, LineChart } from '../charts';
 import { projectMargins } from './finance';
-import { accountHealth, surveyBelowThreshold, surveyStats, weeklyCapacity, weeksFrom } from '@/lib/domain';
+import { accountHealth, surveyBelowThreshold, surveyStats, weeklyCapacity, weeksFrom } from '@jscore/core/domain';
 import { isOverdue } from '../work/work-utils';
 
 const TABS: Array<[string, string]> = [['executive', 'Executive'], ['profitability', 'Project Profitability'], ['resources', 'Resource Analytics'], ['funnel', 'Sales Funnel'], ['clients', 'Client Reports'], ['system', 'System Analytics']];

@@ -1,7 +1,3 @@
-import { MarketplaceView } from '@/components/modules/marketplace';
+import { MovedNotice } from '@/components/moved-notice';
 
-/** Sunucu bileşeni: ?tab= çözümler; veri, oturumun repo'su üzerinden istemci bileşeninde yüklenir (demo verisi tarayıcıda kalıcıdır). */
-export default async function Page({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  const { tab } = await searchParams;
-  return <MarketplaceView tab={tab} />;
-}
+export default function Page() { return <MovedNotice name="Ürünler & Paketler" path="marketplace" />; }

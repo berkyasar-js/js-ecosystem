@@ -1,5 +1,5 @@
-import { fail, json } from '@/lib/api';
-import { getRepo } from '@/lib/repo';
+import { fail, json } from '@jscore/core/api';
+import { getRepo } from '@jscore/core/repo';
 
 export async function GET() {
   try {

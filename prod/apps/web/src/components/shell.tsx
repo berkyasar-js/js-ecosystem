@@ -1,10 +1,12 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Bell, ChevronRight, LogOut, Menu, MessageSquare, Moon, Search, Sun, X } from 'lucide-react';
 import { GROUP_LABELS, ROLE_LABELS, type ModuleGroup, type Project } from '@jscore/contracts';
-import { navModules } from '@/lib/nav';
+import { navModules, routeVerdict } from '@/lib/nav';
+import { mfaRequired } from '@/lib/mfa';
+import { MfaGate } from './mfa-gate';
 import { ICONS } from './icons';
 import { useSession } from './session';
 import { Avatar } from './avatar';
@@ -13,15 +15,25 @@ import { Loading } from './ui';
 const GROUPS: ModuleGroup[] = ['main', 'work', 'creative', 'people', 'intel', 'manage'];
 export const hrefOf = (slug: string) => `/app/${slug}`;
 
+/** Oturum + MFA kapısı: ayarlar yüklenene dek içerik gösterilmez; org MFA'yı zorunlu kılmışsa TOTP kaydı/kodu olmadan uygulama açılmaz. */
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { me, mode, resetDemo, orgs, orgId, setOrg, theme, toggleTheme, logout, repo, rev } = useSession();
+  const { mode, features, logout } = useSession();
+  if (!features.loaded) return <div className="mx-auto max-w-3xl p-8"><Loading rows={4} /></div>;
+  if (mfaRequired(mode, features.requireMfa)) return <MfaGate onLogout={() => void logout()}><ShellInner>{children}</ShellInner></MfaGate>;
+  return <ShellInner>{children}</ShellInner>;
+}
+
+function ShellInner({ children }: { children: React.ReactNode }) {
+  const { me, mode, resetDemo, orgs, orgId, setOrg, theme, toggleTheme, logout, repo, rev, features } = useSession();
+  const router = useRouter();
+  const [notice, setNotice] = useState<string | null>(null);
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [pending, setPending] = useState(0);
-  const [flags, setFlags] = useState<Record<string, boolean> | undefined>();
+  const flags = features.flags;
   useEffect(() => { setOpen(false); setSearchOpen(false); setQ(''); }, [path]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -35,8 +47,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (!repo) return;
     repo.listApprovals().then((a) => setPending(a.filter((x) => x.status === 'pending').length), () => setPending(0));
     repo.listProjects().then(setProjects, () => setProjects([]));
-    repo.getSettings().then((s) => setFlags(s.feature_flags), () => setFlags(undefined));
   }, [repo, rev]);
+
+  // Kapalı modülün rotası → genel bakışa yönlendir (yönetim modülleri kendi "taşındı" sayfasını gösterir).
+  const verdict = features.loaded ? routeVerdict(path, flags) : 'ok';
+  useEffect(() => { if (verdict === 'disabled') router.replace('/app/overview?notice=module_disabled'); }, [verdict, router]);
+  useEffect(() => {
+    if (path !== '/app/overview') return;
+    const n = new URLSearchParams(window.location.search).get('notice');
+    setNotice(n === 'module_disabled' ? 'Bu modül yöneticin tarafından kapatıldı.' : null);
+  }, [path]);
 
   const visible = useMemo(() => (me ? navModules(me.role, flags) : []), [me, flags]);
   const results = useMemo(() => {
@@ -137,7 +157,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <button className="btn btn-ghost icon-btn hidden sm:inline-flex" onClick={() => void logout()} aria-label="Çıkış"><LogOut size={17} /></button>
           </div>
         </header>
-        <main id="main" className="mx-auto w-full max-w-[1400px] p-4 sm:p-6">{children}</main>
+        <main id="main" className="mx-auto w-full max-w-[1400px] p-4 sm:p-6">
+          {notice && <p role="status" className="card mb-4 flex items-center justify-between gap-3 text-sm"><span>{notice}</span><button className="btn btn-ghost btn-sm" onClick={() => setNotice(null)} aria-label="Bildirimi kapat"><X size={14} /></button></p>}
+          {verdict === 'disabled' ? <Loading rows={2} /> : children}
+        </main>
       </div>
     </div>
   );

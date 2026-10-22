@@ -3,13 +3,14 @@ import { useState } from 'react';
 import { TASK_STATE_LABELS, type InboxDraftsOutput, type Message } from '@jscore/contracts';
 import { annotateDrafts, usedThisMonth } from '@/lib/quota';
 import { Async, Empty, PageHeader, fmtTime, money, todayFor, useData } from '@/components/ui';
-import { useSession } from '@/components/session';
-import { agentRunBody } from '@/lib/agents/client';
+import { useFeature, useSession } from '@/components/session';
+import { agentRunBody } from '@jscore/core/agents/client';
 
 type Annotated = ReturnType<typeof annotateDrafts>;
 
 export default function Inbox() {
   const { repo, mode, bump } = useSession();
+  const aiOn = useFeature('inbox.ai_drafts');
   const q = useData(async (r) => ({ inbox: await r.listInbox(), brands: await r.listBrands(), projects: await r.listProjects(), tasks: await r.listTasks(), types: await r.listTaskTypes() }));
   const [sel, setSel] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<{ summary: string; items: Annotated } | null>(null);
@@ -59,7 +60,7 @@ export default function Inbox() {
                     {brand && Object.keys(brand.monthly_quota).length > 0 && <span className="chip">Kota: {Object.entries(brand.monthly_quota).map(([k, v]) => `${k} ${v}`).join(' · ')}</span>}</div>
                 </header>
                 <p className="whitespace-pre-wrap text-sm">{m.body}</p>
-                <button className="btn btn-primary mt-5" disabled={busy} onClick={() => generate(m, ctx)}>{busy ? 'Taslaklar hazırlanıyor…' : 'AI görev taslakları'}</button>
+                {aiOn ? <button className="btn btn-primary mt-5" disabled={busy} onClick={() => generate(m, ctx)}>{busy ? 'Taslaklar hazırlanıyor…' : 'AI görev taslakları'}</button> : <p className="mt-5 text-xs text-muted">AI görev taslakları yöneticin tarafından kapatıldı.</p>}
                 {msg && <p role="alert" className="mt-3 text-sm text-magenta">{msg}</p>}
                 {drafts && (
                   <div className="mt-5 grid gap-3">

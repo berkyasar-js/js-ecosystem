@@ -6,9 +6,9 @@ import { Empty, fmtDate, fmtTime, todayFor, useData } from '../ui';
 import { useSession } from '../session';
 import { Await, Bar, Card, Chip, Crud, FormCard, Grid, Metric, ModulePage, Table, brandName, nameOf, tl, toneOf, useAct, useCan, useWorld } from '../mod';
 import { Funnel } from '../charts';
-import { addDays, fmtTimecode, parseTimecode } from '@/lib/domain';
+import { addDays, fmtTimecode, parseTimecode } from '@jscore/core/domain';
 import { buildPdf } from '@/lib/pdf';
-import { agentRunBody } from '@/lib/agents/client';
+import { agentRunBody } from '@jscore/core/agents/client';
 
 const gb = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${mb} MB`);
 const brandOpts = (b: Array<{ id: string; name: string }>): Array<[string, string]> => b.map((x) => [x.id, x.name]);

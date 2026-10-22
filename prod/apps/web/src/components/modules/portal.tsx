@@ -5,7 +5,7 @@ import { isClientRole, TASK_STATE_LABELS, type SurveyResponse } from '@jscore/co
 import { Empty, fmtDate, useData } from '../ui';
 import { useSession } from '../session';
 import { Await, Bar, Card, Chip, CsvButton, FormCard, Grid, Metric, ModulePage, Table, brandName, useAct, useWorld } from '../mod';
-import { surveyStats } from '@/lib/domain';
+import { surveyStats } from '@jscore/core/domain';
 
 const TABS: Array<[string, string]> = [['home', 'Home'], ['requests', 'Requests'], ['projects', 'Projects'], ['approvals', 'Approvals'], ['files', 'Files'], ['reports', 'Reports'], ['surveys', 'Anketler'], ['contacts', 'Contacts'], ['settings', 'Settings']];
 

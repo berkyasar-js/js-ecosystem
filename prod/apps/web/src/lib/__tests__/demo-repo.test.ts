@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DemoRepo, DEMO_STORAGE_KEY, type KV } from '../repo/demo';
-import { ForbiddenError } from '../repo/types';
-import { ORG_EDIT, ORG_JOBS } from '../demo-seed';
+import { DemoRepo, DEMO_STORAGE_KEY, type KV } from '@jscore/core/repo/demo';
+import { ForbiddenError } from '@jscore/core/repo/types';
+import { ORG_EDIT, ORG_JOBS } from '@jscore/core/demo-seed';
 
 const mem = (): KV & { data: Record<string, string> } => {
   const data: Record<string, string> = {};

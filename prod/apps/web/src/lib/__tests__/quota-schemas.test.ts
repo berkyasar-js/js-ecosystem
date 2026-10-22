@@ -4,9 +4,9 @@ import {
   jsonRpcRequestSchema, orgSettingsSchema, outputSchemaFor, taskCreateSchema, AGENTS, isClientRole,
 } from '@jscore/contracts';
 import { annotateDrafts, evaluateQuota, usedThisMonth } from '../quota';
-import { demoAgentOutput, demoInboxDrafts } from '../agents/demo';
-import { costUsd } from '../agents/cost';
-import { makeDemoDb, TASK_TYPES } from '../demo-seed';
+import { demoAgentOutput, demoInboxDrafts } from '@jscore/core/agents/demo';
+import { costUsd } from '@jscore/core/agents/cost';
+import { makeDemoDb, TASK_TYPES } from '@jscore/core/demo-seed';
 
 describe('quota rule', () => {
   it('within quota', () => {

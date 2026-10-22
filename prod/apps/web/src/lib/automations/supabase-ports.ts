@@ -1,9 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Automation } from '@jscore/contracts';
-import { signBody } from '../hmac';
-import { syncEvent } from '../integrations/trello-push';
+import { signBody } from '@jscore/core/hmac';
+import { syncEvent } from '@jscore/core/integrations/trello-push';
 import type { TrelloConfig } from '@jscore/contracts';
-import type { DispatchPorts } from './dispatch';
+import type { DispatchPorts } from '@jscore/core/automations/dispatch';
 
 type Row = Record<string, unknown>;
 const flat = (r: Row) => { const { data, ...rest } = r; return { ...rest, ...((data as Row | null) ?? {}) }; };

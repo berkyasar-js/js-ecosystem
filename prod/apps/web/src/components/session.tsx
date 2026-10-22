@@ -1,14 +1,17 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Me, Organization } from '@jscore/contracts';
-import { clearCookie, createClientRepo, readCookie, setCookie } from '@/lib/repo/client';
-import { DEMO_COOKIE, ORG_COOKIE, isSupabaseConfigured, validOrgId } from '@/lib/env';
-import { createBrowser } from '@/lib/supabase/browser';
-import { DEMO_STORAGE_KEY } from '@/lib/repo/demo';
-import type { Repo } from '@/lib/repo/types';
+import { featureEnabled, type Me, type Organization } from '@jscore/contracts';
+import { clearCookie, createClientRepo, readCookie, setCookie } from '@jscore/core/repo/client';
+import { DEMO_COOKIE, ORG_COOKIE, isSupabaseConfigured, validOrgId } from '@jscore/core/env';
+import { createBrowser } from '@jscore/core/supabase/browser';
+import { DEMO_STORAGE_KEY } from '@jscore/core/repo/demo';
+import type { Repo } from '@jscore/core/repo/types';
 
+/** Ana Yönetim Paneli ayarları: modül bayrakları, özellik anahtarları, MFA zorunluluğu. `loaded=false` iken her şey açık sayılır (yanıp sönmeyi azaltır; sunucu tarafı ayrıca uygular). */
+export interface Features { loaded: boolean; flags?: Record<string, boolean>; toggles?: Record<string, boolean>; requireMfa: boolean }
 interface Ctx {
+  features: Features;
   repo: Repo | null; me: Me | null; orgs: Organization[]; orgId: string; mode: 'demo' | 'supabase'; rev: number;
   setOrg(id: string): void; bump(): void; logout(): Promise<void>; resetDemo(): void; theme: 'dark' | 'light'; toggleTheme(): void;
 }
@@ -18,6 +21,8 @@ export const useSession = () => {
   if (!c) throw new Error('SessionProvider yok');
   return c;
 };
+/** Özellik anahtarı açık mı? (`<modül>.<özellik>`, bkz. contracts FEATURES) */
+export const useFeature = (key: string) => featureEnabled(useSession().features.toggles, key);
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -26,6 +31,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [rev, setRev] = useState(0);
+  const [features, setFeatures] = useState<Features>({ loaded: false, requireMfa: false });
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const mode = isSupabaseConfigured() ? 'supabase' : 'demo';
 
@@ -49,6 +55,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return () => { alive = false; };
   }, [orgId, router]);
 
+  useEffect(() => {
+    if (!repo) return;
+    let alive = true;
+    repo.getSettings().then(
+      (st) => alive && setFeatures({ loaded: true, flags: st.feature_flags, toggles: st.feature_toggles, requireMfa: st.security?.require_mfa === true }),
+      () => alive && setFeatures({ loaded: true, requireMfa: false }),
+    );
+    return () => { alive = false; };
+  }, [repo, rev]);
+
   const setOrg = useCallback((id: string) => { setCookie(ORG_COOKIE, id); setMe(null); setOrgId(id); setRev((n) => n + 1); }, []);
   const bump = useCallback(() => setRev((n) => n + 1), []);
   const logout = useCallback(async () => {
@@ -66,6 +82,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const value = useMemo<Ctx>(() => ({ repo, me, orgs, orgId: orgId || me?.org_id || '', mode, rev, setOrg, bump, logout, resetDemo, theme, toggleTheme }), [repo, me, orgs, orgId, mode, rev, setOrg, bump, logout, resetDemo, theme, toggleTheme]);
+  const value = useMemo<Ctx>(() => ({ features, repo, me, orgs, orgId: orgId || me?.org_id || '', mode, rev, setOrg, bump, logout, resetDemo, theme, toggleTheme }), [features, repo, me, orgs, orgId, mode, rev, setOrg, bump, logout, resetDemo, theme, toggleTheme]);
   return <SessionCtx.Provider value={value}>{children}</SessionCtx.Provider>;
 }

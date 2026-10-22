@@ -1,9 +1,9 @@
 import { timingSafeEqual } from 'node:crypto';
-import { fail, json } from '@/lib/api';
-import { dispatchEvent, type AutomationEvent, type DispatchResult } from '@/lib/automations/dispatch';
+import { fail, json } from '@jscore/core/api';
+import { dispatchEvent, type AutomationEvent, type DispatchResult } from '@jscore/core/automations/dispatch';
 import { supabasePorts } from '@/lib/automations/supabase-ports';
-import { verifyHmac } from '@/lib/hmac';
-import { createAdmin } from '@/lib/supabase/admin';
+import { verifyHmac } from '@jscore/core/hmac';
+import { createAdmin } from '@jscore/core/supabase/admin';
 
 export const maxDuration = 60;
 const BATCH = 100;

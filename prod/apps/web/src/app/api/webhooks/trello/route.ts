@@ -1,10 +1,10 @@
 import { timingSafeEqual } from 'node:crypto';
-import { fail, json } from '@/lib/api';
-import { verifyTrelloSignature } from '@/lib/hmac';
-import { archiveCardTask, applyDetailAction, loadTrelloConfig, syncCard } from '@/lib/integrations/trello';
-import { DETAIL_ACTIONS } from '@/lib/integrations/trello-details';
-import { isOwnTrelloAction } from '@/lib/integrations/trello-push';
-import { createAdmin } from '@/lib/supabase/admin';
+import { fail, json } from '@jscore/core/api';
+import { verifyTrelloSignature } from '@jscore/core/hmac';
+import { archiveCardTask, applyDetailAction, loadTrelloConfig, syncCard } from '@jscore/core/integrations/trello';
+import { DETAIL_ACTIONS } from '@jscore/core/integrations/trello-details';
+import { isOwnTrelloAction } from '@jscore/core/integrations/trello-push';
+import { createAdmin } from '@jscore/core/supabase/admin';
 
 /** Trello oluşturma sırasında HEAD ile adresi doğrular → 200. */
 export const HEAD = () => new Response(null, { status: 200 });

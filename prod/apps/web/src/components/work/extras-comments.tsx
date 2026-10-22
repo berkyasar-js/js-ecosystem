@@ -2,7 +2,7 @@
 import { useId, useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import type { Me, TaskComment } from '@jscore/contracts';
-import type { Repo } from '@/lib/repo/types';
+import type { Repo } from '@jscore/core/repo/types';
 import { Avatar } from '../avatar';
 import { fmtTime } from '../ui';
 import { MdLite } from './md-lite';

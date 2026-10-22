@@ -1,7 +1,7 @@
 'use client';
 import { useData, todayFor } from './ui';
 import { useSession } from './session';
-import { capLabel, capStatus, monthOf } from '@/lib/agents/cap';
+import { capLabel, capStatus, monthOf } from '@jscore/core/agents/cap';
 
 /** "Bu ay: ₺X / tavan ₺Y" + ilerleme çubuğu (agent_runs ay içi toplamı ↔ ai.monthly_cap_usd). */
 export function CapMeter({ className = '' }: { className?: string }) {

@@ -11,7 +11,7 @@ export default function ThemePreview() {
   const allowed = !!me && (me.role === 'owner' || me.role === 'org_admin');
   return (
     <>
-      <PageHeader eyebrow="Tasarım önizleme" title="ORBIT çalışma yüzeyi" sub="İlk projenin gerçek verisiyle liste, pano, ayrıntı paneli, yeni görev penceresi ve bildirimler. Değişiklikler gerçek repo'ya yazılır." actions={<Link className="btn" href="/app/admin">← Admin</Link>} />
+      <PageHeader eyebrow="Tasarım önizleme" title="ORBIT çalışma yüzeyi" sub="İlk projenin gerçek verisiyle liste, pano, ayrıntı paneli, yeni görev penceresi ve bildirimler. Değişiklikler gerçek repo'ya yazılır." actions={<Link className="btn" href="/app/overview">← Genel bakış</Link>} />
       {!me ? null : !allowed ? <div className="card max-w-2xl text-sm text-muted" role="note">Bu önizleme yalnızca owner ve org_admin rolleri içindir.</div> : (
         <Async q={q}>{(p) => !p ? <Empty>Önizlenecek proje yok.</Empty> : <ProjectWorkspace projectId={p.id} backHref={null} />}</Async>
       )}

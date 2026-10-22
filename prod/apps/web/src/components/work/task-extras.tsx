@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useId, useRef, useState } from 'react';
 import type { AuditEvent, Task, TaskBadges, TaskCover, TaskPatch, TeamMember } from '@jscore/contracts';
-import { useSession } from '../session';
+import { useFeature, useSession } from '../session';
 import { ActivitySection, CoverSection, DescriptionSection } from './extras-basic';
 import { ChecklistSection } from './extras-checklist';
 import { CommentsSection } from './extras-comments';
@@ -19,13 +19,14 @@ export function TaskExtras({ task, team, activity, readonly, pending, onPatch, o
   onPatch: (p: TaskPatch) => void; onBadges: (taskId: string, b: TaskBadges) => void; onLocalPatch: (taskId: string, p: Partial<Task>) => void;
 }) {
   const { repo, me } = useSession();
+  const fChecklists = useFeature('tasks.checklists'), fComments = useFeature('tasks.comments'), fFiles = useFeature('tasks.files'), fCover = useFeature('tasks.cover');
   const id = useId();
   const [tab, setTab] = useState<Tab>('description');
   const x = useTaskExtras(repo, task.id, onBadges);
   const refs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
   const clearCover = useCallback(() => onLocalPatch(task.id, { cover: {} }), [onLocalPatch, task.id]);
   const items = (x.lists ?? []).flatMap((l) => l.items);
-  const tabs: Array<[Tab, string, string?]> = [
+  const allTabs: Array<[Tab, string, string?]> = [
     ['description', 'Açıklama', task.description?.trim() ? '•' : undefined],
     ['checklist', 'Checklist', items.length ? `${items.filter((i) => i.checked).length}/${items.length}` : undefined],
     ['comments', 'Yorumlar', x.comments?.length ? String(x.comments.length) : undefined],
@@ -33,6 +34,8 @@ export function TaskExtras({ task, team, activity, readonly, pending, onPatch, o
     ['cover', 'Kapak', task.cover?.color || task.cover?.attachment_id ? '•' : undefined],
     ['activity', 'Aktivite'],
   ];
+  const off: Tab[] = [...(fChecklists ? [] : ['checklist' as Tab]), ...(fComments ? [] : ['comments' as Tab]), ...(fFiles ? [] : ['files' as Tab]), ...(fCover ? [] : ['cover' as Tab])];
+  const tabs = allTabs.filter(([k]) => !off.includes(k));
   const onKey = (e: React.KeyboardEvent, i: number) => {
     const n = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
     if (n === undefined) return;

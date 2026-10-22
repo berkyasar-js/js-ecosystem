@@ -2,7 +2,7 @@
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { applySchema } from '@jscore/contracts';
-import { createClientRepo } from '@/lib/repo/client';
+import { createClientRepo } from '@jscore/core/repo/client';
 
 export default function Apply() {
   const { job } = useParams<{ job: string }>();

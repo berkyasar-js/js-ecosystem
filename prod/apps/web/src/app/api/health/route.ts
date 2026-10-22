@@ -1,5 +1,5 @@
-import { json } from '@/lib/api';
-import { isSupabaseConfigured } from '@/lib/env';
+import { json } from '@jscore/core/api';
+import { isSupabaseConfigured } from '@jscore/core/env';
 
 export const dynamic = 'force-dynamic';
 export function GET() {

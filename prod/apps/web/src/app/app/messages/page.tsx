@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Message } from '@jscore/contracts';
 import { Async, Empty, PageHeader, fmtTime, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
-import { DEMO_STORAGE_KEY } from '@/lib/repo/demo';
+import { DEMO_STORAGE_KEY } from '@jscore/core/repo/demo';
 
 export default function Messages() {
   const { repo, mode } = useSession();

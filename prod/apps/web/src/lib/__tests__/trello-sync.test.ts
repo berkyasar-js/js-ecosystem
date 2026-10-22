@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { summarizeSyncLog, trelloConfigSchema, type TrelloConfig } from '@jscore/contracts';
-import { dispatchEvent, type AutomationEvent, type DispatchPorts } from '../automations/dispatch';
+import { dispatchEvent, type AutomationEvent, type DispatchPorts } from '@jscore/core/automations/dispatch';
 import {
   buildListMap, buildMemberIds, reconcilePlan, resolveConflict, runImport,
   type StoreTask, type SyncLogDraft, type TaskDraft, type TrelloCard, type TrelloSnapshot, type TrelloStore,
-} from '../integrations/trello-map';
-import { buildCardPatch, cardNameFor, chooseList, isOwnTrelloAction, pushTaskWith, shouldPushEvent, type ListMap, type PushPorts, type PushTask } from '../integrations/trello-push';
+} from '@jscore/core/integrations/trello-map';
+import { buildCardPatch, cardNameFor, chooseList, isOwnTrelloAction, pushTaskWith, shouldPushEvent, type ListMap, type PushPorts, type PushTask } from '@jscore/core/integrations/trello-push';
 
 const TEAM = [{ id: 'RV', name: 'Raif Vural' }, { id: 'SK', name: 'Seda Karabacak' }, { id: 'UC', name: 'Ural Çalışkan' }];
 const LISTS = [

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Flame, Plus, Search, User } from 'lucide-react';
 import { TASK_STATE_LABELS, isClientRole, type AuditEvent, type Priority, type Project, type Task, type TaskBadges, type TaskPatch, type TaskState, type TaskType, type TeamMember } from '@jscore/contracts';
 import { TaskBids } from '../modules/bids';
-import { useSession } from '../session';
+import { useFeature, useSession } from '../session';
 import { OrbitDialog } from '../dialog';
 import { useToast } from '../toasts';
 import { NewTaskDialog } from './NewTaskDialog';
@@ -22,11 +22,15 @@ function useMobile() {
 }
 
 /** Liste/pano + araç çubuğu + ayrıntı paneli + yeni görev penceresi. Görev durumu üst bileşende (kontrollü); yazma işlemleri repo üzerinden. */
-export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view, projectId, showProject = false, today, canBid = false, allowCreate = true, hideMineFilter = false, emptyText, openRequest }: {
+export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view: wantedView, projectId, showProject = false, today, canBid: canBidRole = false, allowCreate = true, hideMineFilter = false, emptyText, openRequest }: {
   tasks: Task[]; setTasks: (fn: (prev: Task[]) => Task[]) => void; team: TeamMember[]; projects: Project[]; taskTypes: TaskType[]; view: 'list' | 'board';
   projectId?: string; showProject?: boolean; today: string; canBid?: boolean; allowCreate?: boolean; hideMineFilter?: boolean; emptyText?: string; openRequest?: { id: string; n: number } | null;
 }) {
   const { repo, me } = useSession();
+  const bidsOn = useFeature('tasks.bids');
+  const boardOn = useFeature('tasks.board_view');
+  const canBid = canBidRole && bidsOn;
+  const view = wantedView === 'board' && !boardOn ? 'list' : wantedView;
   const toast = useToast();
   const mobile = useMobile();
   const readonly = !me || isClientRole(me.role) || me.role === 'auditor';

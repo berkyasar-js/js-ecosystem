@@ -266,8 +266,12 @@ export const PRODUCTS: Product[] = [
   { id: 'marketing', name: 'JS Marketing', desc: 'Kampanya ve bülten', price_minor: 119000, group: 'Üretim' },
   { id: 'events', name: 'JS Events', desc: 'Etkinlik yönetimi', price_minor: 119000, group: 'Üretim' },
 ];
-/** feature_flags'te açıkça false olan ürünün modülü menüden düşer; `marketplace` ve temel modüller hiçbir zaman gizlenmez. */
+/** Hiçbir zaman kapatılamayan modüller (gezinme iskeleti). */
+export const ALWAYS_ON_MODULES = ['overview', 'profile', 'apps', 'approvals', 'marketplace', 'admin', 'integrations', 'board', 'automations'] as const;
+/** feature_flags anahtarı: ürün paketi varsa ürün kimliği, yoksa modül kimliği. */
+export const moduleFlagKey = (moduleId: string) => MODULE_PRODUCT[moduleId] ?? moduleId;
+/** feature_flags'te açıkça false olan modül (ürün) menüden düşer; ALWAYS_ON_MODULES hiçbir zaman gizlenmez. */
 export const moduleEntitled = (moduleId: string, flags: Record<string, boolean> | undefined) => {
-  const p = MODULE_PRODUCT[moduleId];
-  return !p || flags?.[p] !== false;
+  if ((ALWAYS_ON_MODULES as readonly string[]).includes(moduleId)) return true;
+  return flags?.[moduleFlagKey(moduleId)] !== false;
 };

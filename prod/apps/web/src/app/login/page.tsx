@@ -2,10 +2,10 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ROLE_LABELS } from '@jscore/contracts';
-import { DEMO_ACCOUNTS } from '@/lib/demo-seed';
-import { DEMO_COOKIE, ORG_COOKIE, isSupabaseConfigured } from '@/lib/env';
-import { setCookie } from '@/lib/repo/client';
-import { createBrowser } from '@/lib/supabase/browser';
+import { DEMO_ACCOUNTS } from '@jscore/core/demo-seed';
+import { DEMO_COOKIE, ORG_COOKIE, isSupabaseConfigured } from '@jscore/core/env';
+import { setCookie } from '@jscore/core/repo/client';
+import { createBrowser } from '@jscore/core/supabase/browser';
 import { Avatar } from '@/components/avatar';
 import { ChevronRight } from 'lucide-react';
 
@@ -17,7 +17,7 @@ function LoginInner() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
-  const [msg, setMsg] = useState<string | null>(sp.get('error') ? 'Giriş tamamlanamadı, tekrar dene.' : null);
+  const [msg, setMsg] = useState<string | null>(sp.get('error') === 'domain' ? 'Bu e-posta alan adı ile Google girişine izin verilmiyor. Kurumsal hesabınla dene ya da yöneticine başvur.' : sp.get('error') ? 'Giriş tamamlanamadı, tekrar dene.' : null);
   const [busy, setBusy] = useState(false);
 
   const google = async () => {

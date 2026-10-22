@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useId, useState } from 'react';
 import { COVER_COLORS, COVER_COLOR_LABELS, type AuditEvent, type Task, type TaskCover } from '@jscore/contracts';
-import type { Repo } from '@/lib/repo/types';
+import type { Repo } from '@jscore/core/repo/types';
 import { fmtTime } from '../ui';
 import { MdLite } from './md-lite';
 import { isImage, useAttachmentUrl, type TaskExtras } from './use-task-extras';

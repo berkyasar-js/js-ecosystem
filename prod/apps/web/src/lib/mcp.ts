@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { jsonRpcRequestSchema, mcpCreateTaskDraftArgs, mcpProjectStatusArgs } from '@jscore/contracts';
-import { DEMO_TODAY } from './agents/demo';
-import type { Repo } from './repo/types';
+import { DEMO_TODAY } from '@jscore/core/agents/demo';
+import type { Repo } from '@jscore/core/repo/types';
 import { isOverdue } from '@/components/work/work-utils';
 
 export const hashToken = (t: string) => createHash('sha256').update(t).digest('hex');

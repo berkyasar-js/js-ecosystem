@@ -9,6 +9,7 @@
 | `supabase/migrations/0005_modules.sql` | modül koleksiyonları (gen-0005.mjs ile üretilir) |
 | `supabase/migrations/0006_gaps.sql` | API anahtarı alanları (access_tokens.user_id/expires_at), `twin_bids` + `task_assignments` (ihale), `assign_bid()` onay kapısı, olay tetikleyicileri, `events.processed_at` |
 | `supabase/migrations/0007_trello.sql` | Trello entegrasyonu: `integrations.config` (sunucu-tarafı API Key/Token; istemci rollerinden sütun-seviyesi gizli) + `last_sync_at`, `tasks` için `trello:%` source_ref indeksi |
+| `supabase/migrations/0014_admin.sql` | Ana Yönetim Paneli: `memberships.status` (active/disabled), RLS yardımcıları + auth hook yalnızca aktif üyelikleri sayar, `public.admin_revoke_sessions(uuid)` (servis rolü), `audit_events (org_id, action, occurred_at)` indeksi |
 | `seed/*.csv`, `seed/seed.sql` | BBY ekibi (maaşsız), 24 marka, task_types, decision_rights, bildirim varsayılanları |
 
 ## Kurulum (`supabase db push`)

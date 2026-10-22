@@ -1,9 +1,9 @@
 import { timingSafeEqual } from 'node:crypto';
-import { fail, json } from '@/lib/api';
-import { authorizeIntegration, isResponse } from '@/lib/integrations/auth';
-import { TrelloApiError } from '@/lib/integrations/trello';
-import { reconcileTrello, type ReconcileSummary } from '@/lib/integrations/trello-reconcile';
-import { createAdmin } from '@/lib/supabase/admin';
+import { fail, json } from '@jscore/core/api';
+import { authorizeIntegration, isResponse } from '@jscore/core/integrations/auth';
+import { TrelloApiError } from '@jscore/core/integrations/trello';
+import { reconcileTrello, type ReconcileSummary } from '@jscore/core/integrations/trello-reconcile';
+import { createAdmin } from '@jscore/core/supabase/admin';
 
 export const maxDuration = 300;
 const eq = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };

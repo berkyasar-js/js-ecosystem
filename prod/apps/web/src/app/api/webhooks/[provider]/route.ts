@@ -1,7 +1,7 @@
-import { fail, json } from '@/lib/api';
-import { verifyHmac } from '@/lib/hmac';
-import { createAdmin } from '@/lib/supabase/admin';
-import { authenticateBearer, bearerOf } from '@/lib/tokens-server';
+import { fail, json } from '@jscore/core/api';
+import { verifyHmac } from '@jscore/core/hmac';
+import { createAdmin } from '@jscore/core/supabase/admin';
+import { authenticateBearer, bearerOf } from '@jscore/core/tokens-server';
 
 /** Gövde ham metin olarak okunur (HMAC bayt-bayt doğrulanır). İmza: x-jscore-signature veya x-hub-signature-256. */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {

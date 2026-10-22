@@ -1,7 +1,7 @@
-import { fail, json } from '@/lib/api';
-import { pushRecentDetailEvents, pushTaskNow } from '@/lib/integrations/trello-push';
-import { getRepo } from '@/lib/repo';
-import { createAdmin } from '@/lib/supabase/admin';
+import { fail, json } from '@jscore/core/api';
+import { pushRecentDetailEvents, pushTaskNow } from '@jscore/core/integrations/trello-push';
+import { getRepo } from '@jscore/core/repo';
+import { createAdmin } from '@jscore/core/supabase/admin';
 
 /**
  * Satır içi (best-effort) JS → Trello itmesi: Supabase deposu görev yazdıktan hemen sonra çağırır. Yetki: oturumlu iç rol (görev yazabilen).
