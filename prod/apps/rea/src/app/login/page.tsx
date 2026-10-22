@@ -1,5 +1,6 @@
 'use client';
 import { Suspense, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/env';
 import { createBrowser } from '@/lib/supabase/browser';
@@ -61,7 +62,7 @@ function LoginInner() {
             )}
           </div>
         ) : (
-          <div className="mt-6"><a className="btn btn-primary" href="/projeler">Demo'yu aç</a></div>
+          <div className="mt-6"><Link className="btn btn-primary" href="/projeler">Demo&apos;yu aç</Link></div>
         )}
         {msg && <p role="alert" className="mt-4 text-sm text-magenta">{msg}</p>}
       </div>

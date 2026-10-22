@@ -4,7 +4,7 @@ import type { Digest, DigestItem, HelperCandidate } from '../types';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Obj = Record<string, any>;
 
-const SKIP_KINDS = new Set(['artifact', 'package', 'unknown', 'javascript-module', 'javascript-asset']);
+const SKIP_KINDS = new Set(['artifact', 'package', 'unknown', 'javascript-module', 'javascript-asset', 'asar-entry', 'file', 'directory']);
 const KIND_ORDER = ['ipc-channel', 'ipc-handler', 'ipc-listener', 'child-process', 'endpoint', 'browser-window', 'context-bridge', 'preload', 'native-addon', 'utility-process', 'worker'];
 const PER_KIND_CAP = 50;
 
@@ -74,7 +74,11 @@ export function buildDigest(evidence: unknown, opts: DigestOptions = {}): Digest
   // Önce anahtar kelime eşleşenler, sonra tür sırası; tür başına üst sınır.
   const rank = (i: DigestItem) => (i.note?.includes('anahtar') ? 0 : 1) * 100 + (KIND_ORDER.indexOf(i.kind) === -1 ? 50 : KIND_ORDER.indexOf(i.kind));
   const perKind = new Map<string, number>();
+  const seen = new Set<string>();
   const picked = [...items].sort((a, b) => rank(a) - rank(b)).filter((i) => {
+    const key = `${i.label}|${i.file}|${i.line}`;
+    if (seen.has(key)) return false; // IPC kanalı + işleyicisi aynı satırı gösterir
+    seen.add(key);
     const c = (perKind.get(i.kind) ?? 0) + 1;
     perKind.set(i.kind, c);
     return c <= PER_KIND_CAP;

@@ -7,7 +7,7 @@ import { executeRun } from '@/lib/rea/runner';
 
 export const runtime = 'nodejs';
 /** Vercel işlev süresi: after() ile çalışan analiz de bu sınır içinde kalır. */
-export const maxDuration = RUN_MAX_DURATION_S;
+export const maxDuration = 300; // = RUN_MAX_DURATION_S (Next sabit literal ister)
 type Ctx = { params: Promise<{ id: string }> };
 
 const STALE_MS = (RUN_MAX_DURATION_S + 60) * 1000;
