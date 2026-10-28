@@ -50,11 +50,16 @@ export function runRea(args: string[], opts: { cwd: string; stdoutFile: string; 
       let i: number;
       while ((i = buf.indexOf('\n')) !== -1) {
         const line = buf.slice(0, i); buf = buf.slice(i + 1);
-        if (line.includes('rea_progress')) opts.onProgress?.(line); else tail = (tail + line + '\n').slice(-2000);
+        if (line.includes('rea_progress')) opts.onProgress?.(line); else tail = (tail + line + '\n').slice(-6000);
       }
     });
     child.on('error', (e) => { clearTimeout(timer); fs.closeSync(out); reject(e); });
-    child.on('close', (code) => { clearTimeout(timer); fs.closeSync(out); resolve({ code, stderrTail: (tail + buf).slice(-2000), timedOut }); });
+    child.on('close', (code, signal) => {
+      clearTimeout(timer); fs.closeSync(out);
+      const t = (tail + buf).slice(-6000);
+      if (code !== 0) console.error('[rea] CLI çıkış', { code, signal, stderr: t.slice(-3000) });
+      resolve({ code: code ?? (signal ? 137 : null), stderrTail: signal ? `${t}\nSüreç ${signal} sinyaliyle sonlandı (bellek sınırı olabilir)` : t, timedOut });
+    });
   });
 }
 
@@ -67,7 +72,11 @@ export function reaErrorMessage(stdoutFile: string, stderrTail: string): string 
       if (m) { const e = JSON.parse(m[0]) as { message?: string; error?: string; details?: { issues?: Array<{ message?: string; reason?: string }> } }; return [e.error, e.message, e.details?.issues?.[0]?.message ?? e.details?.issues?.[0]?.reason].filter(Boolean).join(' — '); }
     } catch { /* sonraki kaynak */ }
   }
-  return stderrTail.trim().split('\n').slice(-2).join(' ') || 'REA beklenmedik şekilde sonlandı.';
+  // Node çökme çıktısı: yığın izinin sonunda "Node.js vX" alt bilgisi var; asıl mesaj daha yukarıda.
+  const lines = stderrTail.split('\n').map((l) => l.trimEnd()).filter((l) => l.trim() && !/^Node\.js v\d/.test(l.trim()) && !l.includes('rea_progress'));
+  const meaningful = lines.filter((l) => /error|hata|fatal|cannot|not found|enoent|eacces|erofs|heap|memory|killed|spawn/i.test(l) && !/^\s+at /.test(l));
+  const pick = (meaningful.length ? meaningful : lines).slice(-3).map((l) => l.trim());
+  return pick.join(' · ').slice(0, 900) || 'REA beklenmedik şekilde sonlandı.';
 }
 
 function findTarget(root: string): { kind: 'asar' | 'dir'; path: string } {

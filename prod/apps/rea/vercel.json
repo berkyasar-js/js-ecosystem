@@ -1,0 +1,5 @@
+{
+  "functions": {
+    "src/app/api/projects/[id]/run/route.ts": { "memory": 3009, "maxDuration": 300 }
+  }
+}
