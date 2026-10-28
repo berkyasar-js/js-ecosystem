@@ -9,6 +9,7 @@ import type { Store } from '../store/types';
 import type { Actor, Digest, DigestItem, Project, Run } from '../types';
 import { buildDigest, classifyEvidence, reduceSummary } from './digest';
 import { describeProgress, overallPercent, parseProgressLine } from './progress';
+import { ensurePsShim } from './ps-shim';
 import { buildAnalyzeArgs, buildInspectArgs, buildRunRequest, buildSummaryRequest, extractKeywords } from './requests';
 import { collectSite } from './site';
 import { extractAsar, grepSources, makeSnippetReader, safeJoin, scanHelpers, walkFiles } from './sources';
@@ -38,7 +39,9 @@ export function runRea(args: string[], opts: { cwd: string; stdoutFile: string; 
   return new Promise((resolve, reject) => {
     let out: number;
     try { out = fs.openSync(opts.stdoutFile, 'w'); } catch (e) { reject(e); return; }
-    const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: path.join(opts.cwd, '.home'), TMPDIR: opts.cwd, NO_COLOR: '1', CI: '1', NODE_ENV: 'production' };
+    const shimBin = ensurePsShim(opts.cwd);
+    const PATH = [shimBin, path.dirname(process.execPath), process.env.PATH].filter(Boolean).join(path.delimiter);
+    const env: NodeJS.ProcessEnv = { PATH, HOME: path.join(opts.cwd, '.home'), TMPDIR: opts.cwd, NO_COLOR: '1', CI: '1', NODE_ENV: 'production' };
     fs.mkdirSync(env.HOME as string, { recursive: true });
     const child = spawn(process.execPath, [resolveReaBin(), ...args], { cwd: opts.cwd, env, stdio: ['ignore', out, 'pipe'] });
     let tail = '';
@@ -57,7 +60,11 @@ export function runRea(args: string[], opts: { cwd: string; stdoutFile: string; 
     child.on('close', (code, signal) => {
       clearTimeout(timer); fs.closeSync(out);
       const t = (tail + buf).slice(-6000);
-      if (code !== 0) console.error('[rea] CLI çıkış', { code, signal, stderr: t.slice(-3000) });
+      if (code !== 0) {
+        let head = '';
+        try { head = fs.readFileSync(opts.stdoutFile, 'utf8').slice(0, 3000); } catch { /* yok */ }
+        console.error('[rea] CLI çıkış', { code, signal, stderr: t.slice(-3000), stdoutHead: head });
+      }
       resolve({ code: code ?? (signal ? 137 : null), stderrTail: signal ? `${t}\nSüreç ${signal} sinyaliyle sonlandı (bellek sınırı olabilir)` : t, timedOut });
     });
   });
