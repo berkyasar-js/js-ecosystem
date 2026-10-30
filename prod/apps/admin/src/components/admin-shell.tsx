@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Activity, Bot, Building2, ChevronRight, ClipboardList, ExternalLink, Landmark, LayoutDashboard, Store, LogOut, Menu, Moon, Plug, ShieldCheck, Sun, SquareStack, UserCog, Users, Workflow, X, type LucideIcon } from 'lucide-react';
+import { Activity, Bot, Building2, ChevronRight, ClipboardList, ExternalLink, Landmark, LayoutDashboard, MessagesSquare, Store, LogOut, Menu, Moon, Plug, ShieldCheck, Sun, SquareStack, UserCog, Users, Workflow, X, type LucideIcon } from 'lucide-react';
 import { ROLE_LABELS } from '@jscore/contracts';
 import { useSession } from './session';
 import { Avatar } from './avatar';
@@ -22,6 +22,7 @@ export const NAV: Array<{ label: string; items: Item[] }> = [
     { href: '/admin/automations', label: 'Otomasyonlar', icon: Workflow },
     { href: '/admin/agents', label: 'Ajanlar & Maliyet', icon: Bot },
     { href: '/admin/board', label: 'Yönetim Kurulu', icon: Landmark },
+    { href: '/admin/board/sohbet', label: 'Kurul Sohbeti', icon: MessagesSquare },
   ] },
   { label: 'GÜVENLİK & VERİ', items: [
     { href: '/admin/audit', label: 'Denetim kaydı', icon: ClipboardList },
@@ -40,7 +41,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   if (!me) return <div className="mx-auto max-w-3xl p-8"><Loading rows={4} /></div>;
   const orgName = orgs.find((o) => o.id === orgId)?.name ?? 'Jobs Studio';
   const orgMark = orgName.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-  const active = (href: string) => (href === '/admin' ? path === '/admin' : path === href || path.startsWith(href + '/'));
+  // Alt rota (ör. /admin/board/sohbet) kendi menü maddesine sahipse üst madde (/admin/board) etkin sayılmaz.
+  const active = (href: string) => (href === '/admin' ? path === '/admin' : path === href || (path.startsWith(href + '/') && !flat.some((i) => i.href !== href && i.href.startsWith(href + '/') && (path === i.href || path.startsWith(i.href + '/')))));
   const current = flat.find((i) => active(i.href));
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[256px_1fr]">

@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import { BOARD_AGENTS, type BoardAnswer, type BoardProposalOutput } from '@jscore/contracts';
 import { Async, Empty, PageHeader, APPROVAL_STATUS, todayFor, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
@@ -34,7 +35,7 @@ export default function BoardPage() {
 
   return (
     <>
-      <PageHeader title="Yönetim Kurulu" sub="Dokuz ajan, haftalık kurul ve kurucu kararları" actions={<button className="btn btn-accent" disabled={busy} onClick={convene}>{busy ? 'Toplanıyor…' : 'Kurulu şimdi topla'}</button>} />
+      <PageHeader title="Yönetim Kurulu" sub="Dokuz ajan, haftalık kurul ve kurucu kararları" actions={<><Link href="/admin/board/sohbet" className="btn btn-primary">Kurul Sohbeti</Link><button className="btn btn-accent" disabled={busy} onClick={convene}>{busy ? 'Toplanıyor…' : 'Kurulu şimdi topla'}</button></>} />
       <CapMeter className="mb-4 max-w-xl" />
       <p className="mb-4 flex flex-wrap gap-2">{BOARD_AGENTS.map((a) => <span key={a} className="chip">{a.toUpperCase()}</span>)}</p>
       {err && <p role="alert" className="mb-3 text-sm text-magenta">{err}</p>}
