@@ -4,7 +4,8 @@ import { Async, PageHeader, Stat, fmtTime, useData } from '@/components/ui';
 import { CapMeter } from '@/components/cap-meter';
 import { NeedsSupabase } from '@/components/admin-ui';
 import { useSession } from '@/components/session';
-import { useApi } from '@/lib/client';
+import { useAdminSettings, useApi } from '@/lib/client';
+import { SetupCard } from '@/components/setup-card';
 
 interface Overview {
   health: Record<'supabase' | 'anthropic' | 'trello' | 'cron', { ok: boolean; detail: string }> & { env: Record<string, boolean> };
@@ -21,6 +22,7 @@ export default function Overview() {
   return (
     <>
       <PageHeader title="Genel bakış" sub="Sistem sağlığı, sayılar ve son yönetim işlemleri" />
+      <SetupStrip />
       {mode === 'demo' ? <DemoOverview /> : <Live />}
     </>
   );
@@ -75,4 +77,11 @@ function DemoOverview() {
       )}</Async>
     </div>
   );
+}
+
+/** Kurulum tamamlanana dek Genel bakışın üstünde ilerleme kartı. */
+function SetupStrip() {
+  const st = useAdminSettings();
+  if (!st.settings) return null;
+  return <div className="mb-5"><SetupCard settings={st.settings} compact /></div>;
 }

@@ -8,7 +8,7 @@ prod/
   apps/admin            Ana Yönetim Paneli (yalnızca owner / org_admin) — bkz. "Ana Yönetim Paneli"
   packages/core         Ortak çekirdek (@jscore/core): Supabase istemcileri, Repo (SupabaseRepo + DemoRepo), ajan çalışma zamanı, env, hmac, Trello kütüphaneleri
   packages/contracts    Role/Permission tipleri, modül kataloğu, FEATURES, tablo tipleri, zod şemaları
-  packages/schema       supabase/migrations/0001..0014 + seed (CSV) — bkz. packages/schema/README.md
+  packages/schema       supabase/migrations/0001..0016 + seed (CSV) — bkz. packages/schema/README.md
   packages/prompts      Ajan promptları (md) + SQL üretici
 ```
 
@@ -45,17 +45,18 @@ Yönetim, kullanıcı arayüzünden ayrıldı: `apps/admin` (`@jscore/admin`) ya
 
 | Bölüm | İş |
 |---|---|
-| Genel bakış | Supabase / Anthropic / Trello / cron-olay hattı sağlığı, sayılar, ay içi ajan harcaması, son denetim |
+| Genel bakış | Kurulum ilerleme kartı (tamamlanınca kalkar), Supabase / Anthropic / Trello / cron-olay hattı sağlığı, sayılar, ay içi ajan harcaması, son denetim |
+| Kurulum & Çalışma Alanı | `/admin/setup`: sihirbaz adım durumu (6 adım), “Devam et” → `${NEXT_PUBLIC_APP_URL}/app/setup?step=…`, kurulumu yeniden aç / ilerlemeyi sıfırla (`settings.setup`) |
 | Modüller & Özellikler | Her modül aç/kapat (`organizations.settings.feature_flags`) + modül içi özellik anahtarları (`settings.feature_toggles`, `contracts` → `FEATURES`) |
 | Kullanıcılar & Roller | `memberships` ⨝ `auth.users`: e-posta daveti (rol + çalışan + müşteri kapsamı), rol/kapsam değiştirme, devre dışı bırak/etkinleştir (üyelik `status` + auth ban + oturum iptali), parola sıfırlama e-postası, sihirli bağlantı gönder/üret, oturumları sonlandır, MFA sıfırla, üyeliği kaldır. Son owner korunur; org_admin owner'a dokunamaz; kimse kendi rolünü/durumunu değiştiremez |
-| Çalışanlar | `employees.auth_user_id` bağlama; kart yönetimi JS People'da kalır |
+| Çalışanlar | *Hesaplar*: `employees.auth_user_id` bağlama; *Ekipler & hiyerarşi* (0016): ekip adı + yönetici seçimi (döngü korumalı, `PATCH /api/admin/employees`), organizasyon ağacı, ekip sayımları; kart yönetimi JS People'da kalır |
 | Entegrasyonlar | Eski Connect: Trello kartı (bağla / içe aktar / webhook / mod / eşitle), MCP, API anahtarları, webhook'lar |
 | Otomasyonlar | Eski JS Automation yönetimi |
 | Ajanlar & Maliyet | Aylık tavan, kur, varsayılan model, prompt sürümleri, çalıştırma günlüğü |
 | Yönetim Kurulu | Paket üretme (CHAIR), kararlar, vetolar, karar hakları |
 | Denetim kaydı | `audit_events` (eylem/sonuç/tarih/kaynak filtresi; “yalnızca yönetim”) ve `integration_sync_log` |
 | Güvenlik | `security.require_mfa`, oturum süresi, izinli e-posta alan adları (Google girişi), API anahtarı politikası (en uzun ömür + izinli kapsamlar) |
-| Organizasyon | ad, slug, dil/saat dilimi/para birimi, logo URL'si, demo sıfırlama (yalnızca demo), JSON dışa aktarma (sırlar/maaş/özlük hariç) |
+| Organizasyon | *Genel*: ad, slug, dil/saat dilimi/para birimi, çalışma saatleri, logo URL'si (kullanıcı uygulaması kenar çubuğunda görünür); *Gezinme*: grup sırası + rol başına gizlenen modüller (`settings.nav`); *Veri*: demo sıfırlama, JSON dışa aktarma (sırlar/maaş/özlük hariç) |
 | Ürünler & Paketler | Eski Marketplace: plan, kullanım, faturalama, sektör paketleri, white label |
 
 Sunucu rotaları `/api/admin/*` altındadır; hepsi `requireAdmin()` ile korunur ve **her yönetim eylemi** `audit_events`'e `admin.*` önekiyle yazılır (başarı ve hata).
@@ -63,7 +64,7 @@ Sunucu rotaları `/api/admin/*` altındadır; hepsi `requireAdmin()` ile korunur
 > Bu README'nin aşağıdaki bölümlerinde geçen “Connect”, “Admin”, “Board”, “Automations” ekranları artık **Ana Yönetim Paneli**'ndedir (`/admin/integrations`, `/admin/security|agents|organization|users`, `/admin/board`, `/admin/automations`). Trello webhook alıcısı, cron'lar (`/api/events/dispatch`, `/api/integrations/trello/reconcile`), `push` ve `/api/mcp` kullanıcı uygulamasında kalır; Trello'yu bağlama/içe aktarma/webhook kurma rotaları `/api/admin/integrations/trello/*` altına taşındı.
 
 **Kullanıcı uygulaması etkisi (apps/web):**
-- *Modül kapalıysa* menüden düşer; rotası `/app/overview?notice=module_disabled`'a yönlenir (`lib/nav.ts` → `routeVerdict`). `overview`, `profile`, `apps`, `approvals` kapatılamaz.
+- *Modül kapalıysa* menüden düşer (gruptaki tüm modüller kapalıysa grup da düşer); rotası `/app/overview?notice=module_disabled`'a yönlenir (`lib/nav.ts` → `routeVerdict`). `overview`, `profile`, `apps`, `approvals` kapatılamaz. Uygulamalar sayfasında kapalı modül gri + “Panelden açılabilir” görünür.
 - *Özellik kapalıysa* düğme/sekme gizlenir: `tasks.{board_view,bids,comments,checklists,files,cover,trello_sync}`, `inbox.ai_drafts`, `studio.ai_drafts`, `crm.{health_scores,proposals}`, `finance.*`, `people.*`, … (`useFeature(key)`; `ModulePage` sekmeleri `FEATURES[].tab` ile süzer). AI özellikleri **sunucuda da** zorlanır (`/api/agents/run` → 403 `feature_disabled`). Anahtar yoksa özellik **açıktır**.
 - *MFA*: `security.require_mfa` açıksa Supabase modunda her kullanıcı TOTP kaydı (QR) veya kod girişi olmadan uygulamaya giremez (`MfaGate`). Supabase → Authentication → MFA → TOTP açık olmalı. Bu bir arayüz kapısıdır; RLS'te aal2 politikası yoktur.
 - *E-posta alan adı*: `security.allowed_email_domains` doluysa **Google ile** giriş geri çağrısında (`/auth/callback`) alan adı listede değilse oturum kapatılır (`/login?error=domain`). E-posta kodu (OTP) girişi etkilenmez.
@@ -76,6 +77,39 @@ Sunucu rotaları `/api/admin/*` altındadır; hepsi `requireAdmin()` ile korunur
 4. Supabase → Authentication → URL Configuration: **Redirect URLs**'e `https://<admin-alan>/auth/callback` ekle (Google/OTP bu panelde de çalışsın). Google OAuth istemcisine admin alanını yetkili yönlendirme olarak ekle.
 5. `0014_admin.sql` migration'ını uygula (`supabase db push`) — `memberships.status`, devre dışı üyeliklerin RLS'te dışlanması, `public.admin_revoke_sessions(uuid)` (yalnızca servis rolü), denetim indeksi. **Önce migration**: aksi halde “oturumları sonlandır” ve devre dışı bırakma çalışmaz.
 6. Yerel: `npm run dev:admin` (http://localhost:3001). Env yoksa panel **demo modunda** açılır (rol seçici; yalnızca owner girer): modüller, güvenlik, ajanlar, Kurul, otomasyonlar, entegrasyonlar denenebilir; kullanıcı/denetim/dışa aktarma Supabase ister. Not: admin ve web ayrı origin olduğundan demo verisi (localStorage) paylaşılmaz — bayrakların uçtan uca etkisi için Supabase gerekir.
+
+
+## Bilgi mimarisi (V7 — “karmaşıklığı düşür”)
+Kullanıcı uygulamasının kenar çubuğu uzun düz modül listesi yerine **9 üst alan** gösterir (`packages/contracts/src/nav.ts` → `NAV_GROUPS`; Volobox ruhu): **Ana Sayfa · Gelen Kutusu · Projeler · Müşteriler · Üretim · Ekip · Finans · Mesajlar · Uygulamalar**. Aktif grubun alt sekmeleri grubun altında açılır; modüllerin URL'leri (`/app/<slug>`) değişmedi. Bir grubun tüm modülleri kapalı/yetkisiz/gizliyse grup düşer (`visibleNavGroups`, `apps/web/src/lib/nav.ts`). Kenar çubuğu daraltılabilir (`user_prefs.sidebar_collapsed`), mobilde 5 alt sekme (Ana Sayfa, Gelen Kutusu, Projeler, Mesajlar, Uygulamalar). Yönetim panelinden sıra ve rol başına gizleme ayarlanır (`settings.nav`).
+
+| Alan | Rota | Kapsadığı modüller / sekmeler |
+|---|---|---|
+| Ana Sayfa | `/app/overview` (`/app/home` yönlenir) | Bugünün planı (gecikmiş / bugün / bu hafta, aşamaya göre), Senden bekleyenler (karar verebileceğin onaylar, anmalar, engelli işler), Devam eden & sırada, Ekip nabzı (owner/org_admin/operations/account/pm: kişi başına açık/geciken + yük), Kurul & ajanlar (owner: son kurul kararları + panel bağlantısı), kurulum kartı (owner/org_admin, tamamlanana dek) |
+| Gelen Kutusu | `/app/inbox` | **Kuyruk**: bildirimler + bana düşen onaylar + anmalar + görevimdeki Trello kaynaklı değişiklikler (7 gün) + bugün biten/geciken görevlerim; filtreler, “tamam” (`user_prefs.inbox_done`) ve okundu; **Onay Merkezi** (`/app/approvals`); **E-posta** (`?tab=email`, eski Akıllı Gelen Kutusu: Gmail → CRM → AI taslak) |
+| Projeler | `/app/projects` | Projeler (+ hızlı proje/marka oluşturma), Görevlerim (`/app/mywork`), Pano (`/app/tasks`), Akış (`/app/flow`) |
+| Müşteriler | `/app/crm` | CRM, Markalar, Fırsatlar, Müşteri portalı |
+| Üretim | `/app/uretim` | Hub sayfası (kart + sayım) ve ortak sekme şeridi; Studio, Social, Media, Review, Transfer, Present, Marketing, Events sayfaları `apps/web/src/app/app/(uretim)/` route group'unda, **eski URL'leri aynen çalışır** |
+| Ekip | `/app/people` | Kişiler, Kaynaklar, İkizler, İşe alım |
+| Finans | `/app/finance` | Finans, Raporlar (Insights) |
+| Mesajlar | `/app/messages` | — |
+| Uygulamalar | `/app/apps` | Tüm modül kartları (açıklama, ⭐ favori, aç, arama); kapalı modüller gri + “Panelden açılabilir”; favoriler kenar çubuğunda “Favoriler” bölümü |
+
+- **Spotlight (⌘K / Ctrl+K)** — `components/spotlight.tsx`: alanlar/sayfalar/modüller, görevler (`/app/projects/<id>?task=<id>` derin bağlantı → ayrıntı paneli açılır), projeler, markalar, kişiler ve hızlı eylemler (“Yeni görev” `/app/tasks?new=1`, “Yeni proje” `/app/projects?new=1`, “Kurulum sihirbazı”, owner için “Kurulu aç”). Klavye: ↑↓ Enter Esc.
+- **Sor (⌘J / Ctrl+J)** — `components/ask-drawer.tsx` + `lib/ask.ts` (saf, testli): yerel veriden kurallı yanıt (bugün teslim, gecikenler, kim yoğun, bekleyen onaylar, `<proje|marka|kişi> ne durumda`). **LLM çağrısı yok**; owner/org_admin için Kurul Sohbeti (panel) bağlantısı.
+- **Kullanıcı tercihleri** — `public.user_prefs(user_id pk, org_id, prefs jsonb, updated_at)` (0016; RLS yalnızca sahibi). `prefs`: `favorites`, `welcome_done`, `notifications` (taslak), `inbox_done`, `sidebar_collapsed` (`userPrefsSchema`). Demo: `localStorage` `js_user_prefs_v1:<hesap>` (demo sıfırlama buna dokunmaz). Repo: `getPrefs()` / `savePrefs()`.
+
+## Karşılama ve kurulum
+- **`/app/welcome`** — ilk giriş (`prefs.welcome_done=false` iken kabuk buraya yönlendirir; atlanabilir): 1) profil kontrolü (ad/unvan/avatar çalışan kartından), 2) bildirim tercihleri (taslak), 3) role göre “ilk 3 adım”. Owner kurulum tamamlanmamışsa “Başla” `/app/setup`'a götürür.
+- **`/app/setup`** — owner / org_admin için yeniden girilebilir sihirbaz (`components/setup/wizard.tsx`); ilerleme `organizations.settings.setup` (`setupStateSchema`: `done[]`, `step`, `packs[]`, `completed_at`, `reopened`). Adımlar:
+  1. **Organizasyon**: ad, logo URL, saat dilimi, para birimi, çalışma saatleri (`general`, `structure.work_hours`).
+  2. **Ekip**: elle kişi ekleme (ad, pozisyon, rol, ekip, bağlı olduğu; e-posta saklanmaz — davet panelden) ve **XLSX içe aktarma**: “Ekip” sayfası, sütunlar `Ad Soyad · Pozisyon · Ekip · Bağlı olduğu · El kitabı rolü · Statü · İşe giriş`. SheetJS (`xlsx`) ile **tarayıcıda** okunur, dosya yüklenmez; maaş/TC/telefon/e-posta/adres/SGK/banka sütunları **hiç okunmaz** (`TEAM_SHEET_IGNORED`, `lib/team-import.ts`). “Bağlı olduğu” ekleme sonrası `manager_id`'ye çözülür (`resolveManager`); aynı adlı kişi ikinci kez eklenmez; sonuç `setup.team_import` denetim kaydına yazılır.
+  3. **Modüller**: paketler (`SETUP_PACKS`: Ajans temel / Üretim / Finans / İK / Yapay zekâ) → `feature_flags` (`packsToFlags`; paketsiz modüllere dokunulmaz). Owner uygular (RLS: `organizations` güncelleme owner/org_admin); org_admin'de yalnızca seçim saklanır. `setup.packs` denetim kaydı.
+  4. **Entegrasyonlar**: Trello durumu + panel bağlantısı; **HubSpot** token'ı `POST /api/setup/hubspot` (yalnızca owner/org_admin; servis rolüyle `integrations.config.token`, istemciye maskeli döner, `setup.hubspot.*` denetim kaydı; demo: yalnızca durum); Google giriş durumu (Supabase `app_metadata.providers`).
+  5. **İlk marka & proje**: `QuickCreate` (Repo `createBrand` → `clients`+`brands`, `createProject`).
+  6. **Özet** → “Kurulumu tamamla” (`completed_at`). Kart Ana Sayfa ve admin Genel bakış'tan düşer; admin → Kurulum & Çalışma Alanı'ndan yeniden açılır.
+
+## 0016 — çalışma alanı & kurulum (`0016_workspace_setup.sql`, 0015'ten bağımsız)
+`user_prefs` tablosu (RLS `user_id = auth.uid()`), `employees.manager_id uuid → employees(id) on delete set null` (+ kendi kendine yönetici yasağı), `employees.team text`, `employees.hired_at date`, indeksler; `tasks`, `approvals`, `notifications` `supabase_realtime` yayınına eklenir (ileride canlı gelen kutusu). **Önce migration**: `SupabaseRepo.team()` yeni sütunları seçer; 0016 uygulanmadan ekip listesi hata verir. `organizations.settings` varsayılanı değişmez (`setup`, `nav` anahtarları uygulama tarafından yazılır). Demo tohumunda ekip/yönetici alanları dolu (BY kök; kreatif → UC, hesap → OE).
 
 ## Mimari notları
 - **Repo katmanı** (`lib/repo`): `Repo` arayüzü; `SupabaseRepo` (browser/server Supabase istemcisi, her sorgu kullanıcının JWT'si ile → RLS), `DemoRepo` (bellek/localStorage). Sunucuda `getRepo()`, istemcide `createClientRepo()`.
@@ -175,4 +209,4 @@ Görev ayrıntıları (0012): Trello API çağrıları (checklist/madde/yorum/ek
 Trello senkron: JS → Trello yazımı, uzlaştırma ve 0008 tetikleyicileri gerçek Trello/Supabase'e karşı denenmedi (yalnızca saf mantık + bellek portlu testler); Trello'da JS'te karşılığı olmayan liste/aşama (kapsam, Kontrol'süz iç revize) tek yönlü kalır ve Trello'dan gelen sonraki çekim aşamayı listeye göre yeniden yazabilir; satır içi itme tarayıcıdan çağrılır (sekme kapanırsa cron 5 dk içinde tamamlar). Trello: gerçek Trello API'sine karşı uçtan uca denenmedi (anahtar yok; HTTP katmanı ve Supabase deposu yalnızca derleme/ham mantık testiyle doğrulandı), webhook'lar kart bazlı yeniden çekim yapar (artık son-yazan-kazanır: daha yeni JS düzenlemesi korunur), silinen/arşivlenen kart tam içe aktarmada arşive alınmaz (yalnızca webhook ile), 1000+ kartta tek istek/pano limiti (Trello 1000 kart sınırı) geçerlidir. 
 Supabase uçtan uca doğrulanmadı (instance yok; jsonb katman, RPC (`assign_bid`, `hire_candidate`…) ve RLS/tetikleyiciler canlı DB'de test edilmedi; 0006 yalnızca statik testle doğrulandı), tarayıcıda görsel test yapılmadı, dosya yükleme/Vimeo/MinIO simüle. Demo'da API anahtarları yalnızca tarayıcıda yaşar (sunucu durumsuz; sunucu uçları demo için `jsdemo_token` kabul eder) ve demo webhook aksiyonu ağ çağrısı yapmaz. Otomasyon zincirleme tetiklemesi (bir kuralın ürettiği olayın başka kuralı tetiklemesi) demoda yok. Otomasyon `condition` ifadeleri değerlendirilmez. Cron aralığı Vercel planına bağlıdır.
 
-Ana Yönetim Paneli (apps/admin): canlı Supabase/Google/OTP/davet e-postası/MFA akışları ve `0014_admin.sql` gerçek bir instance'a karşı denenmedi (saf mantık + demo-modu birim testleri, derleme, lint). `integration_admin` rolü artık kullanıcı uygulamasında yalnızca genel bakış/profil görür (Connect panele taşındı) ve panele giremez (yalnızca owner/org_admin). MFA zorunluluğu arayüz kapısıdır (RLS'te aal2 politikası yok). Prompt sürümleri panelde yalnızca listelenir (yeni sürüm `npm run prompts:sql`). Demo modunda admin ve web ayrı origin olduğundan ayarlar paylaşılmaz.
+V7 bilgi mimarisi: tarayıcıda görsel/klavye testi yapılmadı (derleme, lint, saf birim testleri); `user_prefs` RLS'i ve `employees` 0016 sütunları canlı DB'de denenmedi; XLSX içe aktarma gerçek bir “Ekip” dosyasıyla değil, sütun adlarıyla birebir örnek satırlarla test edildi; HubSpot token'ı yalnızca saklanır (API çağrısı/doğrulama yok); Gelen Kutusu canlı değil (realtime yayını hazır, abonelik sonraki adım); “Sor” kurallı yerel yanıt verir (LLM yok); karşılama/kurulumda e-posta daveti panelden yapılır (web'de çalışan kaydı açılır). Ana Yönetim Paneli (apps/admin): canlı Supabase/Google/OTP/davet e-postası/MFA akışları ve `0014_admin.sql` gerçek bir instance'a karşı denenmedi (saf mantık + demo-modu birim testleri, derleme, lint). `integration_admin` rolü artık kullanıcı uygulamasında yalnızca genel bakış/profil görür (Connect panele taşındı) ve panele giremez (yalnızca owner/org_admin). MFA zorunluluğu arayüz kapısıdır (RLS'te aal2 politikası yok). Prompt sürümleri panelde yalnızca listelenir (yeni sürüm `npm run prompts:sql`). Demo modunda admin ve web ayrı origin olduğundan ayarlar paylaşılmaz.

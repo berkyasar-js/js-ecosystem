@@ -2,13 +2,18 @@
 import Link from 'next/link';
 import { TASK_STATE_LABELS } from '@jscore/contracts';
 import { Async, Empty, PageHeader, fmtDate, money, useData } from '@/components/ui';
+import { QuickCreate } from '@/components/quick-create';
+import { useEffect, useState } from 'react';
 
 export default function Projects() {
   const q = useData(async (r) => ({ projects: await r.listProjects(), brands: await r.listBrands() }));
+  const [wantNew, setWantNew] = useState(false);
+  useEffect(() => { setWantNew(new URLSearchParams(window.location.search).get('new') === '1'); }, []);
   return (
     <>
       <PageHeader title="Projeler" sub="Marka, akış aşaması, teslim ve bütçe" />
-      <Async q={q}>{({ projects, brands }) => projects.length === 0 ? <Empty>Görünür proje yok.</Empty> : (
+      {q.data && <div className="mb-4"><QuickCreate key={String(wantNew)} brands={q.data.brands} autoOpen={wantNew} /></div>}
+      <Async q={q}>{({ projects, brands }) => projects.length === 0 ? <Empty>Görünür proje yok. Sağ üstten ilk projeni oluştur.</Empty> : (
         <div className="card overflow-x-auto p-2">
           <table className="table">
             <thead><tr><th>Proje</th><th>Marka</th><th>Aşama</th><th>İlerleme</th><th>Teslim</th><th>Bütçe</th></tr></thead>

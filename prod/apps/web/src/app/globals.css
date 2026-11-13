@@ -292,3 +292,51 @@ main .grid:not([class*='grid-cols']) { grid-template-columns: minmax(0, 1fr); }
 @media (forced-colors: active) {
   .card, .panel, .metric, .glass, .sidebar, .topbar, .signal-card, .focus-card, .login-card, .btn, .navitem[aria-current="page"] { background: Canvas; color: CanvasText; border: 1px solid CanvasText; box-shadow: none; backdrop-filter: none; }
 }
+
+/* ───── Gruplu gezinme (V6): alt sekmeler, daraltılmış kenar çubuğu, mobil alt sekmeler ───── */
+.nav-sub { display: grid; gap: 1px; margin: 0 0 6px 30px; padding-left: 12px; border-left: 1px solid #ffffff1c; }
+.nav-subitem { display: block; padding: 6px 10px; border-radius: 9px; font-size: 12px; font-weight: 600; color: #9c9fbb; transition: background .18s, color .18s; }
+.nav-subitem:hover { color: #fff; background: rgba(144,108,255,.12); }
+.nav-subitem[aria-current="page"] { color: #fff; background: rgba(255,255,255,.08); }
+.sidebar.collapsed { padding-left: 10px; padding-right: 10px; }
+.sidebar.collapsed .nav-text, .sidebar.collapsed .nav-label, .sidebar.collapsed .nav-count { display: none; }
+.sidebar.collapsed .logo { width: 44px; margin: 2px auto 10px; object-fit: cover; object-position: left; }
+.sidebar.collapsed .workspace { justify-content: center; margin-left: 0; margin-right: 0; }
+.sidebar.collapsed .navitem { justify-content: center; padding: 10px 0; }
+.sidebar.collapsed .identity { justify-content: center; padding-left: 0; padding-right: 0; }
+.sidebar .navitem[aria-pressed] { color: #9c9fbb; background: none; border: 0; cursor: pointer; font: inherit; }
+.bottom-tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 35; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--edge); background: var(--topbar-bg); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.bottom-tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; border-radius: 12px; font-size: 10px; font-weight: 600; color: var(--muted); }
+.bottom-tab[aria-current="page"] { color: var(--brand-ink); background: rgba(144,108,255,.12); }
+.bottom-tab .count-dot { top: -6px; right: -10px; }
+
+/* ───── Spotlight (⌘K) ve Sor (⌘J) ───── */
+.palette-backdrop, .drawer-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(1,4,30,.55); backdrop-filter: blur(3px); }
+.palette { position: absolute; left: 50%; top: 10vh; width: min(640px, calc(100% - 32px)); transform: translateX(-50%); padding: 10px; display: grid; gap: 8px; max-height: 70vh; }
+.palette-input { display: flex; align-items: center; gap: 10px; padding: 0 10px; color: var(--muted); }
+.palette-input .input { border: 0; background: transparent; min-height: 46px; font-size: 15px; padding-left: 0; }
+.palette-input .input:focus { outline: none; }
+.palette-input kbd { padding: 2px 6px; border-radius: 5px; background: var(--nested); font-family: inherit; font-size: 11px; }
+.palette-list { overflow-y: auto; display: grid; gap: 2px; border-top: 1px solid var(--line); padding-top: 8px; }
+.palette-item { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; text-align: left; font-size: 13px; font-weight: 600; color: var(--ink); background: none; cursor: pointer; }
+.palette-item.is-active { background: rgba(144,108,255,.14); }
+.drawer { position: absolute; right: 0; top: 0; bottom: 0; width: min(440px, 100%); display: flex; flex-direction: column; padding: 18px; background: var(--card-bg); border-left: 1px solid var(--edge); box-shadow: -12px 0 40px rgba(1,4,30,.3); overflow: hidden; }
+
+/* ───── Ana sayfa (Volobox ruhu) ───── */
+.home-grid { display: grid; gap: 20px; grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.home-grid > * { grid-column: span 12; }
+@media (min-width: 1024px) { .home-col-8 { grid-column: span 8; } .home-col-4 { grid-column: span 4; } .home-col-6 { grid-column: span 6; } }
+.home-list { display: grid; gap: 6px; }
+.home-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-radius: 12px; background: var(--nested); border: 1px solid var(--line); font-size: 13px; }
+.home-row:hover { border-color: color-mix(in srgb, var(--brand-ink) 40%, var(--line)); }
+.setup-steps { display: grid; gap: 6px; }
+.setup-step { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--nested); font-size: 13px; }
+.setup-step[aria-current="step"] { border-color: var(--brand-ink); }
+.setup-dot { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-size: 11px; font-weight: 700; background: var(--badge-bg); color: var(--badge-ink); flex-shrink: 0; }
+.setup-dot.done { background: #3ddc97; color: #04281a; }
+.app-card { display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 22px; border: 1px solid var(--edge); background: var(--card-bg); transition: filter .15s, border-color .2s; position: relative; }
+.app-card:hover { filter: brightness(1.12); }
+.app-card.is-off { opacity: .55; filter: grayscale(.6); }
+.app-card .fav { position: absolute; right: 12px; top: 12px; background: none; border: 0; cursor: pointer; color: var(--muted); padding: 6px; border-radius: 8px; }
+.app-card .fav[aria-pressed="true"] { color: #ffb020; }
+.app-card .fav:hover { background: rgba(144,108,255,.12); }

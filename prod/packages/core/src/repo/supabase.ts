@@ -6,6 +6,7 @@ import {
   checkItemCreateSchema, checkItemPatchSchema, checklistNameSchema, commentBodySchema, MAX_ATTACHMENT_BYTES, type AttachmentInput, type CheckItemCreate, type CheckItemPatch,
   type TaskAttachment, type TaskBadges, type TaskCheckItem, type TaskChecklist, type TaskComment,
   type BoardDecision, type ConnectData, type Integration, type Me, type Message, type OrgSettings, type Role, type Task, type TaskCreate, type TaskPatch, type TaskState,
+  DEFAULT_PREFS, brandCreateSchema, employeeCreateSchema, employeePatchSchema, projectCreateSchema, userPrefsPatchSchema, userPrefsSchema, type Brand, type BrandCreate, type EmployeeCreate, type EmployeePatch, type Project, type ProjectCreate, type UserPrefs,
 } from '@jscore/contracts';
 import { DEFAULT_SETTINGS } from './defaults';
 import { addDaysIso, generateToken, sha256Hex, tokenPrefix } from '../token';
@@ -14,6 +15,7 @@ import { validateRecord } from './validate';
 
 type Row = Record<string, unknown>;
 const FILES_BUCKET = 'task-files';
+const EMP_COLS = 'id,org_id,name,role_title,app_role,status,weekly_hours,team,manager_id,hired_at';
 const TOKEN_COLS = 'id,org_id,name,token_prefix,scopes,created_at,last_used_at,user_id,expires_at,revoked_at';
 /** RLS bilinçli: her sorgu kullanıcının JWT'si ile çalışır; ek filtre yalnızca aktif organizasyonu seçmek içindir. */
 export class SupabaseRepo implements Repo {
@@ -47,7 +49,51 @@ export class SupabaseRepo implements Repo {
       client_id: scopes.client_ids?.[0], brand_ids: scopes.brand_ids ?? [], scopes: [],
     };
   }
-  async team() { return this.ok(this.sb.from('employees').select('id,org_id,name,role_title,app_role,status,weekly_hours').eq('org_id', await this.org())); }
+  /** 0016 sonrası: team / manager_id / hired_at sütunları da okunur (migration uygulanmadan bu sorgu hata verir — önce 0016). */
+  async team() { return this.ok<TeamMember[]>(this.sb.from('employees').select(EMP_COLS).eq('org_id', await this.org()).order('name')); }
+  async addEmployee(input: EmployeeCreate) {
+    const v = employeeCreateSchema.parse(input);
+    const row = await this.ok<TeamMember>(this.sb.from('employees').insert({ ...v, team: v.team ?? null, manager_id: v.manager_id ?? null, hired_at: v.hired_at ?? null, org_id: await this.org() }).select(EMP_COLS).single());
+    await this.audit('employee.create', `employees/${row.id}`, { name: row.name });
+    return row;
+  }
+  async updateEmployee(id: string, patch: EmployeePatch) {
+    const v = employeePatchSchema.parse(patch);
+    if (v.manager_id === id) throw new Error('Kişi kendi yöneticisi olamaz');
+    const row = await this.one<TeamMember>(this.sb.from('employees').update(v).eq('id', id).select(EMP_COLS), 'Çalışan');
+    await this.audit('employee.update', `employees/${id}`, v as Record<string, unknown>);
+    return row;
+  }
+  /** user_prefs: satır yoksa varsayılan. RLS: yalnızca kendi satırı. */
+  async getPrefs(): Promise<UserPrefs> {
+    const { data: { user } } = await this.sb.auth.getUser();
+    if (!user) return DEFAULT_PREFS;
+    const row = await this.ok<Row | null>(this.sb.from('user_prefs').select('prefs').eq('user_id', user.id).maybeSingle());
+    const parsed = userPrefsSchema.safeParse(row?.prefs ?? {});
+    return parsed.success ? parsed.data : DEFAULT_PREFS;
+  }
+  async savePrefs(patch: Partial<UserPrefs>): Promise<UserPrefs> {
+    const { data: { user } } = await this.sb.auth.getUser();
+    if (!user) throw new ForbiddenError();
+    const next = { ...(await this.getPrefs()), ...userPrefsPatchSchema.parse(patch) };
+    await this.ok(this.sb.from('user_prefs').upsert({ user_id: user.id, org_id: await this.org(), prefs: next, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }).select('user_id'));
+    return next;
+  }
+  async createBrand(input: BrandCreate): Promise<Brand> {
+    const v = brandCreateSchema.parse(input);
+    const org = await this.org();
+    const client = await this.ok<{ id: string }>(this.sb.from('clients').insert({ org_id: org, name: v.client_name?.trim() || v.name, sector: v.sector || null }).select('id').single());
+    const brand = await this.ok<Brand>(this.sb.from('brands').insert({ org_id: org, client_id: client.id, name: v.name, sector: v.sector || null, status: 'active' }).select('*').single());
+    await this.audit('brand.create', `brands/${brand.id}`, { name: brand.name });
+    return brand;
+  }
+  async createProject(input: ProjectCreate): Promise<Project> {
+    const v = projectCreateSchema.parse(input);
+    const me = await this.me();
+    const p = await this.ok<Project>(this.sb.from('projects').insert({ org_id: await this.org(), brand_id: v.brand_id, name: v.name, type: v.type, summary: v.summary, status: 'active', flow_stage: 'brief', flow_owner: me?.employee_id ?? null, due_at: v.due_at ?? null }).select('*').single());
+    await this.audit('project.create', `projects/${p.id}`, { name: p.name });
+    return p;
+  }
   async listMembers() {
     const rows = await this.ok<Row[]>(this.sb.from('memberships').select('user_id,role').eq('org_id', await this.org()));
     return rows.map((r) => ({ user_id: r.user_id as string, name: String(r.user_id).slice(0, 8), email: '', role: r.role as Role, status: 'active' as const }));

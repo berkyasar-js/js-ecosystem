@@ -123,6 +123,9 @@ export const TASK_TYPES: TaskType[] = [
   { key: 'general', label: 'Genel', sla_hours: 72, default_minutes: 120, unit_price_minor: 0 },
 ];
 
+/* 0016: ekip + yönetici (org ağacı). Kurucu BY kökte; yaratıcı ekip UC'ye, hesap ekibi OE'ye bağlı. */
+const TEAM_OF: Record<string, string> = { BY: 'Yönetim', UC: 'Kreatif', SK: 'Kreatif', DO: 'Kreatif', RV: 'Kreatif', HO: 'Video', BK: 'Kreatif', OE: 'Hesap', SO: 'Hesap', FA: 'Hesap', ST: 'Hesap', BA: 'Mali & İK' };
+const MANAGER_OF: Record<string, string> = { UC: 'BY', OE: 'BY', BA: 'BY', SK: 'UC', DO: 'UC', RV: 'UC', HO: 'UC', BK: 'SK', SO: 'OE', FA: 'OE', ST: 'SO' };
 const team: TeamMember[] = ([
   ['BY', 'Batuhan Berk Yaşar', 'Kurucu', 'owner', 40], ['UC', 'Ural Çalışkan', 'Executive Creative Director', 'creative', 36],
   ['OE', 'Öykü Erelmalı', 'Brand Manager', 'account', 34], ['SO', 'Selin Öztekeşin', 'Senior Marka Temsilcisi', 'account', 30],
@@ -130,7 +133,10 @@ const team: TeamMember[] = ([
   ['RV', 'Raif Vural', 'Art Director', 'creative', 28], ['HO', 'Hulusi Melih Özbay', 'Video & Kurgu', 'creative', 40],
   ['BA', 'Bengisu Arda', 'İK & Mali İşler', 'finance', 24], ['FA', 'Fatma Ş.', 'Account Executive', 'account', 32],
   ['ST', 'Selin Tekin', 'Account Executive', 'account', 30], ['BK', 'Berke A.', 'Junior Designer', 'creative', 40],
-] as Array<[string, string, string, Role, number]>).map(([id, name, role_title, app_role, weekly_hours]) => ({ id, org_id: ORG_JOBS, name, role_title, app_role, status: 'active' as const, weekly_hours }));
+] as Array<[string, string, string, Role, number]>).map(([id, name, role_title, app_role, weekly_hours]) => ({
+  id, org_id: ORG_JOBS, name, role_title, app_role, status: 'active' as const, weekly_hours,
+  team: TEAM_OF[id] ?? null, manager_id: id === 'BY' ? null : MANAGER_OF[id] ?? 'BY', hired_at: null,
+}));
 
 /* [id, başlık, tür, durum, tutar(TL), proje, marka, kim, required_role, due, versiyon/not] */
 type A = [string, string, Approval['action_type'], Approval['status'], number, string, string, string, Role, string, string];
@@ -214,6 +220,8 @@ const integrations: Integration[] = [
   integ('i4', 'minio', 'MinIO / S3 dosya deposu', 'connected', ['read', 'write']),
   integ('i5', 'slack', 'Slack', 'available', ['chat:write']),
   integ('i6', 'efatura', 'e-Fatura (Logo)', 'available', ['invoice']),
+  integ('i7', 'hubspot', 'HubSpot CRM', 'available', ['crm.objects.contacts.read']),
+  integ('i8', 'trello', 'Trello', 'available', ['read', 'write']),
 ];
 const mcp_servers: McpServer[] = [
   { id: 'mcp1', org_id: ORG_JOBS, name: 'JS Core MCP (bu uygulama)', url: '/api/mcp', status: 'connected', tools: ['project_status', 'create_task_draft'] },

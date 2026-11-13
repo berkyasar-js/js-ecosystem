@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Activity, Bot, Building2, ChevronRight, ClipboardList, ExternalLink, Landmark, LayoutDashboard, MessagesSquare, Store, LogOut, Menu, Moon, Plug, ShieldCheck, Sun, SquareStack, UserCog, Users, Workflow, X, type LucideIcon } from 'lucide-react';
+import { Activity, Bot, Rocket, Building2, ChevronRight, ClipboardList, ExternalLink, Landmark, LayoutDashboard, MessagesSquare, Store, LogOut, Menu, Moon, Plug, ShieldCheck, Sun, SquareStack, UserCog, Users, Workflow, X, type LucideIcon } from 'lucide-react';
 import { ROLE_LABELS } from '@jscore/contracts';
 import { useSession } from './session';
 import { Avatar } from './avatar';
@@ -11,7 +11,7 @@ import { Loading } from './ui';
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? '';
 interface Item { href: string; label: string; icon: LucideIcon }
 export const NAV: Array<{ label: string; items: Item[] }> = [
-  { label: 'PANEL', items: [{ href: '/admin', label: 'Genel bakış', icon: LayoutDashboard }] },
+  { label: 'PANEL', items: [{ href: '/admin', label: 'Genel bakış', icon: LayoutDashboard }, { href: '/admin/setup', label: 'Kurulum & Çalışma Alanı', icon: Rocket }] },
   { label: 'YAPILANDIRMA', items: [
     { href: '/admin/modules', label: 'Modüller & Özellikler', icon: SquareStack },
     { href: '/admin/users', label: 'Kullanıcılar & Roller', icon: UserCog },

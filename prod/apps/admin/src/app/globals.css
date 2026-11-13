@@ -292,3 +292,12 @@ main .grid:not([class*='grid-cols']) { grid-template-columns: minmax(0, 1fr); }
 @media (forced-colors: active) {
   .card, .panel, .metric, .glass, .sidebar, .topbar, .signal-card, .focus-card, .login-card, .btn, .navitem[aria-current="page"] { background: Canvas; color: CanvasText; border: 1px solid CanvasText; box-shadow: none; backdrop-filter: none; }
 }
+
+/* ───── Kurulum kartı / org ağacı ───── */
+.setup-dot { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-size: 11px; font-weight: 700; background: var(--badge-bg); color: var(--badge-ink); flex-shrink: 0; }
+.setup-dot.done { background: #3ddc97; color: #04281a; }
+.org-tree { list-style: none; margin: 0; padding: 0; }
+.org-tree ul { list-style: none; margin: 4px 0 4px 14px; padding-left: 14px; border-left: 1px dashed var(--line); }
+.org-node { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; font-size: 13px; }
+.org-node:hover { background: rgba(144,108,255,.08); }
+.nav-editor-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--nested); }

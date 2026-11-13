@@ -26,6 +26,12 @@ export function ProjectWorkspace({ projectId, backHref = '/app/projects' }: { pr
     return { project, tasks, team, brand: brands.find((b) => b.id === project.brand_id), taskTypes, approvals: approvals.filter((a) => a.subject.project_id === projectId), assets: (assets as MediaAsset[]).filter((a) => a.project_id === projectId) };
   }, [projectId]);
   useEffect(() => { if (q.data) setTasks(q.data.tasks); }, [q.data]);
+  // Derin bağlantı: /app/projects/<id>?task=<görev> (Gelen Kutusu, Spotlight) → ayrıntı paneli açılır.
+  useEffect(() => {
+    if (!q.data) return;
+    const want = new URLSearchParams(window.location.search).get('task');
+    if (want && q.data.tasks.some((t) => t.id === want)) { setView('list'); setOpenReq({ id: want, n: Date.now() }); }
+  }, [q.data]);
   const today = todayFor(mode);
   const prog = useMemo(() => progressOf(tasks), [tasks]);
 

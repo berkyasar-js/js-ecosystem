@@ -5,6 +5,7 @@ import type {
   AccessToken, BidAssignResult, BidProposal, TaskAssignment, TaskBid, TokenCreate,
   TrelloImportResult, TrelloMode, TrelloPublicState,
   AttachmentInput, CheckItemCreate, CheckItemPatch, TaskAttachment, TaskBadges, TaskCheckItem, TaskChecklist, TaskComment,
+  BrandCreate, EmployeeCreate, EmployeePatch, ProjectCreate, UserPrefs,
 } from '@jscore/contracts';
 import type { TrelloSnapshot } from '../integrations/trello-map';
 
@@ -15,7 +16,16 @@ export interface Repo {
   me(): Promise<Me | null>;
   team(): Promise<TeamMember[]>;
   listMembers(): Promise<Member[]>;
+  /** 0016: çalışan ekle / güncelle (ekip, yönetici, işe giriş). owner/org_admin/hr. */
+  addEmployee(input: EmployeeCreate): Promise<TeamMember>;
+  updateEmployee(id: string, patch: EmployeePatch): Promise<TeamMember>;
+  /** Kullanıcı tercihleri (user_prefs.prefs; demo: localStorage). Favoriler, karşılama bayrağı, gelen kutusu "tamam" kümesi. */
+  getPrefs(): Promise<UserPrefs>;
+  savePrefs(patch: Partial<UserPrefs>): Promise<UserPrefs>;
   // work
+  /** Kurulum / hızlı oluşturma: marka (müşteri kaydı adla açılır) ve proje. */
+  createBrand(input: BrandCreate): Promise<Brand>;
+  createProject(input: ProjectCreate): Promise<Project>;
   listBrands(): Promise<Brand[]>;
   listProjects(): Promise<Project[]>;
   getProject(id: string): Promise<Project | null>;

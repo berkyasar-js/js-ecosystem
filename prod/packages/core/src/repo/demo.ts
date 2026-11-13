@@ -5,6 +5,7 @@ import {
   type OrgSettings, type Task, type Project, type Brand, type TrelloImportResult, type TrelloPublicState, type TrelloMode, type SyncLogEntry, TRELLO_MODES, maskTrelloConfig, type TaskCreate, type TaskPatch, type TaskState, type BoardDecision, type Role,
   type AttachmentInput, type CheckItemCreate, type CheckItemPatch, type TaskAttachment, type TaskBadges, type TaskCheckItem, type TaskChecklist, type TaskComment,
   BID_ROLES, TOKEN_ADMIN_ROLES, bidProposalSchema, checkTokenPolicy, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
+  DEFAULT_PREFS, brandCreateSchema, employeeCreateSchema, employeePatchSchema, projectCreateSchema, userPrefsPatchSchema, userPrefsSchema, type BrandCreate, type EmployeeCreate, type EmployeePatch, type ProjectCreate, type TeamMember, type UserPrefs,
 } from '@jscore/contracts';
 import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
 import { addDetails, emptyDetailsSummary, syncCardDetails, type DetailStore } from '../integrations/trello-details';
@@ -22,6 +23,8 @@ export interface KV { getItem(k: string): string | null; setItem(k: string, v: s
 export const DEMO_STORAGE_KEY = 'js_demo_db_v1';
 /** /apply/[job] başvuruları buraya düşer; hire sayfası açılınca `ingestApplications()` aday olarak alır. */
 export const APPLY_QUEUE_KEY = 'js_apply_queue_v1';
+/** Kullanıcı tercihleri (hesap başına ayrı anahtar; demo sıfırlama buna dokunmaz). */
+export const PREFS_KEY_PREFIX = 'js_user_prefs_v1:';
 const listeners = new Map<string, Set<(m: Message) => void>>();
 
 /** Otomasyon bildirimlerinin alıcıları (in-app). */
@@ -82,6 +85,65 @@ export class DemoRepo implements Repo {
   async me(): Promise<Me> { return accountToMe(this.account, this.orgId); }
   async team() { return this.db().team.filter((t) => t.org_id === ORG_JOBS || t.org_id === this.orgId); }
   async listMembers() { if (isClientRole(this.role)) throw new ForbiddenError(); return this.db().members; }
+  private assertEmpWrite() { if (!['owner', 'org_admin', 'hr'].includes(this.role)) throw new ForbiddenError(); }
+  async addEmployee(input: EmployeeCreate): Promise<TeamMember> {
+    this.assertEmpWrite();
+    const v = employeeCreateSchema.parse(input);
+    const db = this.db();
+    const initials = v.name.split(/\s+/).map((w) => w[0]).join('').toUpperCase().slice(0, 2) || 'XX';
+    let id = initials; let n = 2;
+    while (db.team.some((t) => t.id === id)) id = `${initials}${n++}`;
+    const row: TeamMember = { id, org_id: this.orgId, name: v.name, role_title: v.role_title, app_role: v.app_role, status: v.status, weekly_hours: v.weekly_hours, team: v.team ?? null, manager_id: v.manager_id ?? null, hired_at: v.hired_at ?? null };
+    db.team.push(row);
+    this.log(db, 'employee.create', `employees/${id}`, { name: v.name });
+    this.persist(db);
+    return { ...row };
+  }
+  async updateEmployee(id: string, patch: EmployeePatch): Promise<TeamMember> {
+    this.assertEmpWrite();
+    const v = employeePatchSchema.parse(patch);
+    if (v.manager_id === id) throw new Error('Kişi kendi yöneticisi olamaz');
+    const db = this.db();
+    const t = db.team.find((x) => x.id === id);
+    if (!t) throw new NotFoundError('Çalışan');
+    Object.assign(t, v);
+    this.log(db, 'employee.update', `employees/${id}`, v as Record<string, unknown>);
+    this.persist(db);
+    return { ...t };
+  }
+  private prefsKey() { return `${PREFS_KEY_PREFIX}${this.account.id}`; }
+  private memPrefs: UserPrefs | null = null;
+  async getPrefs(): Promise<UserPrefs> {
+    if (!this.storage) return this.memPrefs ?? DEFAULT_PREFS;
+    try { const raw = this.storage.getItem(this.prefsKey()); const p = userPrefsSchema.safeParse(raw ? JSON.parse(raw) : {}); return p.success ? p.data : DEFAULT_PREFS; } catch { return DEFAULT_PREFS; }
+  }
+  async savePrefs(patch: Partial<UserPrefs>): Promise<UserPrefs> {
+    const next = { ...(await this.getPrefs()), ...userPrefsPatchSchema.parse(patch) };
+    if (this.storage) { try { this.storage.setItem(this.prefsKey(), JSON.stringify(next)); } catch { /* kota */ } } else this.memPrefs = next;
+    return next;
+  }
+  async createBrand(input: BrandCreate): Promise<Brand> {
+    if (!['owner', 'org_admin', 'operations', 'account'].includes(this.role)) throw new ForbiddenError();
+    const v = brandCreateSchema.parse(input);
+    const db = this.db();
+    const id = this.nextId('c_new', db.brands.map((b) => b.id));
+    const brand: Brand = { id, org_id: this.orgId, client_id: id.replace('c_', 'cl_'), name: v.name, sector: v.sector, status: 'active', account_owner: this.account.employee_id, art_director: '', copywriter: '', compliance_flags: [], monthly_quota: {}, health: 70, internal: false };
+    db.brands.push(brand);
+    this.log(db, 'brand.create', `brands/${id}`, { name: v.name });
+    this.persist(db);
+    return { ...brand };
+  }
+  async createProject(input: ProjectCreate): Promise<Project> {
+    if (!['owner', 'org_admin', 'operations', 'account', 'pm'].includes(this.role)) throw new ForbiddenError();
+    const v = projectCreateSchema.parse(input);
+    const db = this.db();
+    if (!db.brands.some((b) => b.id === v.brand_id && b.org_id === this.orgId)) throw new NotFoundError('Marka');
+    const p: Project = { id: this.nextId('p', db.projects.map((x) => x.id)), org_id: this.orgId, brand_id: v.brand_id, name: v.name, type: v.type, status: 'active', flow_stage: 'brief', flow_owner: this.account.employee_id, stage_plan: [], due_at: v.due_at ?? null, budget_minor: 0, summary: v.summary, client_visible: false };
+    db.projects.push(p);
+    this.log(db, 'project.create', `projects/${p.id}`, { name: p.name });
+    this.persist(db);
+    return { ...p };
+  }
 
   async listBrands() { return this.db().brands.filter((b) => b.org_id === this.orgId && this.visibleBrand(b.id)); }
   async listProjects() {

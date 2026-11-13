@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { studioDraftOutputSchema } from './modules';
+import { navSettingsSchema, setupStateSchema } from './nav';
 
 /* ───────── Roller & izinler ───────── */
 export const ROLES = [
@@ -65,8 +66,8 @@ export type ModuleGroup = 'main' | 'work' | 'creative' | 'people' | 'intel' | 'm
 export interface ModuleDef { id: string; name: string; group: ModuleGroup; icon: string; desc: string; slug: string; live: boolean }
 const M = (id: string, name: string, group: ModuleGroup, icon: string, desc: string, live = false, slug = id): ModuleDef => ({ id, name, group, icon, desc, live, slug });
 export const MODULES: ModuleDef[] = [
-  M('overview', 'Genel Bakış', 'main', 'dashboard', 'Role göre KPI, bugünün odağı ve AI önerisi.', true),
-  M('inbox', 'Akıllı Gelen Kutusu', 'main', 'inbox', 'Gmail → CRM eşleştirme → AI görev taslağı → onay.', true),
+  M('overview', 'Ana Sayfa', 'main', 'dashboard', 'Bugünün planı, senden bekleyenler, ekip nabzı.', true),
+  M('inbox', 'Gelen Kutusu', 'main', 'inbox', 'Tek kuyruk: bildirim, onay, anma, teslim; e-posta → AI görev taslağı.', true),
   M('mywork', 'Benim İşlerim', 'main', 'mywork', 'Görevlerim, zaman girişi, odak modu ve günlük plan.', true),
   M('messages', 'Mesajlar', 'main', 'messages', 'Kanallar ve proje konuşmaları.', true),
   M('crm', 'JS CRM', 'work', 'crm', 'Hesaplar, markalar, kişiler, lead’ler, teklif ve sözleşmeler.', true),
@@ -95,7 +96,7 @@ export const MODULES: ModuleDef[] = [
   M('admin', 'JS Core · Admin', 'manage', 'admin', 'Admin Control Center: erişim, güvenlik, faturalama, veri.', true),
   M('marketplace', 'Ürünler & Paketler', 'manage', 'marketplace', 'Ürün paketleri, feature flag ve yetkilendirme.', true),
   M('profile', 'Profilim', 'manage', 'profile', 'Kapsam, ikiz ayarları, bildirim ve güvenlik.', true),
-  M('apps', 'Uygulamalar', 'hidden', 'apps', 'Tüm modüller tek ekranda.', true),
+  M('apps', 'Uygulamalar', 'hidden', 'apps', 'Tüm modüller tek ekranda; favoriler kenar çubuğuna gelir.', true),
 ];
 export const GROUP_LABELS: Record<ModuleGroup, string> = {
   main: 'ANA MENÜ', work: 'AJANS OPERASYONU', creative: 'ÜRETİM & MEDYA', people: 'İNSAN & MÜŞTERİ', intel: 'ZEKÂ', manage: 'YÖNETİM & SİSTEM', hidden: '',
@@ -136,7 +137,28 @@ export interface Me {
   id: string; name: string; email: string; initials: string; title: string; role: Role; org_id: string;
   employee_id?: string; client_id?: string; brand_ids: string[]; scopes: string[];
 }
-export interface TeamMember { id: string; org_id: string; name: string; role_title: string; app_role: Role; status: 'active' | 'left'; weekly_hours: number }
+export interface TeamMember {
+  id: string; org_id: string; name: string; role_title: string; app_role: Role; status: 'active' | 'left'; weekly_hours: number;
+  /** 0016: ekip adı, yönetici (employees.id) ve işe giriş tarihi — kurulum sihirbazı / org ağacı. */
+  team?: string | null; manager_id?: string | null; hired_at?: string | null;
+}
+export const employeeCreateSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  role_title: z.string().trim().max(120).default(''),
+  app_role: z.enum(['owner', 'org_admin', 'operations', 'account', 'pm', 'creative', 'hr', 'payroll', 'finance', 'client_admin', 'client_viewer', 'freelancer', 'auditor', 'integration_admin']).default('creative'),
+  status: z.enum(['active', 'left']).default('active'),
+  weekly_hours: z.number().int().min(0).max(80).default(40),
+  team: z.string().trim().max(80).nullable().optional(),
+  manager_id: z.string().min(1).nullable().optional(),
+  hired_at: z.string().min(8).nullable().optional(),
+});
+export type EmployeeCreate = z.input<typeof employeeCreateSchema>;
+export const employeePatchSchema = employeeCreateSchema.partial().strict();
+export type EmployeePatch = z.input<typeof employeePatchSchema>;
+export const brandCreateSchema = z.object({ name: z.string().trim().min(2).max(120), sector: z.string().trim().max(80).default(''), client_name: z.string().trim().max(120).optional() });
+export type BrandCreate = z.input<typeof brandCreateSchema>;
+export const projectCreateSchema = z.object({ brand_id: z.string().min(1), name: z.string().trim().min(2).max(160), type: z.string().trim().max(60).default('kampanya'), due_at: z.string().min(8).nullable().optional(), summary: z.string().max(500).default('') });
+export type ProjectCreate = z.input<typeof projectCreateSchema>;
 export interface Brand {
   id: string; org_id: string; client_id: string; name: string; sector: string; status: 'active' | 'risky' | 'prospect';
   account_owner: string; art_director: string; copywriter: string; compliance_flags: string[]; monthly_quota: Record<string, number>;
@@ -342,6 +364,10 @@ export const orgSettingsSchema = z.object({
   plan: z.object({ name: z.string(), seats: z.number().int().min(1), period: z.enum(['monthly', 'yearly']) }).optional(),
   industry_packs: z.array(z.string()).optional(),
   white_label: z.object({ enabled: z.boolean(), name: z.string(), color: z.string(), domain: z.string() }).optional(),
+  /** Kurulum sihirbazı durumu (apps/web /app/setup, apps/admin /admin/setup). */
+  setup: setupStateSchema.optional(),
+  /** Gezinme düzeni: grup sırası + rol başına gizlenen modüller (apps/admin → Organizasyon → Gezinme). */
+  nav: navSettingsSchema.optional(),
 });
 export type OrgSettings = z.infer<typeof orgSettingsSchema>;
 export const orgSettingsPatchSchema = orgSettingsSchema.partial();
@@ -370,6 +396,7 @@ export const mcpProjectStatusArgs = z.object({ project_id: z.string().optional()
 
 export * from './modules';
 export * from './admin';
+export * from './nav';
 
 /* ───────── Trello entegrasyonu ───────── */
 /** integrations.config (provider='trello'). Gizli alanlar yalnızca sunucuda (servis rolü) okunur/yazılır; istemciye `maskTrelloConfig` görünümü gider. */

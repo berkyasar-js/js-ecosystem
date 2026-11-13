@@ -47,6 +47,8 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view:
   const addBtn = useRef<HTMLButtonElement>(null);
 
   useEffect(() => { if (openRequest) setSelId(openRequest.id); }, [openRequest]);
+  // Spotlight "Yeni görev" → /app/tasks?new=1 (bir kez açılır).
+  useEffect(() => { if (allowCreate && !readonly && new URLSearchParams(window.location.search).get('new') === '1') setNewOpen(true); }, [allowCreate, readonly]);
   const sel = tasks.find((t) => t.id === selId) ?? null;
   const visible = useMemo(() => applyFilters(tasks, filters, employeeId), [tasks, filters, employeeId]);
   const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? '';
