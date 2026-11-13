@@ -7,7 +7,9 @@ import {
   type TaskAttachment, type TaskBadges, type TaskCheckItem, type TaskChecklist, type TaskComment,
   type BoardDecision, type ConnectData, type Integration, type Me, type Message, type OrgSettings, type Role, type Task, type TaskCreate, type TaskPatch, type TaskState,
   DEFAULT_PREFS, brandCreateSchema, employeeCreateSchema, employeePatchSchema, projectCreateSchema, userPrefsPatchSchema, userPrefsSchema, type Brand, type BrandCreate, type EmployeeCreate, type EmployeePatch, type Project, type ProjectCreate, type UserPrefs,
+  brandPatchSchema, buildTimeline, type ActivityEntry, type BrandPatch,
 } from '@jscore/contracts';
+import { executeAgentAction, isAgentApproval } from '../agents/execute';
 import { DEFAULT_SETTINGS } from './defaults';
 import { addDaysIso, generateToken, sha256Hex, tokenPrefix } from '../token';
 import { ForbiddenError, NotFoundError, type Repo } from './types';
@@ -100,6 +102,12 @@ export class SupabaseRepo implements Repo {
   }
 
   async listBrands() { return this.ok(this.sb.from('brands').select('*').eq('org_id', await this.org()).order('name')); }
+  async updateBrand(id: string, patch: BrandPatch): Promise<Brand> {
+    const v = brandPatchSchema.parse(patch);
+    const row = await this.one<Brand>(this.sb.from('brands').update(v).eq('id', id).select('*'), 'Marka');
+    await this.audit('brand.update', `brands/${id}`, v as Record<string, unknown>);
+    return row;
+  }
   async listProjects() { return this.ok(this.sb.from('projects').select('*').eq('org_id', await this.org()).order('due_at')); }
   async getProject(id: string) { return this.ok(this.sb.from('projects').select('*').eq('id', id).maybeSingle()); }
   async listTaskTypes() { return this.ok(this.sb.from('task_types').select('*').eq('org_id', await this.org())); }
@@ -237,6 +245,39 @@ export class SupabaseRepo implements Repo {
     return out;
   }
 
+  /* ───────── 0017: Akış + çevrimiçi ───────── */
+  async listActivity(scope: { project_id?: string; task_id?: string; limit?: number }): Promise<ActivityEntry[]> {
+    const org = await this.org();
+    let tq = this.sb.from('tasks').select('id').eq('org_id', org);
+    if (scope.task_id) tq = tq.eq('id', scope.task_id); else if (scope.project_id) tq = tq.eq('project_id', scope.project_id);
+    const ids = (await this.ok<Array<{ id: string }>>(tq.limit(1000))).map((r) => r.id);
+    const idSet = new Set(ids);
+    const safe = async <T,>(p: PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[] | null> => { try { const { data, error } = await p; return error ? null : data ?? []; } catch { return null; } };
+    const resources = [...ids.slice(0, 200).map((i) => `tasks/${i}`), ...(scope.project_id ? [`projects/${scope.project_id}`] : [])];
+    const [audit, comments, sync] = await Promise.all([
+      resources.length ? safe<Row>(this.sb.from('audit_events').select('id,occurred_at,actor,action,resource,meta').eq('org_id', org).in('resource', resources).order('occurred_at', { ascending: false }).limit(300)) : Promise.resolve([] as Row[]),
+      ids.length ? safe<Row>(this.sb.from('task_comments').select('id,created_at,author_name,author_id,body,task_id,sync_origin').in('task_id', ids.slice(0, 200)).order('created_at', { ascending: false }).limit(300)) : Promise.resolve([] as Row[]),
+      ids.length ? safe<Row>(this.sb.from('integration_sync_log').select('id,created_at,direction,entity,entity_id,action,ok,message').eq('org_id', org).eq('entity', 'task').in('entity_id', ids.slice(0, 200)).order('created_at', { ascending: false }).limit(200)) : Promise.resolve([] as Row[]),
+    ]);
+    return buildTimeline({
+      audit: audit ? audit.map((r) => ({ id: r.id as string, occurred_at: r.occurred_at as string, actor_name: (r.actor as string | null)?.slice(0, 8) ?? 'sistem', action: r.action as string, resource: r.resource as string, meta: (r.meta as Record<string, unknown>) ?? {} })) : null,
+      comments: (comments ?? []) as unknown as NonNullable<Parameters<typeof buildTimeline>[0]['comments']>,
+      sync: (sync ?? []) as unknown as NonNullable<Parameters<typeof buildTimeline>[0]['sync']>,
+    }, { taskIds: idSet, projectId: scope.project_id ?? null, limit: scope.limit });
+  }
+  subscribePresence(cb: (ids: string[]) => void) {
+    let ch: ReturnType<SupabaseClient['channel']> | null = null;
+    let alive = true;
+    void (async () => {
+      const me = await this.me().catch(() => null);
+      if (!me || !alive) return;
+      ch = this.sb.channel(`presence:${me.org_id}`, { config: { presence: { key: me.employee_id || me.id } } });
+      ch.on('presence', { event: 'sync' }, () => { const st = ch!.presenceState<{ at: string }>(); cb(Object.keys(st)); })
+        .subscribe(async (status) => { if (status === 'SUBSCRIBED') await ch!.track({ at: new Date().toISOString() }); });
+    })();
+    return () => { alive = false; if (ch) void this.sb.removeChannel(ch); };
+  }
+
   async listApprovals() { return this.ok(this.sb.from('approvals').select('*').eq('org_id', await this.org()).order('created_at', { ascending: false })); }
   async createApproval(input: ApprovalCreate) {
     const v = approvalCreateSchema.parse(input);
@@ -248,7 +289,15 @@ export class SupabaseRepo implements Repo {
     if (!cur) throw new NotFoundError('Onay');
     if (cur.status !== 'pending') throw new ForbiddenError('Bu onay zaten karara bağlanmış');
     if (!me || !canDecideApproval(me.role, cur.required_role)) throw new ForbiddenError();
-    return this.ok<Approval>(this.sb.from('approvals').update({ status: decision, decided_by: me.id, decided_at: new Date().toISOString(), decision_note: note ?? null }).eq('id', id).eq('status', 'pending').select().single());
+    const row = await this.ok<Approval>(this.sb.from('approvals').update({ status: decision, decided_by: me.id, decided_at: new Date().toISOString(), decision_note: note ?? null }).eq('id', id).eq('status', 'pending').select().single());
+    // 0017: onaylanan ajan önerisi onaylayanın JWT'si (RLS) ile uygulanır; "kim onayladı" = "kim yazdı".
+    if (decision === 'approved' && isAgentApproval(row)) {
+      const r = await executeAgentAction(this, row.subject.payload, { today: new Date().toISOString().slice(0, 10) });
+      const subject = { ...row.subject, executed: { at: new Date().toISOString(), task_ids: r.task_ids } };
+      await this.audit('agent.execute', `approvals/${id}`, { agent: row.subject.agent, tasks: r.task_ids.length, project: r.project_id });
+      return this.ok<Approval>(this.sb.from('approvals').update({ subject }).eq('id', id).select().single());
+    }
+    return row;
   }
 
   async listInbox() {

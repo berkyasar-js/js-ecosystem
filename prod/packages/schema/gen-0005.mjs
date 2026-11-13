@@ -3,6 +3,7 @@
 import { COLLECTIONS } from '../contracts/src/modules.ts';
 
 const EXISTING = new Set(['time_entries', 'invoices', 'surveys', 'survey_responses']); // 0002/0003'te var → yalnızca ALTER
+const LATER = new Set(['saved_views', 'milestones', 'requests', 'announcements', 'announcement_acks', 'project_members', 'agent_policies']); // 0017'de elle yazıldı (özel RLS)
 const arr = (roles) => `array[${roles.map((r) => `'${r}'`).join(',')}]::core.app_role[]`;
 const out = [];
 const p = (s = '') => out.push(s);
@@ -26,6 +27,7 @@ p();
 const policies = [];
 for (const [kind, m] of Object.entries(COLLECTIONS)) {
   const t = m.table;
+  if (LATER.has(kind)) continue;
   if (!EXISTING.has(kind)) {
     p(`create table public.${t} (`);
     p('  id uuid primary key default gen_random_uuid(),');

@@ -10,7 +10,7 @@ export const GET = adminRoute(async (ctx) => {
   const month = new Date().toISOString().slice(0, 7);
   const [prompts, runs, spendRows, s] = await Promise.all([
     sb.from('agent_prompts').select('id,org_id,agent,version,model,is_active,created_at').or(`org_id.eq.${ctx.orgId},org_id.is.null`).order('agent').order('version', { ascending: false }),
-    sb.from('agent_runs').select('id,agent,trigger,model,tokens_in,tokens_out,cost_usd,latency_ms,status,created_at').eq('org_id', ctx.orgId).order('created_at', { ascending: false }).limit(100),
+    sb.from('agent_runs').select('id,agent,trigger,model,tokens_in,tokens_out,cost_usd,latency_ms,status,created_at,input,output').eq('org_id', ctx.orgId).order('created_at', { ascending: false }).limit(100),
     sb.from('agent_runs').select('cost_usd').eq('org_id', ctx.orgId).gte('created_at', `${month}-01`),
     readSettings(sb, ctx.orgId),
   ]);

@@ -97,20 +97,27 @@ export const MODULES: ModuleDef[] = [
   M('marketplace', 'Ürünler & Paketler', 'manage', 'marketplace', 'Ürün paketleri, feature flag ve yetkilendirme.', true),
   M('profile', 'Profilim', 'manage', 'profile', 'Kapsam, ikiz ayarları, bildirim ve güvenlik.', true),
   M('apps', 'Uygulamalar', 'hidden', 'apps', 'Tüm modüller tek ekranda; favoriler kenar çubuğuna gelir.', true),
+  /* V8 */
+  M('agenda', 'Ajanda', 'main', 'agenda', 'Gün / hafta görünümü: görevlerin, kilometre taşları ve takvim.', true),
+  M('announcements', 'Duyurular', 'main', 'announcements', 'Ekip duyuruları, okundu onayı ve kısa anketler.', true),
+  M('dashboards', 'Panolar', 'intel', 'dashboards', 'Görev, gecikme, iş yükü, marka sağlığı, onay ve ajan maliyeti grafikleri.', true),
+  M('requests', 'Talepler', 'work', 'requests', 'İş talepleri (hata, fikir, brief, müşteri): triyaj ve göreve dönüştürme.', true),
+  M('workload', 'İş yükü', 'people', 'workload', 'Kişi başına haftalık kapasite, planlanan iş ve gecikmeler.', true),
 ];
 export const GROUP_LABELS: Record<ModuleGroup, string> = {
   main: 'ANA MENÜ', work: 'AJANS OPERASYONU', creative: 'ÜRETİM & MEDYA', people: 'İNSAN & MÜŞTERİ', intel: 'ZEKÂ', manage: 'YÖNETİM & SİSTEM', hidden: '',
 };
 const ALL_IDS = MODULES.map((m) => m.id);
-const MANAGER = ['overview', 'inbox', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'flow', 'resources', 'people', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events', 'portal', 'board', 'twins', 'insights', 'automations', 'integrations', 'approvals', 'marketplace', 'profile', 'apps'].filter((x) => x !== 'board');
-const CLIENT = ['overview', 'mywork', 'messages', 'projects', 'tasks', 'media', 'review', 'transfer', 'portal', 'approvals', 'profile', 'apps'];
+const V8_STAFF = ['agenda', 'announcements', 'requests'];
+const MANAGER = ['overview', 'inbox', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'flow', 'resources', 'people', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events', 'portal', 'board', 'twins', 'insights', 'automations', 'integrations', 'approvals', 'marketplace', 'profile', 'apps', ...V8_STAFF, 'workload', 'dashboards'].filter((x) => x !== 'board');
+const CLIENT = ['overview', 'mywork', 'messages', 'projects', 'tasks', 'media', 'review', 'transfer', 'portal', 'approvals', 'profile', 'apps', 'requests'];
 export const ROLE_MODULES: Record<Role, string[]> = {
   owner: ALL_IDS, org_admin: ALL_IDS, operations: MANAGER, account: MANAGER,
   pm: MANAGER.filter((x) => !['board', 'marketplace'].includes(x)),
-  creative: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'flow', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'events', 'twins', 'approvals', 'profile', 'apps'],
-  finance: ['overview', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'finance', 'insights', 'approvals', 'integrations', 'profile', 'apps'],
-  hr: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'resources', 'people', 'hire', 'insights', 'approvals', 'profile', 'apps'],
-  payroll: ['overview', 'mywork', 'people', 'finance', 'insights', 'approvals', 'profile', 'apps'],
+  creative: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'flow', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'events', 'twins', 'approvals', 'profile', 'apps', ...V8_STAFF],
+  finance: ['overview', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'finance', 'insights', 'approvals', 'integrations', 'profile', 'apps', ...V8_STAFF],
+  hr: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'resources', 'people', 'hire', 'insights', 'approvals', 'profile', 'apps', ...V8_STAFF, 'workload'],
+  payroll: ['overview', 'mywork', 'people', 'finance', 'insights', 'approvals', 'profile', 'apps', 'agenda', 'announcements'],
   client_admin: CLIENT,
   client_viewer: CLIENT.filter((x) => x !== 'approvals'),
   freelancer: ['overview', 'mywork', 'messages', 'tasks', 'review', 'transfer', 'profile', 'apps'],
@@ -163,7 +170,11 @@ export interface Brand {
   id: string; org_id: string; client_id: string; name: string; sector: string; status: 'active' | 'risky' | 'prospect';
   account_owner: string; art_director: string; copywriter: string; compliance_flags: string[]; monthly_quota: Record<string, number>;
   health: number; internal: boolean; contact?: string; email?: string;
+  /** 0017: alan sahibi — bu markaya açılan yeni talep/görev varsayılan olarak bu kişiye düşer. */
+  default_assignee_id?: string | null;
 }
+export const brandPatchSchema = z.object({ default_assignee_id: z.string().min(1).nullable().optional(), health: z.number().int().min(0).max(100).optional(), status: z.enum(['active', 'risky', 'prospect']).optional() }).strict();
+export type BrandPatch = z.input<typeof brandPatchSchema>;
 export interface StagePlanItem { stage: TaskState; owner: string; due_at: string; done: boolean }
 export interface Project {
   id: string; org_id: string; brand_id: string; name: string; type: string; status: 'planning' | 'active' | 'done' | 'paused';
@@ -178,6 +189,8 @@ export interface Task {
   updated_at?: string; sync_origin?: string | null; synced_at?: string | null;
   /** 0012: Trello kartı açıklaması + kapağı (renk ya da görev eki). */
   description?: string | null; cover?: TaskCover | null;
+  /** 0017: kilometre taşı. */
+  milestone_id?: string | null;
 }
 /* ───────── Görev ayrıntıları (0012): yorum, checklist, ek, kapak ───────── */
 export const COVER_COLORS = ['green', 'yellow', 'orange', 'red', 'purple', 'blue', 'sky', 'lime', 'pink', 'black'] as const;
@@ -195,10 +208,19 @@ export interface TaskAttachment extends SyncFields { id: string; org_id: string;
 /** TaskRow / pano kartı rozetleri (Trello rozetleri gibi). */
 export interface TaskBadges { comments: number; attachments: number; checkTotal: number; checkDone: number }
 export interface TaskType { key: string; label: string; sla_hours: number; default_minutes: number; unit_price_minor: number }
-export type ApprovalAction = 'content' | 'budget' | 'scope' | 'client_decision' | 'access';
+export type ApprovalAction = 'content' | 'budget' | 'scope' | 'client_decision' | 'access' | 'agent';
+/** Ajan yazma önerisi (action_type='agent'): onaylanınca `executeAgentAction` uygular. */
+export interface AgentActionPayload {
+  kind: 'board_plan_apply';
+  project_id?: string; new_project?: { name: string; brand_id: string };
+  tasks: Array<{ title: string; assignee_id: string | null; priority: 'low' | 'normal' | 'high'; planned_minutes: number; due_at: string | null; labels: string[]; description?: string; milestone?: string | null }>;
+  milestones?: Array<{ name: string; due_at: string | null }>;
+  members?: string[];
+}
+export interface ApprovalSubject { project_id?: string; brand_id?: string; amount_minor?: number; version?: string; note?: string; bid_id?: string; task_id?: string; agent?: string; run_id?: string; payload?: AgentActionPayload; executed?: { at: string; task_ids: string[] } }
 export interface Approval {
   id: string; org_id: string; action_type: ApprovalAction; title: string;
-  subject: { project_id?: string; brand_id?: string; amount_minor?: number; version?: string; note?: string; bid_id?: string; task_id?: string };
+  subject: ApprovalSubject;
   required_role: Role; status: 'pending' | 'approved' | 'rejected'; requested_by: string; decided_by: string | null; decided_at: string | null;
   decision_note: string | null; due_at: string; created_at: string;
 }
@@ -284,6 +306,9 @@ export const taskPatchSchema = z.object({
   due_at: z.string().min(8).nullable().optional(),
   description: z.string().max(20000).nullable().optional(),
   cover: z.object({ color: z.enum(COVER_COLORS).nullable().optional(), attachment_id: z.string().min(1).nullable().optional() }).nullable().optional(),
+  /** 0017 */
+  milestone_id: z.string().min(1).nullable().optional(),
+  labels: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
 }).strict();
 export const commentBodySchema = z.string().trim().min(1, 'Yorum boş olamaz').max(20000);
 export const checklistNameSchema = z.string().trim().min(1, 'Ad boş olamaz').max(500);
@@ -298,10 +323,18 @@ export type CheckItemPatch = z.input<typeof checkItemPatchSchema>;
 export interface AttachmentInput { name?: string; url?: string; file?: Blob; mime?: string }
 export type TaskPatch = z.input<typeof taskPatchSchema>;
 export const taskMoveSchema = z.object({ id: z.string().min(1), state: taskStateSchema });
+export const agentActionPayloadSchema = z.object({
+  kind: z.literal('board_plan_apply'),
+  project_id: z.string().min(1).optional(), new_project: z.object({ name: z.string().trim().min(2).max(200), brand_id: z.string().min(1) }).optional(),
+  tasks: z.array(z.object({ title: z.string().trim().min(2).max(200), assignee_id: z.string().nullable(), priority: z.enum(['low', 'normal', 'high']), planned_minutes: z.number().int().min(0).max(100000), due_at: z.string().nullable(), labels: z.array(z.string()), description: z.string().optional(), milestone: z.string().nullable().optional() })).max(200),
+  milestones: z.array(z.object({ name: z.string().min(1), due_at: z.string().nullable() })).optional(),
+  members: z.array(z.string()).optional(),
+});
 export const approvalCreateSchema = z.object({
-  action_type: z.enum(['content', 'budget', 'scope', 'client_decision', 'access']),
+  action_type: z.enum(['content', 'budget', 'scope', 'client_decision', 'access', 'agent']),
   title: z.string().trim().min(2).max(200),
-  subject: z.object({ project_id: z.string().optional(), brand_id: z.string().optional(), amount_minor: z.number().int().optional(), version: z.string().optional(), note: z.string().optional(), bid_id: z.string().optional(), task_id: z.string().optional() }).default({}),
+  subject: z.object({ project_id: z.string().optional(), brand_id: z.string().optional(), amount_minor: z.number().int().optional(), version: z.string().optional(), note: z.string().optional(), bid_id: z.string().optional(), task_id: z.string().optional(),
+    agent: z.string().optional(), run_id: z.string().optional(), payload: agentActionPayloadSchema.optional() }).default({}),
   required_role: roleSchema,
   due_at: z.string().min(8),
 });
@@ -471,3 +504,4 @@ export interface TrelloImportResult {
 }
 export const trelloMemberMapSchema = z.object({ member_map: z.record(z.string().min(1), z.string().min(1)) });
 export * from './board-chat';
+export * from './workspace';

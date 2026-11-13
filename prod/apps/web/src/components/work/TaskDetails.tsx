@@ -1,15 +1,15 @@
 'use client';
 import { useId } from 'react';
 import { Check, X } from 'lucide-react';
-import { TASK_STATES, TASK_STATE_LABELS, type AuditEvent, type Priority, type Task, type TaskBadges, type TaskPatch, type TaskState, type TeamMember } from '@jscore/contracts';
+import { TASK_STATES, TASK_STATE_LABELS, type Milestone, type Priority, type Task, type TaskBadges, type TaskPatch, type TaskState, type TeamMember } from '@jscore/contracts';
 import { Avatar } from '../avatar';
 import { useFeature } from '../session';
 import { TaskExtras } from './task-extras';
 import { PRIORITY_LABEL, dueDay, isDone, isTrello } from './work-utils';
 
 /** Kontrollü ayrıntı paneli. Sunucu durumu üst bileşende kalır; pending / error görünür. */
-export function TaskDetails({ task, team, context, typeLabel, activity, readonly = false, pending = false, error, onClose, onComplete, onStage, onPatch, onBadges, onLocalPatch, headingRef }: {
-  task: Task; team: TeamMember[]; context: string; typeLabel: string; activity: AuditEvent[] | null; readonly?: boolean; pending?: boolean; error?: string;
+export function TaskDetails({ task, team, context, typeLabel, milestones = [], readonly = false, pending = false, error, onClose, onComplete, onStage, onPatch, onBadges, onLocalPatch, headingRef }: {
+  task: Task; team: TeamMember[]; context: string; typeLabel: string; milestones?: Milestone[]; readonly?: boolean; pending?: boolean; error?: string;
   onClose: () => void; onComplete: () => void; onStage: (s: TaskState) => void; onPatch: (p: TaskPatch) => void; onBadges: (taskId: string, b: TaskBadges) => void; onLocalPatch: (taskId: string, p: Partial<Task>) => void; headingRef?: React.Ref<HTMLHeadingElement>;
 }) {
   const id = useId();
@@ -53,11 +53,20 @@ export function TaskDetails({ task, team, context, typeLabel, activity, readonly
               {(Object.keys(PRIORITY_LABEL) as Priority[]).map((p) => <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>)}
             </select>
           </div>
+          {(milestones.length > 0 || task.milestone_id) && (
+            <div>
+              <label htmlFor={`${id}-ms`}>Kilometre taşı</label>
+              <select id={`${id}-ms`} className="wk-field" value={task.milestone_id ?? ''} disabled={disabled} onChange={(e) => onPatch({ milestone_id: e.target.value || null })}>
+                <option value="">Yok</option>
+                {milestones.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
         {error && <p role="alert" className="wk-detail-note" data-tone="error">{error}</p>}
         {pending && <p role="status" className="wk-detail-note wk-muted">Değişiklik kaydediliyor…</p>}
         {readonly && <p className="wk-detail-note wk-muted">Bu rolle görevler salt okunurdur.</p>}
-        <TaskExtras task={task} team={team} activity={activity} readonly={readonly} pending={pending} onPatch={onPatch} onBadges={onBadges} onLocalPatch={onLocalPatch} />
+        <TaskExtras task={task} team={team} readonly={readonly} pending={pending} onPatch={onPatch} onBadges={onBadges} onLocalPatch={onLocalPatch} />
         <section className="wk-detail-section">
           <h3>Detaylar</h3>
           <ul className="wk-list">

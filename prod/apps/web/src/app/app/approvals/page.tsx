@@ -4,7 +4,7 @@ import { ROLE_LABELS, canDecideApproval } from '@jscore/contracts';
 import { APPROVAL_STATUS, Async, Empty, PageHeader, Tabs, fmtDate, money, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
 
-const TYPES: Record<string, string> = { content: 'İçerik', budget: 'Bütçe', scope: 'Kapsam dışı', client_decision: 'Müşteri kararı', access: 'Yetki' };
+const TYPES: Record<string, string> = { content: 'İçerik', budget: 'Bütçe', scope: 'Kapsam dışı', client_decision: 'Müşteri kararı', access: 'Yetki', agent: 'Ajan önerisi' };
 
 export default function Approvals() {
   const { me, repo, bump } = useSession();
@@ -40,12 +40,14 @@ export default function Approvals() {
                         <span className="chip">Onaylayan: {ROLE_LABELS[a.required_role]}</span>
                         <span className="chip">Son: {fmtDate(a.due_at)}</span>
                         {a.subject.amount_minor ? <span className="chip">{money(a.subject.amount_minor)}</span> : null}
+                        {a.subject.agent && <span className="chip chip-brand">{a.subject.agent.toUpperCase()}{a.subject.payload ? ` · ${a.subject.payload.tasks.length} görev` : ''}</span>}
+                        {a.subject.executed && <span className="chip chip-ok">Uygulandı · {a.subject.executed.task_ids.length} görev</span>}
                       </div>
                       {a.decision_note && <p className="mt-2 text-xs text-muted">Not: {a.decision_note}</p>}
                     </div>
                     {a.status === 'pending' && (
                       <div className="flex gap-2">
-                        <button className="btn btn-primary btn-sm" disabled={!can} title={can ? '' : 'Bu onay için yetkin yok'} onClick={() => decide(a.id, 'approved')}>Onayla</button>
+                        <button className="btn btn-primary btn-sm" disabled={!can} title={can ? '' : 'Bu onay için yetkin yok'} onClick={() => decide(a.id, 'approved')}>{a.action_type === 'agent' ? 'Onayla ve uygula' : 'Onayla'}</button>
                         <button className="btn btn-sm" disabled={!can} onClick={() => decide(a.id, 'rejected')}>Reddet</button>
                       </div>
                     )}

@@ -6,6 +6,7 @@ import type {
   TrelloImportResult, TrelloMode, TrelloPublicState,
   AttachmentInput, CheckItemCreate, CheckItemPatch, TaskAttachment, TaskBadges, TaskCheckItem, TaskChecklist, TaskComment,
   BrandCreate, EmployeeCreate, EmployeePatch, ProjectCreate, UserPrefs,
+  ActivityEntry, BrandPatch,
 } from '@jscore/contracts';
 import type { TrelloSnapshot } from '../integrations/trello-map';
 
@@ -27,6 +28,8 @@ export interface Repo {
   createBrand(input: BrandCreate): Promise<Brand>;
   createProject(input: ProjectCreate): Promise<Project>;
   listBrands(): Promise<Brand[]>;
+  /** 0017: marka alan sahibi (default_assignee_id) / sağlık / durum. owner/org_admin/operations/account. */
+  updateBrand(id: string, patch: BrandPatch): Promise<Brand>;
   listProjects(): Promise<Project[]>;
   getProject(id: string): Promise<Project | null>;
   listTaskTypes(): Promise<TaskType[]>;
@@ -56,6 +59,10 @@ export interface Repo {
   attachmentUrl(a: TaskAttachment, opts?: { download?: boolean }): Promise<string>;
   /** TaskRow / pano rozetleri için sayımlar (yorum, ek, checklist 4/12). */
   taskBadges(taskIds: string[]): Promise<Record<string, TaskBadges>>;
+  /** 0017 Akış: denetim + yorum + Trello senkron günlüğünden birleşik zaman çizelgesi (yeni → eski). Yetkisiz kaynaklar sessizce atlanır. */
+  listActivity(scope: { project_id?: string; task_id?: string; limit?: number }): Promise<ActivityEntry[]>;
+  /** 0017 Çevrimiçi: org kanalında Realtime Presence (Supabase) / rastgele (demo). cb: çevrimiçi çalışan kimlikleri. */
+  subscribePresence(cb: (onlineEmployeeIds: string[]) => void): () => void;
   // approvals
   listApprovals(): Promise<Approval[]>;
   createApproval(input: ApprovalCreate): Promise<Approval>;

@@ -1,4 +1,5 @@
-import { agentFeatureKey, agentRunRequestSchema, featureEnabled, isClientRole } from '@jscore/contracts';
+import { agentFeatureKey, agentRunRequestSchema, agentSpendTry, decideAgentWrite, featureEnabled, isClientRole, type AgentPolicy } from '@jscore/contracts';
+import { DEFAULT_USD_TRY } from '@jscore/core/agents/cap';
 import { enforceAgentCap } from '@jscore/core/agents/cap';
 import { runAgent } from '@jscore/core/agents/run';
 import { fail, json } from '@jscore/core/api';
@@ -21,7 +22,17 @@ export async function POST(req: Request) {
     if (featureKey && !featureEnabled((await repo.getSettings()).feature_toggles, featureKey)) return json({ error: 'Bu özellik yönetici tarafından kapatıldı', code: 'feature_disabled' }, 403);
     // Aylık maliyet tavanı: ay içi harcama (servis rolüyle — RLS agent_runs okumasını kısıtlar) + tahmini çalıştırma tavanı aşarsa 402.
     const admin = repo.mode === 'supabase' ? createAdmin() : null;
-    await enforceAgentCap({ repo, spendRepo: admin ? new SupabaseRepo(admin, me.org_id) : undefined, agent: body.agent, spendOverrideUsd: body.demo_spend_usd, capOverrideUsd: body.demo_cap_usd });
+    const spendRepo = admin ? new SupabaseRepo(admin, me.org_id) : repo;
+    await enforceAgentCap({ repo, spendRepo: admin ? spendRepo : undefined, agent: body.agent, spendOverrideUsd: body.demo_spend_usd, capOverrideUsd: body.demo_cap_usd });
+    // 0017: ajan başına aylık ₺ bütçe (agent_policies). Politika okunamazsa (RLS) bütçe uygulanmaz; demo'da ay içi harcama istemciden gelir.
+    const policy = (await spendRepo.list('agent_policies').catch(() => [] as AgentPolicy[])).find((p) => p.agent === body.agent) ?? null;
+    if (policy && policy.monthly_budget_try > 0) {
+      const settings = await repo.getSettings();
+      const month = new Date().toISOString().slice(0, 7);
+      const spent = repo.mode === 'demo' && body.demo_spend_usd !== undefined ? body.demo_spend_usd * (settings.ai.usd_try ?? DEFAULT_USD_TRY) : agentSpendTry(await spendRepo.listAgentRuns().catch(() => []), body.agent, month, settings.ai.usd_try ?? DEFAULT_USD_TRY);
+      const v = decideAgentWrite({ ...policy, mode: 'act', auto_approve: { actions: ['agent.run'] } }, { action: 'agent.run', items: 1, spent_try: spent });
+      if (v.verdict === 'blocked') return json({ error: v.reason, code: 'agent_budget_exceeded' }, 402);
+    }
     const { output, run } = await runAgent({ agent: body.agent, input: body.input, repo, trigger: 'inbox' });
     // Demo'da sunucu durumsuz olduğu için istemci kendi DemoRepo'suna yazar; run özeti yanıtta döner.
     return json({ agent: body.agent, mode: run.status, output, usage: { tokens_in: run.tokens_in, tokens_out: run.tokens_out, cost_usd: run.cost_usd, model: run.model } });

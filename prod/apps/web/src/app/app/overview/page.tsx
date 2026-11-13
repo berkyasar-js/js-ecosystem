@@ -1,6 +1,8 @@
 'use client';
 import Link from 'next/link';
-import { TASK_STATE_LABELS, isClientRole, nextSetupStep, setupProgress, showSetupCard, type BoardDecision, type Notification } from '@jscore/contracts';
+import { TASK_STATE_LABELS, buildDashboards, isClientRole, nextSetupStep, setupProgress, showSetupCard, type AgentRun, type BoardDecision, type ChartId, type Notification } from '@jscore/contracts';
+import { AnnouncementBanner } from '@/components/announcements';
+import { DashChart } from '@/components/dash-chart';
 import { ArrowRight, CheckCircle2, Landmark, Settings2, Sparkles } from 'lucide-react';
 import { Avatar } from '@/components/avatar';
 import { Async, PageHeader, Stat, fmtDate, todayFor, useData } from '@/components/ui';
@@ -16,10 +18,10 @@ export default function Home() {
   const { me, mode, features, prefs } = useSession();
   const q = useData(async (r) => {
     const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
-    const [projects, tasks, approvals, brands, team, notifications, board] = await Promise.all([
-      safe(r.listProjects()), safe(r.listTasks()), safe(r.listApprovals()), safe(r.listBrands()), safe(r.team()), safe(r.list('notifications')), safe(r.listBoardDecisions()),
+    const [projects, tasks, approvals, brands, team, notifications, board, runs] = await Promise.all([
+      safe(r.listProjects()), safe(r.listTasks()), safe(r.listApprovals()), safe(r.listBrands()), safe(r.team()), safe(r.list('notifications')), safe(r.listBoardDecisions()), safe(r.listAgentRuns()),
     ]);
-    return { projects, tasks, approvals, brands, team, notifications: notifications as Notification[], board: board as BoardDecision[] };
+    return { projects, tasks, approvals, brands, team, notifications: notifications as Notification[], board: board as BoardDecision[], runs: runs as AgentRun[] };
   });
   const today = todayFor(mode);
   const hour = mode === 'demo' ? 10 : new Date().getHours();
@@ -31,7 +33,8 @@ export default function Home() {
   return (
     <>
       <PageHeader eyebrow={`${fmtDate(today)} · ${features.orgName ?? 'JS Ecosystem'}`} title={`${greeting(hour)}, ${me.name.split(' ')[0]}`} sub={me.title || undefined} />
-      <Async q={q}>{({ projects, tasks, approvals, brands, team, notifications, board }) => {
+      <Async q={q}>{({ projects, tasks, approvals, brands, team, notifications, board, runs }) => {
+        const pinnedCharts = client ? [] : buildDashboards({ tasks, team, brands, approvals, runs, today }).filter((c) => prefs.pinned_charts.includes(c.id as ChartId));
         const plan = planBuckets(tasks, me.employee_id, today);
         const pn = inProgressAndNext(tasks, me.employee_id);
         const ny = needsYou(me.role, approvals, tasks, me.employee_id, today);
@@ -59,6 +62,8 @@ export default function Home() {
                 <div className="flex items-center gap-3"><div className="w-40"><Bar pct={prog.pct} tone="ok" /></div><Link href="/app/setup" className="btn btn-primary">Devam et <ArrowRight size={15} aria-hidden /></Link></div>
               </section>
             )}
+
+            {!client && <AnnouncementBanner />}
 
             <section className="focus-card home-col-8" aria-label="Bugünün planı">
               <img className="orbit-art" src="/brand/orbit-studio.svg" alt="" aria-hidden="true" />
@@ -125,6 +130,13 @@ export default function Home() {
                   <ul className="home-list">{board.slice(0, 4).map((d) => <li key={d.id} className="home-row"><span className="min-w-0 flex-1 truncate"><span className="font-semibold">{d.action}</span><span className="ml-2 text-xs text-muted">{d.proposed_by.toUpperCase()}</span></span><span className={`chip ${d.status === 'approved' ? 'chip-ok' : d.status === 'rejected' ? 'chip-bad' : 'chip-warn'}`}>{d.founder_answer ?? d.status}</span></li>)}</ul>
                 )}
                 {ADMIN_URL ? <a className="text-button mt-3" href={`${ADMIN_URL}/admin/board`} target="_blank" rel="noreferrer">Yönetim Kurulu (panel) <ArrowRight size={14} aria-hidden /></a> : <p className="mt-3 text-xs text-muted">Kurul yalnızca Ana Yönetim Paneli’nde (NEXT_PUBLIC_ADMIN_URL tanımlı değil).</p>}
+              </section>
+            )}
+
+            {pinnedCharts.length > 0 && (
+              <section className="home-col-12" aria-label="Panolarım" style={{ gridColumn: 'span 12' }}>
+                <div className="mb-2 flex items-center justify-between"><h2 className="font-bold">Panolarım</h2><Link href="/app/dashboards" className="text-button">Tüm panolar <ArrowRight size={14} aria-hidden /></Link></div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{pinnedCharts.map((c) => <DashChart key={c.id} chart={c} compact />)}</div>
               </section>
             )}
 

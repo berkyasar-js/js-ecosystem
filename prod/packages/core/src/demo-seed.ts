@@ -64,6 +64,7 @@ const brands: Brand[] = brandRows.map(([id, name, sector, status, owner, ad, hea
   id, org_id: org, client_id: id.replace('c_', 'cl_'), name, sector, status, account_owner: owner, art_director: ad, copywriter: 'SO',
   compliance_flags: id === 'c_anova' ? ['savunma-sanayii-gizlilik'] : id === 'c_wellana' ? ['saglik-beyani'] : [], monthly_quota: quota ?? {}, health,
   internal: id === 'c_edit' || id === 'c_jobs', email: `info@${id.slice(2)}.example`,
+  default_assignee_id: owner,
 }));
 
 const stageIdx = (s: TaskState) => TASK_STATES.indexOf(s);
@@ -108,8 +109,11 @@ const taskRows: T[] = [
   ['t12', 'p1', 'Wellana Kasım yenileme teklifi hazırlığı', 'OE', 'brief', 'high', '2026-10-24', 240, 'proposal_deck', 1, ['teklif', 'yenileme'], false],
 ];
 const projOrg = Object.fromEntries(projects.map((p) => [p.id, p.org_id]));
+/* 0017: görev → kilometre taşı (demo-seed-modules milestones: ms1..ms6) */
+const MILESTONE_OF: Record<string, string> = { t1: 'ms2', t4: 'ms2', t12: 'ms3', t3: 'ms5', t7: 'ms4', t2: 'ms6', t6: 'ms6' };
 const tasks: Task[] = taskRows.map(([id, project_id, title, assignee_id, state, priority, due_at, planned_minutes, task_type, qty, labels, vis]) => ({
   id, org_id: projOrg[project_id], project_id, title, assignee_id, state, priority, due_at, planned_minutes, task_type, qty, source_ref: null, labels, client_visible: vis, created_at: '2026-10-01T09:00:00Z',
+  milestone_id: MILESTONE_OF[id] ?? null,
 }));
 
 export const TASK_TYPES: TaskType[] = [

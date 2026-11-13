@@ -2,7 +2,10 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, FolderOpen, MessageSquare, Sparkles } from 'lucide-react';
-import { TASK_STATES, TASK_STATE_LABELS, isClientRole, type MediaAsset, type Task } from '@jscore/contracts';
+import { TASK_STATES, TASK_STATE_LABELS, isClientRole, type MediaAsset, type Milestone, type ProjectMember, type Task } from '@jscore/contracts';
+import { ActivityFeed } from '../activity-feed';
+import { MembersPanel } from './members';
+import { MilestonePanel } from './milestones';
 import { Avatar } from '../avatar';
 import { useSession } from '../session';
 import { ErrorBox, fmtDate, money, todayFor, useData, APPROVAL_STATUS } from '../ui';
@@ -17,15 +20,20 @@ export function ProjectWorkspace({ projectId, backHref = '/app/projects' }: { pr
   const { me, mode, repo } = useSession();
   const [view, setView] = useState<WorkView>('list');
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
   const [openReq, setOpenReq] = useState<{ id: string; n: number } | null>(null);
   const q = useData(async (r) => {
     const project = await r.getProject(projectId);
     if (!project) return null;
     const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
-    const [tasks, team, brands, taskTypes, approvals, assets] = await Promise.all([r.listTasks({ project_id: projectId }), r.team(), r.listBrands(), safe(r.listTaskTypes()), safe(r.listApprovals()), safe(r.list('media_assets'))]);
-    return { project, tasks, team, brand: brands.find((b) => b.id === project.brand_id), taskTypes, approvals: approvals.filter((a) => a.subject.project_id === projectId), assets: (assets as MediaAsset[]).filter((a) => a.project_id === projectId) };
+    const [tasks, team, brands, taskTypes, approvals, assets, ms, pm] = await Promise.all([r.listTasks({ project_id: projectId }), r.team(), r.listBrands(), safe(r.listTaskTypes()), safe(r.listApprovals()), safe(r.list('media_assets')), safe(r.list('milestones')), safe(r.list('project_members'))]);
+    return {
+      project, tasks, team, brand: brands.find((b) => b.id === project.brand_id), taskTypes, approvals: approvals.filter((a) => a.subject.project_id === projectId), assets: (assets as MediaAsset[]).filter((a) => a.project_id === projectId),
+      milestones: (ms as Milestone[]).filter((m) => m.project_id === projectId), members: (pm as ProjectMember[]).filter((m) => m.project_id === projectId),
+    };
   }, [projectId]);
-  useEffect(() => { if (q.data) setTasks(q.data.tasks); }, [q.data]);
+  useEffect(() => { if (q.data) { setTasks(q.data.tasks); setMilestones(q.data.milestones); setMembers(q.data.members); } }, [q.data]);
   // Derin bağlantı: /app/projects/<id>?task=<görev> (Gelen Kutusu, Spotlight) → ayrıntı paneli açılır.
   useEffect(() => {
     if (!q.data) return;
@@ -45,6 +53,7 @@ export function ProjectWorkspace({ projectId, backHref = '/app/projects' }: { pr
   const focus = focusTask(tasks, today);
   const late = tasks.filter((t) => isLate(t, today)).length;
   const client = !!me && isClientRole(me.role);
+  const canEditMs = !client && me?.role !== 'auditor';
 
   return (
     <div className="wk-app orbit-work" data-js-theme="orbit">
@@ -80,7 +89,7 @@ export function ProjectWorkspace({ projectId, backHref = '/app/projects' }: { pr
           </span>
         </div>
       </header>
-      <WorkViewSwitcher value={view} onChange={setView} />
+      <WorkViewSwitcher value={view} onChange={setView} views={client ? ['list', 'board', 'summary', 'files'] : undefined} />
 
       {focus && (view === 'list' || view === 'board') && (
         <div className="wk-banner">
@@ -91,7 +100,7 @@ export function ProjectWorkspace({ projectId, backHref = '/app/projects' }: { pr
       )}
 
       {(view === 'list' || view === 'board') && (
-        <TaskWorkArea tasks={tasks} setTasks={(fn) => setTasks(fn)} team={team} projects={[project]} taskTypes={taskTypes} view={view} projectId={project.id} today={today} canBid={!client} openRequest={openReq} />
+        <TaskWorkArea tasks={tasks} setTasks={(fn) => setTasks(fn)} team={team} projects={[project]} taskTypes={taskTypes} view={view} projectId={project.id} today={today} canBid={!client} openRequest={openReq} milestones={milestones} defaultAssigneeId={brand?.default_assignee_id ?? null} />
       )}
 
       {view === 'summary' && (
@@ -102,6 +111,7 @@ export function ProjectWorkspace({ projectId, backHref = '/app/projects' }: { pr
             <article><span>Geciken</span><strong style={late ? { color: 'var(--js-work-urgent)' } : undefined}>{late}</strong><small>{late ? 'Bitiş tarihi geçmiş açık görev' : 'Geciken görev yok'}</small></article>
             <article><span>Bütçe</span><strong style={{ fontSize: 22 }}>{money(project.budget_minor)}</strong><small>Teslim {fmtDate(project.due_at)}</small></article>
           </div>
+          <MilestonePanel projectId={project.id} milestones={milestones} tasks={tasks} today={today} canEdit={canEditMs} onChange={setMilestones} />
           <section className="wk-box" aria-label="Akış zaman çizelgesi">
             <h3>Akış zaman çizelgesi</h3>
             {project.stage_plan.length === 0 ? <p className="wk-muted">Bu proje için aşama planı girilmemiş.</p> : (
@@ -129,6 +139,12 @@ export function ProjectWorkspace({ projectId, backHref = '/app/projects' }: { pr
           </section>
         </div>
       )}
+
+      {view === 'activity' && (
+        <div className="wk-pad"><section className="wk-box" aria-label="Proje akışı"><h3>Akış</h3><p className="wk-muted" style={{ fontSize: 12, marginBottom: 10 }}>Kişi, ajan ve Trello hareketleri tek zaman çizelgesinde (denetim kaydı + yorumlar + senkron günlüğü).</p>
+          <ActivityFeed scope={{ project_id: project.id }} taskTitle={(id) => tasks.find((t) => t.id === id)?.title} refreshKey={String(tasks.length)} /></section></div>
+      )}
+      {view === 'members' && <MembersPanel projectId={project.id} members={members} team={team} onChange={setMembers} assigneeIds={memberIds} />}
 
       {view === 'files' && (
         <div className="wk-pad">

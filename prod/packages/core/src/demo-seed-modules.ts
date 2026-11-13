@@ -258,5 +258,45 @@ export function makeModuleSeed(): ModuleCols {
     { automation_id: 'au1', status: 'ok', error: null, payload: 'task t7 → anket gönderildi', created_at: '2026-10-09T15:00:00Z' }, { automation_id: 'au2', status: 'error', error: 'SMTP zaman aşımı (efatura bağlı değil)', payload: 'FTR-2026-0183', created_at: '2026-10-13T09:00:00Z' },
     { automation_id: 'au1', status: 'pending_approval', error: null, payload: 'task t11 → müşteri onayı bekleniyor', created_at: '2026-10-13T16:00:00Z' },
   ]);
+  /* ───── V8 (0017) ───── */
+  c.saved_views = rows('saved_views', [
+    { owner_user_id: 'u_owner', scope: 'org', entity: 'tasks', name: 'Geciken yüksek öncelik', query: { high: true, sort: 'due', states: ['brief', 'scope', 'plan', 'production', 'internal_review', 'approval'] } },
+    { owner_user_id: 'u_owner', scope: 'org', entity: 'tasks', name: 'Onay bekleyenler', query: { states: ['approval'], group: 'assignee' } },
+    { owner_user_id: 'u_creative', scope: 'personal', entity: 'tasks', name: 'Benim üretimdekilerim', query: { mine: true, states: ['production', 'internal_review'], sort: 'due' } },
+  ]);
+  c.milestones = rows('milestones', [
+    { project_id: 'p1', name: 'Konsept onayı', due_at: '2026-10-10', status: 'done' }, { project_id: 'p1', name: 'Ana görsel & sosyal set', due_at: '2026-10-20', status: 'active' }, { project_id: 'p1', name: 'Kasım yenileme teklifi', due_at: '2026-10-28', status: 'planned' },
+    { project_id: 'p3', name: 'Çekim', due_at: '2026-10-09', status: 'done' }, { project_id: 'p3', name: 'Kurgu & teslim', due_at: '2026-10-23', status: 'active' },
+    { project_id: 'p2', name: 'Teklif sunumu', due_at: '2026-10-17', status: 'active' },
+  ]);
+  c.requests = rows('requests', [
+    { kind: 'client', title: 'Wellana · mağaza içi afiş uyarlaması', body: 'Sonbahar ana görselinin 50x70 afiş uyarlaması; 12 mağaza için baskı dosyası.', status: 'new', requester_employee_id: null, requester_name: 'Wellana pazarlama', brand_id: 'c_wellana', project_id: 'p1', task_id: null, client_visible: true, created_at: '2026-10-13T10:20:00Z' },
+    { kind: 'bug', title: 'Anova landing sayfasında video oynamıyor (Safari)', body: 'iOS Safari’de otomatik oynatma çalışmıyor; muted attribute eksik olabilir.', status: 'triaged', requester_employee_id: 'OE', requester_name: 'Öykü Erelmalı', brand_id: 'c_anova', project_id: 'p3', task_id: null, created_at: '2026-10-12T15:00:00Z' },
+    { kind: 'idea', title: 'Badem Pınarı için “kaynağından” podcast serisi', body: '3 bölümlük kısa podcast; Reels kesitleriyle çapraz kullanım.', status: 'new', requester_employee_id: 'SO', requester_name: 'Selin Öztekeşin', brand_id: 'c_badem', project_id: null, task_id: null, created_at: '2026-10-11T09:00:00Z' },
+    { kind: 'brief', title: 'Clayton satış ofisi yönlendirme tasarımı', body: 'Satış ofisi iç mekân yönlendirme ve karşılama ekranı içerikleri için brief.', status: 'converted', requester_employee_id: 'OE', requester_name: 'Öykü Erelmalı', brand_id: 'c_clayton', project_id: 'p2', task_id: 't2', created_at: '2026-10-08T11:00:00Z' },
+    { kind: 'client', title: 'Anova · storyboard’a ek sahne', body: 'Montaj hattı sahnesi eklenmesi talep edildi.', status: 'closed', requester_employee_id: null, requester_name: 'Anova müşteri temsilcisi', brand_id: 'c_anova', project_id: 'p3', task_id: 't7', client_visible: true, created_at: '2026-10-05T14:00:00Z' },
+  ]);
+  c.announcements = rows('announcements', [
+    { author_user_id: 'u_owner', author_name: 'Batuhan Berk Yaşar', title: 'Kasım planlama haftası', body: 'Gelecek hafta tüm markalar için **Kasım içerik planı** kapanıyor. Pazartesi 10:00 kick-off, Cuma 16:00 kilit.\n\n- Hesap ekibi brief’leri Salı’ya kadar girer\n- Kreatif tahminleri Çarşamba', audience: { all: true }, requires_ack: true, poll: null, created_at: '2026-10-13T08:00:00Z' },
+    { author_user_id: 'u_owner', author_name: 'Batuhan Berk Yaşar', title: 'Cuma ofis günü mü, uzaktan mı?', body: 'Kasım boyunca Cuma günleri için tercihinizi işaretleyin.', audience: { all: true }, requires_ack: false, poll: { question: 'Kasım Cumaları', options: ['Ofis', 'Uzaktan', 'Fark etmez'] }, created_at: '2026-10-12T09:30:00Z' },
+    { author_user_id: 'u_account', author_name: 'Öykü Erelmalı', title: 'Kreatif ekip: yeni teslim şablonu', body: 'Teslim dosyaları artık `Marka_İş_vXX` biçiminde adlandırılacak.', audience: { teams: ['Kreatif', 'Video'] }, requires_ack: true, poll: null, created_at: '2026-10-10T12:00:00Z' },
+  ]);
+  c.announcement_acks = rows('announcement_acks', [
+    { announcement_id: 'an1', user_id: 'u_account', user_name: 'Öykü Erelmalı', answer: null, at: '2026-10-13T09:00:00Z' },
+    { announcement_id: 'an2', user_id: 'u_account', user_name: 'Öykü Erelmalı', answer: 'Ofis', at: '2026-10-12T10:00:00Z' },
+    { announcement_id: 'an2', user_id: 'u_creative', user_name: 'Seda Karabacak', answer: 'Uzaktan', at: '2026-10-12T11:00:00Z' },
+    { announcement_id: 'an2', user_id: 'u_finance', user_name: 'Bengisu Arda', answer: 'Fark etmez', at: '2026-10-12T13:00:00Z' },
+  ]);
+  c.project_members = rows('project_members', [
+    { project_id: 'p1', employee_id: 'SK', role: 'manager' }, { project_id: 'p1', employee_id: 'SO', role: 'collaborator' }, { project_id: 'p1', employee_id: 'OE', role: 'admin' },
+    { project_id: 'p3', employee_id: 'HO', role: 'manager' }, { project_id: 'p3', employee_id: 'DO', role: 'collaborator' },
+    { project_id: 'p2', employee_id: 'OE', role: 'admin' }, { project_id: 'p2', employee_id: 'DO', role: 'collaborator' },
+  ]);
+  c.agent_policies = rows('agent_policies', [
+    { agent: 'chair', mode: 'plan', monthly_budget_try: 1500, auto_approve: { actions: [], max_items: 0 }, note: 'Kurul planları onayla uygulanır.' },
+    { agent: 'inbox_drafts', mode: 'act', monthly_budget_try: 400, auto_approve: { actions: ['task.create'], max_items: 5 } },
+    { agent: 'twin_bid', mode: 'act', monthly_budget_try: 300, auto_approve: { actions: ['bid.propose'] } },
+    { agent: 'studio_draft', mode: 'ask', monthly_budget_try: 500, auto_approve: { actions: [] } },
+  ]);
   return c;
 }

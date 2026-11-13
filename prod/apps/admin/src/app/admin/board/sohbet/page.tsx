@@ -159,6 +159,8 @@ function AttachmentChip({ a }: { a: BoardAttachment }) {
 
 function Composer({ busy, onSend }: { busy: boolean; onSend(content: string, attachments: Draft[]): Promise<boolean> }) {
   const [text, setText] = useState('');
+  // Spotlight `/kurul <soru>` → ?q=… ön doldurma (0017)
+  useEffect(() => { const q = new URLSearchParams(window.location.search).get('q'); if (q) setText(q); }, []);
   const [files, setFiles] = useState<Draft[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -231,7 +233,8 @@ function PlanCard({ plan, threadId, messageId, ctx }: { plan: BoardPlan; threadI
       const body = { message_id: messageId, task_indexes: checked.map((c, i) => (c ? i : -1)).filter((i) => i >= 0), ...(isNew ? { new_project: { name: newName.trim(), brand_id: brand || undefined } } : { project_id: project }) };
       const r = await api<BoardApplyResult>(`/api/admin/board/chat/threads/${threadId}/apply`, { method: 'POST', body: JSON.stringify(body) });
       setResult(r);
-      toast.success(r.demo ? `Demo: ${r.created} görev aktarılırdı` : `${r.created} görev sisteme aktarıldı`, `${r.project_name}${r.unmatched_assignees.length ? ` · eşleşmeyen: ${r.unmatched_assignees.join(', ')}` : ''}`);
+      if (r.pending_approval) toast.success('Onay kartı açıldı', 'CHAIR "Uygula" modunda değil: owner onaylayınca görevler oluşur (Gelen Kutusu / Onay Merkezi / Ajanlar).');
+      else toast.success(r.demo ? `Demo: ${r.created} görev aktarılırdı` : `${r.created} görev sisteme aktarıldı`, `${r.project_name}${r.unmatched_assignees.length ? ` · eşleşmeyen: ${r.unmatched_assignees.join(', ')}` : ''}${r.milestones ? ` · ${r.milestones} kilometre taşı` : ''}${r.members ? ` · ${r.members} üye` : ''}`);
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
 
@@ -293,7 +296,7 @@ function PlanCard({ plan, threadId, messageId, ctx }: { plan: BoardPlan; threadI
           {err && <p role="alert" className="text-sm text-magenta">{err}</p>}
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" className="btn btn-primary" disabled={!canApply} onClick={() => void apply()}>{busy ? 'Aktarılıyor…' : `Seçili görevleri sisteme aktar (${n})`}</button>
-            {result && <span className="text-sm text-muted">{result.demo ? 'Demo modu — kayıt yazılmadı.' : <>{result.created} görev oluşturuldu → <strong>{result.project_name}</strong>.</>}{result.unmatched_assignees.length > 0 && <> Eşleşmeyen kişi: {result.unmatched_assignees.join(', ')} (atanmadan oluşturuldu).</>}{APP_URL && !result.demo && <> <a className="underline" href={`${APP_URL}/app/tasks`} target="_blank" rel="noreferrer">Görevleri aç</a></>}</span>}
+            {result && <span className="text-sm text-muted">{result.pending_approval ? <>Onay bekliyor: <a className="underline" href="/admin/agents#approvals">Ajanlar → Ajan onayları</a> (ya da kullanıcı uygulamasında Gelen Kutusu).</> : result.demo ? 'Demo modu — kayıt yazılmadı.' : <>{result.created} görev oluşturuldu → <strong>{result.project_name}</strong>.</>}{result.unmatched_assignees.length > 0 && <> Eşleşmeyen kişi: {result.unmatched_assignees.join(', ')} (atanmadan oluşturuldu).</>}{APP_URL && !result.demo && <> <a className="underline" href={`${APP_URL}/app/tasks`} target="_blank" rel="noreferrer">Görevleri aç</a></>}</span>}
           </div>
         </div>
       )}

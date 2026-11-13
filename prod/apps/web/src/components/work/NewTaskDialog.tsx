@@ -5,9 +5,11 @@ import { OrbitDialog } from '../dialog';
 import { PRIORITY_LABEL } from './work-utils';
 
 /** Yeni görev penceresi. Gönderim sürerken tekrar kayıt engellenir; hata girdiyi korur ve alanın yanında kalır. */
-export function NewTaskDialog({ open, onClose, projects, projectId, team, today, onCreate }: {
+export function NewTaskDialog({ open, onClose, projects, projectId, team, today, onCreate, initialTitle = '', defaultAssigneeId = null }: {
   open: boolean; onClose: () => void; projects: Project[]; projectId?: string; team: TeamMember[]; today: string;
   onCreate: (input: { project_id: string; title: string; assignee_id: string | null; priority: Priority; due_at: string }) => Promise<Task>;
+  /** 0017: Spotlight `/görev <başlık>` ön doldurma ve markanın alan sahibi (varsayılan sorumlu). */
+  initialTitle?: string; defaultAssigneeId?: string | null;
 }) {
   const id = useId();
   const [title, setTitle] = useState('');
@@ -18,7 +20,7 @@ export function NewTaskDialog({ open, onClose, projects, projectId, team, today,
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [titleErr, setTitleErr] = useState<string | null>(null);
-  useEffect(() => { if (open) { setTitle(''); setAssignee(''); setPriority('normal'); setDue(today); setErr(null); setTitleErr(null); setProject(projectId ?? projects[0]?.id ?? ''); } }, [open, today, projectId, projects]);
+  useEffect(() => { if (open) { setTitle(initialTitle); setAssignee(defaultAssigneeId && team.some((m) => m.id === defaultAssigneeId && m.status === 'active') ? defaultAssigneeId : ''); setPriority('normal'); setDue(today); setErr(null); setTitleErr(null); setProject(projectId ?? projects[0]?.id ?? ''); } }, [open, today, projectId, projects, initialTitle, defaultAssigneeId, team]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

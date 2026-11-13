@@ -8,15 +8,18 @@ import { TaskBadgeList } from './task-badges';
 import { PRIORITY_LABEL, isDone, isLate, isTrello } from './work-utils';
 
 /** Kontrollü görev satırı. Görev adı gerçek düğmedir; tamamlama ayrı kontroldür (iç içe etkileşim yok). */
-export function TaskRow({ task, assignee, category, today, selected = false, pending = false, readonly = false, onOpen, onComplete, extra, badges }: {
-  task: Task; badges?: TaskBadges; assignee: string; category: string; today: string; selected?: boolean; pending?: boolean; readonly?: boolean;
+export function TaskRow({ task, assignee, category, today, selected = false, pending = false, readonly = false, cursor = false, onOpen, onComplete, extra, badges, lead }: {
+  task: Task; badges?: TaskBadges; assignee: string; category: string; today: string; selected?: boolean; pending?: boolean; readonly?: boolean; cursor?: boolean;
   onOpen: () => void; onComplete: () => void; extra?: React.ReactNode;
+  /** 0017: satır başı seçim kutusu (toplu düzenleme). */
+  lead?: React.ReactNode;
 }) {
   const done = isDone(task);
   const late = isLate(task, today);
   const trelloOn = useFeature('tasks.trello_sync');
   return (
-    <tr aria-selected={selected} aria-busy={pending} onClick={(e) => { if (!(e.target as HTMLElement).closest('button')) onOpen(); }}>
+    <tr aria-selected={selected} aria-busy={pending} className={cursor ? 'is-cursor' : undefined} onClick={(e) => { if (!(e.target as HTMLElement).closest('button, input, label')) onOpen(); }}>
+      {lead !== undefined && <td className="wk-select-cell">{lead}</td>}
       <td>
         <button type="button" className={`wk-complete ${done ? 'done' : ''}`} aria-label={done ? `${task.title} tamamlandı` : `${task.title} görevini tamamla`} aria-pressed={done} disabled={pending || done || readonly} onClick={onComplete}>
           <Check aria-hidden strokeWidth={3} />

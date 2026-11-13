@@ -1,8 +1,9 @@
 'use client';
 import { useCallback, useId, useRef, useState } from 'react';
-import type { AuditEvent, Task, TaskBadges, TaskCover, TaskPatch, TeamMember } from '@jscore/contracts';
+import type { Task, TaskBadges, TaskCover, TaskPatch, TeamMember } from '@jscore/contracts';
 import { useFeature, useSession } from '../session';
-import { ActivitySection, CoverSection, DescriptionSection } from './extras-basic';
+import { CoverSection, DescriptionSection } from './extras-basic';
+import { ActivityFeed } from '../activity-feed';
 import { ChecklistSection } from './extras-checklist';
 import { CommentsSection } from './extras-comments';
 import { FilesSection } from './extras-files';
@@ -14,8 +15,8 @@ type Tab = 'description' | 'checklist' | 'comments' | 'files' | 'cover' | 'activ
  * Görev ayrıntı sekmeleri (Trello kartı özellikleri): Açıklama · Checklist · Yorumlar · Dosyalar · Kapak · Aktivite.
  * ARIA sekme deseni: ok tuşları / Home / End ile gezinme, yalnızca etkin panel DOM'da.
  */
-export function TaskExtras({ task, team, activity, readonly, pending, onPatch, onBadges, onLocalPatch }: {
-  task: Task; team: TeamMember[]; activity: AuditEvent[] | null; readonly: boolean; pending: boolean;
+export function TaskExtras({ task, team, readonly, pending, onPatch, onBadges, onLocalPatch }: {
+  task: Task; team: TeamMember[]; readonly: boolean; pending: boolean;
   onPatch: (p: TaskPatch) => void; onBadges: (taskId: string, b: TaskBadges) => void; onLocalPatch: (taskId: string, p: Partial<Task>) => void;
 }) {
   const { repo, me } = useSession();
@@ -32,7 +33,7 @@ export function TaskExtras({ task, team, activity, readonly, pending, onPatch, o
     ['comments', 'Yorumlar', x.comments?.length ? String(x.comments.length) : undefined],
     ['files', 'Dosyalar', x.files?.length ? String(x.files.length) : undefined],
     ['cover', 'Kapak', task.cover?.color || task.cover?.attachment_id ? '•' : undefined],
-    ['activity', 'Aktivite'],
+    ['activity', 'Akış'],
   ];
   const off: Tab[] = [...(fChecklists ? [] : ['checklist' as Tab]), ...(fComments ? [] : ['comments' as Tab]), ...(fFiles ? [] : ['files' as Tab]), ...(fCover ? [] : ['cover' as Tab])];
   const tabs = allTabs.filter(([k]) => !off.includes(k));
@@ -61,7 +62,7 @@ export function TaskExtras({ task, team, activity, readonly, pending, onPatch, o
         {tab === 'comments' && x.loaded && repo && <CommentsSection x={x} repo={repo} taskId={task.id} me={me} canEdit={canEdit} />}
         {tab === 'files' && x.loaded && repo && <FilesSection x={x} repo={repo} taskId={task.id} canEdit={canEdit} coverId={task.cover?.attachment_id} onCoverCleared={clearCover} />}
         {tab === 'cover' && repo && <CoverSection task={task} x={x} repo={repo} canEdit={canEdit && !pending} onCover={(c: TaskCover) => onPatch({ cover: c })} />}
-        {tab === 'activity' && <ActivitySection audit={activity} x={x} />}
+        {tab === 'activity' && <div className="wk-x-pane"><ActivityFeed scope={{ task_id: task.id }} refreshKey={`${x.comments?.length ?? 0}:${x.files?.length ?? 0}:${task.updated_at ?? ''}`} limit={30} /></div>}
       </div>
     </section>
   );

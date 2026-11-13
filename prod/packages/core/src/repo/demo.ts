@@ -6,7 +6,9 @@ import {
   type AttachmentInput, type CheckItemCreate, type CheckItemPatch, type TaskAttachment, type TaskBadges, type TaskCheckItem, type TaskChecklist, type TaskComment,
   BID_ROLES, TOKEN_ADMIN_ROLES, bidProposalSchema, checkTokenPolicy, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
   DEFAULT_PREFS, brandCreateSchema, employeeCreateSchema, employeePatchSchema, projectCreateSchema, userPrefsPatchSchema, userPrefsSchema, type BrandCreate, type EmployeeCreate, type EmployeePatch, type ProjectCreate, type TeamMember, type UserPrefs,
+  brandPatchSchema, buildTimeline, requestsToClose, type ActivityEntry, type BrandPatch, type WorkRequest,
 } from '@jscore/contracts';
+import { executeAgentAction, isAgentApproval } from '../agents/execute';
 import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
 import { addDetails, emptyDetailsSummary, syncCardDetails, type DetailStore } from '../integrations/trello-details';
 import { memberKey, resolveEmployee, runImport, type CardDetailsHook, type StoreTask, type TaskDraft, type TrelloSnapshot, type TrelloStore } from '../integrations/trello-map';
@@ -145,6 +147,17 @@ export class DemoRepo implements Repo {
     return { ...p };
   }
 
+  async updateBrand(id: string, patch: BrandPatch): Promise<Brand> {
+    if (!['owner', 'org_admin', 'operations', 'account'].includes(this.role)) throw new ForbiddenError();
+    const v = brandPatchSchema.parse(patch);
+    const db = this.db();
+    const b = db.brands.find((x) => x.id === id && x.org_id === this.orgId);
+    if (!b) throw new NotFoundError('Marka');
+    Object.assign(b, v);
+    this.log(db, 'brand.update', `brands/${id}`, v as Record<string, unknown>);
+    this.persist(db);
+    return { ...b };
+  }
   async listBrands() { return this.db().brands.filter((b) => b.org_id === this.orgId && this.visibleBrand(b.id)); }
   async listProjects() {
     return this.db().projects.filter((p) => p.org_id === this.orgId && this.visibleBrand(p.brand_id) && (!isClientRole(this.role) || p.client_visible));
@@ -181,8 +194,14 @@ export class DemoRepo implements Repo {
     t.state = state;
     this.log(db, 'task.move', `tasks/${id}`, { state });
     await this.fire(db, 'tasks.update', 'tasks', t, before);
+    this.closeRequests(db, t);
     this.persist(db);
     return { ...t };
+  }
+  /** 0017: görev teslim/arşive geçince bağlı talepler kapanır (SQL'de tasks tetikleyicisi). */
+  private closeRequests(db: DemoDb, t: Task) {
+    const reqs = this.col(db, 'requests') as WorkRequest[];
+    for (const id of requestsToClose(reqs, t)) { const r = reqs.find((x) => x.id === id); if (r) r.status = 'closed'; }
   }
   async updateTask(id: string, patch: TaskPatch): Promise<Task> {
     if (isClientRole(this.role) || this.role === 'auditor') throw new ForbiddenError();
@@ -306,6 +325,26 @@ export class DemoRepo implements Repo {
     return out;
   }
 
+  /* ───────── 0017: Akış + çevrimiçi ───────── */
+  async listActivity(scope: { project_id?: string; task_id?: string; limit?: number }): Promise<ActivityEntry[]> {
+    const db = this.db();
+    const tasks = db.tasks.filter((t) => t.org_id === this.orgId && (scope.task_id ? t.id === scope.task_id : scope.project_id ? t.project_id === scope.project_id : true));
+    const ids = new Set(tasks.map((t) => t.id));
+    const audit = ['owner', 'org_admin', 'auditor', 'hr'].includes(this.role) ? db.audit.filter((e) => e.org_id === this.orgId) : null;
+    const comments = isClientRole(this.role) ? [] : this.det(db).comments.filter((c) => ids.has(c.task_id));
+    const sync = TOKEN_ADMIN_ROLES.includes(this.role) ? db.trello?.sync_log ?? [] : [];
+    return buildTimeline({ audit, comments, sync }, { taskIds: ids, projectId: scope.project_id ?? null, limit: scope.limit });
+  }
+  subscribePresence(cb: (ids: string[]) => void) {
+    // Demo: her 20 sn'de ekibin ~yarısı "çevrimiçi" (deterministik karışım + kendim her zaman).
+    const team = this.db().team.filter((t) => t.status === 'active');
+    const me = this.account.employee_id;
+    const pick = (seed: number) => team.filter((t, i) => (i + seed) % 2 === 0 || t.id === me).map((t) => t.id);
+    let n = 0; cb(pick(n));
+    const timer = typeof setInterval === 'function' ? setInterval(() => cb(pick(++n)), 20000) : null;
+    return () => { if (timer) clearInterval(timer); };
+  }
+
   async listApprovals() {
     return this.db().approvals.filter((a) => {
       if (a.org_id !== this.orgId) return false;
@@ -347,6 +386,15 @@ export class DemoRepo implements Repo {
       if (bid) await this.finalizeAssignment(db, bid);
     }
     this.persist(db);
+    // 0017: onaylanan ajan önerisi onaylayanın yetkisiyle uygulanır; sonuç subject.executed'a yazılır.
+    if (decision === 'approved' && isAgentApproval(a)) {
+      const r = await executeAgentAction(this, a.subject.payload, { today: this.now().slice(0, 10) });
+      const db2 = this.db(); const a2 = db2.approvals.find((x) => x.id === id)!;
+      a2.subject = { ...a2.subject, executed: { at: this.now(), task_ids: r.task_ids } };
+      this.log(db2, 'agent.execute', `approvals/${id}`, { agent: a2.subject.agent, tasks: r.task_ids.length, project: r.project_id });
+      this.persist(db2);
+      return { ...a2 };
+    }
     return { ...a };
   }
 

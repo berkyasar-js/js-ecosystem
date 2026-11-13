@@ -2,8 +2,9 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, ChevronRight, LogOut, Menu, MessageCircleQuestion, Moon, PanelLeftClose, PanelLeftOpen, Search, Star, Sun, X } from 'lucide-react';
-import { MODULES, ROLE_LABELS, canDecideApproval, type NavGroup, type Notification } from '@jscore/contracts';
+import { Bell, Bookmark, ChevronRight, Keyboard, LogOut, Menu, MessageCircleQuestion, Moon, PanelLeftClose, PanelLeftOpen, Search, Star, Sun, X } from 'lucide-react';
+import { GO_TARGETS, MODULES, ROLE_LABELS, SHORTCUTS, canDecideApproval, isClientRole, type NavGroup, type Notification, type SavedView } from '@jscore/contracts';
+import { OrbitDialog } from './dialog';
 import { crumbFor, mobileTabs, moduleVisible, navGroups, routeVerdict } from '@/lib/nav';
 import { mfaRequired } from '@/lib/mfa';
 import { MfaGate } from './mfa-gate';
@@ -42,18 +43,36 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
   const [attention, setAttention] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [pinnedViews, setPinnedViews] = useState<SavedView[]>([]);
   const flags = features.flags;
   const collapsed = prefs.sidebar_collapsed;
   useEffect(() => { setOpen(false); setSearchOpen(false); }, [path]);
+  // Klavye (0017): ⌘K ara, ⌘J sor, ? yardım, g+h/i/p/t/a/r git, c yeni görev — yazı alanı odaktayken devre dışı.
   useEffect(() => {
+    let pendingG = 0;
+    const typing = (el: EventTarget | null) => el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable || !!el.closest('dialog, [role="dialog"]'));
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setAskOpen(false); setSearchOpen((v) => !v); }
-      else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); setSearchOpen(false); setAskOpen((v) => !v); }
-      else if (e.key === 'Escape') { setSearchOpen(false); setAskOpen(false); setOpen(false); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setAskOpen(false); setSearchOpen((v) => !v); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); setSearchOpen(false); setAskOpen((v) => !v); return; }
+      if (e.key === 'Escape') { setSearchOpen(false); setAskOpen(false); setOpen(false); return; }
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
+      if (e.key === '?') { e.preventDefault(); setHelpOpen((v) => !v); return; }
+      if (pendingG && Date.now() - pendingG < 1200 && GO_TARGETS[e.key]) { e.preventDefault(); pendingG = 0; router.push(GO_TARGETS[e.key]); return; }
+      pendingG = e.key === 'g' ? Date.now() : 0;
+      if (e.key === 'c' && !(e.target as HTMLElement).closest('.wk-work-area')) { e.preventDefault(); router.push('/app/tasks?new=1'); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [router]);
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('help') === 'keys') setHelpOpen(true); }, [path]);
+  // Kenar çubuğuna sabitlenen kayıtlı görünümler (Projeler altında).
+  useEffect(() => {
+    if (!repo || !me || isClientRole(me.role) || !prefs.pinned_views.length) { setPinnedViews([]); return; }
+    let alive = true;
+    repo.list('saved_views').then((vs) => alive && setPinnedViews(prefs.pinned_views.map((id) => vs.find((v) => v.id === id)).filter((v): v is SavedView => !!v)), () => alive && setPinnedViews([]));
+    return () => { alive = false; };
+  }, [repo, me, prefs.pinned_views, rev]);
   // Dikkat sayacı: karar verebileceğim onaylar + okunmamış bildirimlerim (Gelen Kutusu rozeti).
   useEffect(() => {
     if (!repo || !me) return;
@@ -105,9 +124,10 @@ function ShellInner({ children }: { children: React.ReactNode }) {
               <Icon size={17} aria-hidden /><span className="nav-text flex-1 truncate">{g.label}</span>
               {count > 0 && <span className="nav-count">{count}</span>}
             </Link>
-            {active && !collapsed && g.children.length > 1 && (
+            {active && !collapsed && (g.children.length > 1 || (g.id === 'projects' && pinnedViews.length > 0)) && (
               <div className="nav-sub" role="list">
                 {g.children.map((c) => <Link key={c.href} role="listitem" href={c.href} className="nav-subitem" aria-current={childActive(c.href) ? 'page' : undefined}>{c.label}</Link>)}
+                {g.id === 'projects' && pinnedViews.map((v) => <Link key={v.id} role="listitem" href={`/app/tasks?view=${v.id}`} className="nav-subitem" aria-current={qs.get('view') === v.id ? 'page' : undefined} title={`Kayıtlı görünüm · ${v.scope === 'org' ? 'organizasyon' : 'kişisel'}`}><Bookmark size={11} aria-hidden className="mr-1 inline" />{v.name}</Link>)}
               </div>
             )}
           </div>
@@ -153,6 +173,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
               </button>
             </div>
             <button className="btn btn-ghost icon-btn" onClick={() => setAskOpen(true)} aria-label="Sor (⌘J)" title="Sor · ⌘J"><MessageCircleQuestion size={17} /></button>
+            <button className="btn btn-ghost icon-btn hidden md:inline-flex" onClick={() => setHelpOpen(true)} aria-label="Klavye kısayolları (?)" title="Kısayollar · ?"><Keyboard size={17} /></button>
             {orgs.length > 1 && (
               <select className="input org-select hidden w-auto md:block" aria-label="Organizasyon" value={orgId} onChange={(e) => setOrg(e.target.value)}>
                 {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -186,6 +207,9 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       </div>
       <Spotlight open={searchOpen} onClose={() => setSearchOpen(false)} groups={groups} />
       <AskDrawer open={askOpen} onClose={() => setAskOpen(false)} />
+      <OrbitDialog open={helpOpen} onClose={() => { setHelpOpen(false); if (!prefs.shortcuts_seen) void setPrefs({ shortcuts_seen: true }); }} title="Klavye kısayolları" description="Yazı alanı odaktayken harf kısayolları devre dışıdır.">
+        <div className="wk-dialog-body"><ul className="wk-keys">{SHORTCUTS.map((k) => <li key={k.keys}><span>{k.label}</span><kbd className="wk-kbd">{k.keys}</kbd></li>)}</ul></div>
+      </OrbitDialog>
     </div>
   );
 }

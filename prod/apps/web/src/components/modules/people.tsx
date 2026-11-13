@@ -9,8 +9,9 @@ import { Await, Bar, Card, Chip, Crud, Gate, Grid, Metric, ModulePage, Table, na
 import { BarChart, Donut } from '../charts';
 import { downloadCsv } from '@jscore/core/domain';
 import { CsvButton } from '../mod';
+import { Directory, ProfileWork } from './directory';
 
-const TABS: Array<[string, string]> = [['overview', 'Genel bakış'], ['employees', 'Çalışanlar'], ['archive', 'Personel Arşivi'], ['leave', 'İzin / Mesai / Vardiya'], ['expenses', 'Masraf / Avans / Zimmet / Eğitim'], ['reports', 'HR Reports'], ['import', 'Kolay İK Aktarım']];
+const TABS: Array<[string, string]> = [['overview', 'Genel bakış'], ['directory', 'Rehber'], ['employees', 'Çalışanlar'], ['archive', 'Personel Arşivi'], ['leave', 'İzin / Mesai / Vardiya'], ['expenses', 'Masraf / Avans / Zimmet / Eğitim'], ['reports', 'HR Reports'], ['import', 'Kolay İK Aktarım']];
 const ALL = ['hr_profiles', 'hr_docs', 'hr_assets', 'trainings', 'perf_reviews', 'shifts', 'advances', 'checklists', 'payroll_runs', 'import_batches', 'leaves', 'time_entries', 'skills'] as const;
 const DOC_TONE = { ok: 'ok', missing: 'bad', expired: 'warn' } as const;
 
@@ -61,6 +62,7 @@ export function PeopleView({ tab }: { tab?: string }) {
             </div>
           );
         }
+        if (t === 'directory') return <Directory team={d.team} tasks={d.tasks} today={today} />;
         if (t === 'employees') {
           return <Card title={`Çalışanlar (${staff.length})`}><Table heads={['Ad', 'Unvan', 'Departman', 'Yönetici', 'Durum', '']}>{staff.map((m) => { const p = prof(m.id); return (
             <tr key={m.id}><td><Link className="flex items-center gap-2 font-semibold hover:underline" href={`/app/people/${m.id}`}><Avatar id={m.id} name={m.name} size="sm" />{m.name}</Link></td><td className="text-muted">{m.role_title}</td><td>{p?.dept ?? '—'}</td><td>{p?.manager ? nameOf(d.team, p.manager).split(' ')[0] : '—'}</td>
@@ -175,7 +177,7 @@ export function PeopleView({ tab }: { tab?: string }) {
 const T360: Array<[string, string]> = [['profile', 'Profil'], ['docs', 'Özlük belgeleri'], ['contracts', 'Sözleşmeler'], ['leave', 'İzin geçmişi'], ['time', 'Mesai / puantaj'], ['payroll', 'Bordro'], ['pay', 'Ücret'], ['assets', 'Zimmet'], ['training', 'Eğitim'], ['perf', 'Performans'], ['offboarding', 'Giriş / ayrılış dosyası']];
 
 export function Employee360({ id, tab }: { id: string; tab?: string }) {
-  const { repo, me } = useSession();
+  const { repo, me, mode } = useSession();
   const can = useCan();
   const q = useWorld(ALL);
   const { act, busy, Err } = useAct();
@@ -188,7 +190,7 @@ export function Employee360({ id, tab }: { id: string; tab?: string }) {
         const mine = <K extends 'hr_docs' | 'hr_assets' | 'trainings' | 'perf_reviews' | 'leaves' | 'shifts' | 'checklists' | 'skills'>(k: K) => (d[k] as Records[K][]).filter((r) => (r as { employee_id?: string }).employee_id === id);
         const head = <div className="mb-4 card flex flex-wrap items-center gap-3"><Avatar id={m.id} name={m.name} size="lg" /><div><div className="text-lg font-bold">{m.name}</div><div className="text-sm text-muted">{m.role_title} · {p?.dept ?? ''}</div></div><Chip tone={p?.status === 'offboarding' ? 'warn' : 'ok'}>{p?.status === 'offboarding' ? `Çıkış ${fmtDate(p.end_date ?? '')}` : 'Aktif'}</Chip></div>;
         let body: React.ReactNode;
-        if (t === 'profile') body = <Card title="Profil"><dl className="grid gap-2 text-sm sm:grid-cols-2">{[['Unvan', m.role_title], ['Departman', p?.dept], ['Yönetici', p?.manager ? nameOf(d.team, p.manager) : '—'], ['Başlangıç', p ? fmtDate(p.start_date) : '—'], ['E-posta', p?.email], ['Telefon', p?.phone], ['İstihdam', p?.employment], ['Haftalık saat', m.weekly_hours]].map(([k, v]) => <div key={String(k)} className="flex justify-between gap-3 border-b border-line py-1"><dt className="text-muted">{k}</dt><dd>{String(v ?? '—')}</dd></div>)}</dl><div className="mt-3 flex flex-wrap gap-1.5">{mine('skills').map((s) => <Chip key={s.id}>{s.skill} {'★'.repeat(s.level)}</Chip>)}</div></Card>;
+        if (t === 'profile') body = <><ProfileWork member={m} team={d.team} tasks={d.tasks} projects={d.projects} brands={d.brands} today={todayFor(mode)} /><div className="mt-4" /><Card title="Profil"><dl className="grid gap-2 text-sm sm:grid-cols-2">{[['Unvan', m.role_title], ['Departman', p?.dept], ['Yönetici', p?.manager ? nameOf(d.team, p.manager) : '—'], ['Başlangıç', p ? fmtDate(p.start_date) : '—'], ['E-posta', p?.email], ['Telefon', p?.phone], ['İstihdam', p?.employment], ['Haftalık saat', m.weekly_hours]].map(([k, v]) => <div key={String(k)} className="flex justify-between gap-3 border-b border-line py-1"><dt className="text-muted">{k}</dt><dd>{String(v ?? '—')}</dd></div>)}</dl><div className="mt-3 flex flex-wrap gap-1.5">{mine('skills').map((s) => <Chip key={s.id}>{s.skill} {'★'.repeat(s.level)}</Chip>)}</div></Card></>;
         else if (t === 'docs') body = !can.read('hr_docs') ? <StepUp what="Özlük belgeleri" /> : <Card title="Özlük belgeleri"><Table heads={['Belge', 'Durum', 'Bitiş', 'Saklama']}>{mine('hr_docs').map((x) => <tr key={x.id}><td>{x.doc_type}</td><td><Chip tone={DOC_TONE[x.status]}>{x.status}</Chip></td><td>{x.expires_at ? fmtDate(x.expires_at) : '—'}</td><td className="text-muted">{x.retention_until ? fmtDate(x.retention_until) : '—'}</td></tr>)}</Table></Card>;
         else if (t === 'contracts') body = <Card title="Sözleşmeler">{(() => { const c = mine('hr_docs').filter((x) => x.doc_type === 'İş sözleşmesi'); return can.read('hr_docs') ? (c.length ? c.map((x) => <p key={x.id} className="text-sm">İş sözleşmesi · <Chip tone={DOC_TONE[x.status]}>{x.status}</Chip> · {p?.employment === 'intern' ? 'Staj sözleşmesi' : 'Belirsiz süreli'}</p>) : <Empty>Sözleşme kaydı yok.</Empty>) : <p className="text-sm text-muted">Sözleşme belgeleri özlük arşivi yetkisi ister; istihdam türü: {p?.employment}.</p>; })()}</Card>;
         else if (t === 'leave') { const used = mine('leaves').filter((l) => l.status === 'approved' && l.type === 'yillik').reduce((s, l) => s + l.days, 0); body = <Card title={`İzin geçmişi · kalan yıllık izin ${(p?.leave_total ?? 14) - used} / ${p?.leave_total ?? 14} gün`}>{mine('leaves').length === 0 ? <Empty>İzin kaydı yok.</Empty> : <Table heads={['Tür', 'Tarih', 'Gün', 'Durum']}>{mine('leaves').map((l) => <tr key={l.id}><td>{LEAVE_TYPES[l.type]}</td><td>{fmtDate(l.start)}–{fmtDate(l.end)}</td><td>{l.days}</td><td><Chip tone={l.status === 'approved' ? 'ok' : l.status === 'rejected' ? 'bad' : 'warn'}>{l.status}</Chip></td></tr>)}</Table>}</Card>; }

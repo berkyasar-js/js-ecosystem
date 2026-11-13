@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Activity, Bot, Rocket, Building2, ChevronRight, ClipboardList, ExternalLink, Landmark, LayoutDashboard, MessagesSquare, Store, LogOut, Menu, Moon, Plug, ShieldCheck, Sun, SquareStack, UserCog, Users, Workflow, X, type LucideIcon } from 'lucide-react';
+import { Activity, Bot, Rocket, Building2, ChevronRight, ClipboardList, ExternalLink, Landmark, LayoutDashboard, Megaphone, MessagesSquare, Store, LogOut, Menu, Moon, Plug, ShieldCheck, Sun, SquareStack, UserCog, Users, Workflow, X, type LucideIcon } from 'lucide-react';
 import { ROLE_LABELS } from '@jscore/contracts';
 import { useSession } from './session';
 import { Avatar } from './avatar';
@@ -16,6 +16,7 @@ export const NAV: Array<{ label: string; items: Item[] }> = [
     { href: '/admin/modules', label: 'Modüller & Özellikler', icon: SquareStack },
     { href: '/admin/users', label: 'Kullanıcılar & Roller', icon: UserCog },
     { href: '/admin/employees', label: 'Çalışanlar', icon: Users },
+    { href: '/admin/announcements', label: 'Duyurular', icon: Megaphone },
   ] },
   { label: 'SİSTEM', items: [
     { href: '/admin/integrations', label: 'Entegrasyonlar', icon: Plug },

@@ -24,13 +24,13 @@ const G = (id: NavGroupId, label: string, href: string, icon: string, modules: s
   id, label, href, icon, modules, mobile, children: children.map(([module, l, h]) => ({ module, label: l, href: h ?? `/app/${module}` })),
 });
 export const NAV_GROUPS: NavGroup[] = [
-  G('home', 'Ana Sayfa', '/app/overview', 'dashboard', ['overview'], [], true),
+  G('home', 'Ana Sayfa', '/app/overview', 'dashboard', ['overview', 'agenda', 'announcements', 'dashboards'], [['overview', 'Bugün'], ['agenda', 'Ajanda'], ['announcements', 'Duyurular'], ['dashboards', 'Panolar']], true),
   G('inbox', 'Gelen Kutusu', '/app/inbox', 'inbox', ['inbox', 'approvals'], [['inbox', 'Kuyruk'], ['approvals', 'Onay Merkezi'], ['inbox', 'E-posta', '/app/inbox?tab=email']], true),
-  G('projects', 'Projeler', '/app/projects', 'projects', ['projects', 'mywork', 'tasks', 'flow'], [['projects', 'Projeler'], ['mywork', 'Görevlerim'], ['tasks', 'Pano'], ['flow', 'Akış']], true),
+  G('projects', 'Projeler', '/app/projects', 'projects', ['projects', 'mywork', 'tasks', 'flow', 'requests'], [['projects', 'Projeler'], ['mywork', 'Görevlerim'], ['tasks', 'Pano'], ['flow', 'Akış'], ['requests', 'Talepler']], true),
   G('clients', 'Müşteriler', '/app/crm', 'crm', ['crm', 'portal'], [['crm', 'Pipeline'], ['crm', 'Müşteriler & Markalar', '/app/crm?tab=accounts'], ['crm', 'Teklifler', '/app/crm?tab=proposals'], ['portal', 'Müşteri portalı']]),
   G('production', 'Üretim', '/app/uretim', 'studio', ['studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events'],
     [['studio', 'Studio'], ['social', 'Social'], ['media', 'Media'], ['review', 'Review'], ['transfer', 'Transfer'], ['present', 'Present'], ['marketing', 'Marketing'], ['events', 'Events']]),
-  G('team', 'Ekip', '/app/people', 'people', ['people', 'resources', 'twins', 'hire'], [['people', 'Kişiler'], ['resources', 'Kaynaklar'], ['twins', 'İkizler'], ['hire', 'İşe alım']]),
+  G('team', 'Ekip', '/app/people', 'people', ['people', 'workload', 'resources', 'twins', 'hire'], [['people', 'Kişiler'], ['workload', 'İş yükü'], ['resources', 'Kaynaklar'], ['twins', 'İkizler'], ['hire', 'İşe alım']]),
   G('finance', 'Finans', '/app/finance', 'finance', ['finance', 'insights'], [['finance', 'Finans'], ['insights', 'Raporlar']]),
   G('messages', 'Mesajlar', '/app/messages', 'messages', ['messages'], [], true),
   G('apps', 'Uygulamalar', '/app/apps', 'apps', ['apps'], [], true),
@@ -86,6 +86,12 @@ export const userPrefsSchema = z.object({
   inbox_done: z.array(z.string()).max(300).default([]),
   /** Kenar çubuğu daraltılmış. */
   sidebar_collapsed: z.boolean().default(false),
+  /** 0017: kenar çubuğuna (Projeler altına) sabitlenen kayıtlı görünüm kimlikleri. */
+  pinned_views: z.array(z.string()).max(12).default([]),
+  /** 0017: Ana Sayfa'ya sabitlenen pano grafik kimlikleri. */
+  pinned_charts: z.array(z.string()).max(6).default([]),
+  /** Klavye kısayolları yardımı görüldü. */
+  shortcuts_seen: z.boolean().default(false),
 });
 export type UserPrefs = z.infer<typeof userPrefsSchema>;
 export const DEFAULT_PREFS: UserPrefs = userPrefsSchema.parse({});

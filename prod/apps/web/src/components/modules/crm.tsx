@@ -164,10 +164,12 @@ function ProposalEditor({ proposal, brands, deals, today, canEdit, busy, onSave,
 }
 
 export function Account360({ brandId }: { brandId: string }) {
-  const { mode } = useSession();
+  const { mode, me, repo } = useSession();
   const healthOn = useFeature('crm.health_scores');
-  const q = useWorld(['crm_contacts', 'crm_contracts', 'invoices', 'survey_responses', 'surveys']);
+  const q = useWorld(['crm_contacts', 'crm_contracts', 'invoices', 'survey_responses', 'surveys', 'requests']);
+  const { act, busy, Err } = useAct();
   const today = todayFor(mode);
+  const canOwnArea = !!me && ['owner', 'org_admin', 'operations', 'account'].includes(me.role);
   return (
     <ModulePage id="crm" title="Account 360" tabs={[['360', 'Hesap özeti']]} tab="360" actions={<Link className="btn btn-sm" href="/app/crm?tab=accounts">← Markalar</Link>}>
       {() => <Await q={q}>{(d) => {
@@ -188,8 +190,17 @@ export function Account360({ brandId }: { brandId: string }) {
               <Metric label="Geciken fatura" value={overdue} tone={overdue ? 'bad' : 'ok'} def="Vadesi geçmiş ve ödenmemiş fatura sayısı." />
             </Grid>
             <Card title={b.name} aside={<Chip tone={STATUS[b.status][1]}>{STATUS[b.status][0]}</Chip>}>
+              {Err}
               <p className="text-sm text-muted">{b.sector} · Account: {nameOf(d.team, b.account_owner)} · AD: {nameOf(d.team, b.art_director)}</p>
               {b.compliance_flags.length > 0 && <p className="mt-2">{b.compliance_flags.map((f) => <Chip key={f} tone="warn">{f}</Chip>)}</p>}
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                <label className="label m-0" htmlFor="area-owner">Alan sahibi</label>
+                <select id="area-owner" className="input w-auto" value={b.default_assignee_id ?? ''} disabled={!canOwnArea || busy} onChange={(e) => void act(() => repo!.updateBrand(b.id, { default_assignee_id: e.target.value || null }))}>
+                  <option value="">— (hesap sahibi)</option>{d.team.filter((m) => m.status === 'active').map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                <span className="text-xs text-muted">Bu markaya açılan yeni talep ve görevler varsayılan olarak bu kişiye düşer.</span>
+                <Chip>{d.requests.filter((r) => r.brand_id === b.id && (r.status === 'new' || r.status === 'triaged')).length} açık talep</Chip>
+              </div>
             </Card>
             <Card title="Projeler">{projects.length === 0 ? <Empty>Proje yok.</Empty> : <Table heads={['Proje', 'Durum', 'Teslim', 'Bütçe']}>{projects.map((p) => <tr key={p.id}><td><Link className="font-semibold hover:underline" href={`/app/projects/${p.id}`}>{p.name}</Link></td><td>{p.status}</td><td>{fmtDate(p.due_at)}</td><td>{money(p.budget_minor)}</td></tr>)}</Table>}</Card>
             <Card title="Açık görevler">{open.length === 0 ? <Empty>Açık görev yok.</Empty> : <ul className="grid gap-2">{open.slice(0, 8).map((t) => <li key={t.id} className="nested flex justify-between gap-2 text-sm"><span>{t.title}</span><Chip tone={isOverdue(t, today) ? 'bad' : undefined}>{fmtDate(t.due_at)}</Chip></li>)}</ul>}</Card>

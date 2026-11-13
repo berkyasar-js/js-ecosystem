@@ -292,3 +292,37 @@ h4 .wk-x-namebtn { font-weight: 700; }
 .wk-x-rowcover { box-shadow: inset 4px 0 0 var(--cv); }
 @media (max-width: 899px) { .wk-x-file { grid-template-columns: 44px minmax(0, 1fr); } .wk-x-file .wk-x-actions { grid-column: 2; } .wk-x-addrow .wk-field, .wk-x-ta { font-size: 16px; } }
 @media (forced-colors: active) { .wk-x-swatch[aria-checked="true"], .wk-x-imgchoice[aria-checked="true"] { outline: 2px solid Highlight; } .wk-x-tabs [role="tab"][aria-selected="true"] { border-bottom-color: Highlight; } .wk-x-cardstripe { border: 1px solid CanvasText; } }
+
+/* ---- V8: görünüm çubuğu, toplu düzenleme, gruplar, akış, kilometre taşları ---- */
+.wk-viewbar { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 10px 0 0; }
+.wk-viewsel { display: inline-flex; align-items: center; gap: 8px; color: var(--js-work-muted); }
+.wk-viewsel .wk-field { width: auto; min-width: 180px; max-width: 280px; }
+.wk-viewmore { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 16px; padding: 12px 14px; border: 1px solid var(--js-work-control-line); border-radius: 10px; background: var(--js-work-pressed); }
+.wk-viewmore fieldset { grid-column: 1 / -1; border: 0; padding: 0; margin: 0; }
+.wk-viewmore legend { font-size: 12px; font-weight: 700; color: var(--js-work-muted); margin-bottom: 6px; }
+.wk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+button.wk-chip { cursor: pointer; }
+.wk-chip[data-on] { color: var(--js-work-accent-text); border-color: var(--js-work-accent-text); }
+.wk-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.wk-bulkbar { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 10px 12px; margin-bottom: 10px; border-radius: 10px; background: var(--js-work-pressed); border: 1px solid var(--js-work-accent-text); font-size: 13px; }
+.wk-bulkbar .wk-field { width: auto; min-height: 32px; padding: 0 8px; font-size: 13px; }
+.wk-bulkbar strong { margin-right: 4px; }
+.wk-task-table tr.is-cursor th, .wk-task-table tr.is-cursor td { box-shadow: inset 3px 0 0 var(--js-work-accent-text); }
+.wk-task-table tr.wk-group-row th { padding: 14px 10px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--js-work-muted); background: transparent; border-bottom: 1px solid var(--js-work-control-line); }
+.wk-select-cell { width: 28px; padding-right: 0 !important; }
+.wk-select-cell input { width: 15px; height: 15px; accent-color: var(--js-work-accent-text); }
+.wk-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.wk-timeline li { display: grid; grid-template-columns: 22px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--js-work-control-line); font-size: 13px; }
+.wk-timeline li:last-child { border-bottom: 0; }
+.wk-timeline .dot { width: 10px; height: 10px; margin: 5px 6px; border-radius: 50%; background: var(--js-work-subtle); }
+.wk-timeline [data-kind="agent"] .dot { background: #a78bfa; }
+.wk-timeline [data-kind="trello"] .dot { background: #0079bf; }
+.wk-timeline [data-kind="human"] .dot { background: var(--js-work-accent-text); }
+.wk-timeline small { display: block; color: var(--js-work-muted); margin-top: 2px; }
+.wk-ms { display: grid; gap: 10px; }
+.wk-ms-row { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--js-work-control-line); border-radius: 10px; }
+.wk-ms-row .wk-progress-bar { width: 100%; }
+.wk-ms-row[data-overdue] { border-color: var(--js-work-urgent); }
+.wk-kbd { display: inline-block; min-width: 22px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--js-work-control-line); background: var(--js-work-pressed); font: 600 12px/1.4 ui-monospace, monospace; text-align: center; }
+.wk-keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 20px; }
+.wk-keys li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--js-work-control-line); font-size: 13px; }

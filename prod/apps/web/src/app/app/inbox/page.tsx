@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { Check, CheckCheck, Inbox as InboxIcon, Mail } from 'lucide-react';
+import { Bot, Check, CheckCheck, Inbox as InboxIcon, Mail } from 'lucide-react';
 import { markInboxDone, type Notification } from '@jscore/contracts';
 import { Async, Empty, PageHeader, fmtDate, todayFor, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
@@ -41,6 +41,13 @@ function Queue() {
   const shown = filterInbox(items, filter);
   const markRead = async (id: string) => { try { await repo?.save('notifications', { id, read: true }); bump(); } catch { /* yetki */ } };
   const done = async (itemId: string, notificationId?: string) => { await setPrefs({ inbox_done: markInboxDone(prefs.inbox_done, itemId) }); if (notificationId) void markRead(notificationId); };
+  const [agentBusy, setAgentBusy] = useState<string | null>(null);
+  const [agentErr, setAgentErr] = useState<string | null>(null);
+  const decideAgent = async (id: string, d: 'approved' | 'rejected') => {
+    if (!repo) return;
+    setAgentBusy(id); setAgentErr(null);
+    try { await repo.decideApproval(id, d); bump(); } catch (e) { setAgentErr(e instanceof Error ? e.message : 'Karar kaydedilemedi'); } finally { setAgentBusy(null); }
+  };
   const doneAll = async () => { let d = prefs.inbox_done; for (const x of shown) d = markInboxDone(d, x.id); await setPrefs({ inbox_done: d }); for (const x of shown) if (x.notification_id) void markRead(x.notification_id); };
   return (
     <Async q={q}>{() => (
@@ -49,9 +56,29 @@ function Queue() {
           {FILTERS.map(([f, label]) => <button key={f} className={`btn btn-sm ${filter === f ? 'btn-primary' : ''}`} aria-pressed={filter === f} onClick={() => setFilter(f)}>{label} {counts[f] > 0 && <span className="chip">{counts[f]}</span>}</button>)}
           {shown.length > 0 && <button className="btn btn-sm ml-auto" onClick={() => void doneAll()}><CheckCheck size={14} aria-hidden /> Tümünü tamamla</button>}
         </div>
+        {agentErr && <p role="alert" className="text-sm text-magenta">{agentErr}</p>}
         {shown.length === 0 ? <Empty>Kuyruk temiz. Seni bekleyen bir şey yok.</Empty> : (
           <ul className="home-list" aria-label="Kuyruk">
-            {shown.map((x) => (
+            {shown.map((x) => x.approval ? (
+              <li key={x.id} className="card" aria-label="Ajan onay kartı">
+                <div className="flex flex-wrap items-start gap-3">
+                  <span className="signal-icon"><Bot size={16} aria-hidden /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2"><strong>{x.title}</strong><span className="chip chip-brand">Ajan · {(x.approval.subject.agent ?? 'kurul').toUpperCase()}</span><span className="chip chip-warn">Onay bekliyor</span></div>
+                    <p className="mt-1 text-sm text-muted">{x.body}{x.approval.subject.note ? ` · ${x.approval.subject.note}` : ''}</p>
+                    {x.approval.subject.payload && (
+                      <details className="mt-2 text-sm"><summary className="cursor-pointer text-muted">Önerilen görevler ({x.approval.subject.payload.tasks.length})</summary>
+                        <ul className="mt-2 grid gap-1">{x.approval.subject.payload.tasks.slice(0, 20).map((t, i) => <li key={i} className="flex flex-wrap gap-2"><span>{t.title}</span><span className="chip">{t.priority}</span>{t.due_at && <span className="chip">{fmtDate(t.due_at)}</span>}</li>)}</ul>
+                      </details>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="btn btn-primary btn-sm" disabled={agentBusy === x.approval.id} onClick={() => void decideAgent(x.approval!.id, 'approved')}>Onayla ve uygula</button>
+                    <button className="btn btn-sm" disabled={agentBusy === x.approval.id} onClick={() => void decideAgent(x.approval!.id, 'rejected')}>Reddet</button>
+                  </div>
+                </div>
+              </li>
+            ) : (
               <li key={x.id} className="home-row">
                 <span className={`chip ${x.kind === 'approval' ? 'chip-warn' : x.kind === 'due' && x.urgent ? 'chip-bad' : x.kind === 'mention' ? 'chip-brand' : ''}`}>{INBOX_KIND_LABELS[x.kind]}</span>
                 <Link href={x.href} className="min-w-0 flex-1 truncate" onClick={() => { if (x.notification_id) void markRead(x.notification_id); }}>

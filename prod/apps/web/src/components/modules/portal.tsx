@@ -6,6 +6,7 @@ import { Empty, fmtDate, useData } from '../ui';
 import { useSession } from '../session';
 import { Await, Bar, Card, Chip, CsvButton, FormCard, Grid, Metric, ModulePage, Table, brandName, useAct, useWorld } from '../mod';
 import { surveyStats } from '@jscore/core/domain';
+import { RequestsView } from './requests';
 
 const TABS: Array<[string, string]> = [['home', 'Home'], ['requests', 'Requests'], ['projects', 'Projects'], ['approvals', 'Approvals'], ['files', 'Files'], ['reports', 'Reports'], ['surveys', 'Anketler'], ['contacts', 'Contacts'], ['settings', 'Settings']];
 
@@ -44,6 +45,7 @@ export function PortalView({ tab }: { tab?: string }) {
           );
           if (t === 'requests') return (
             <div className="grid gap-4">{Err}
+              <Card title="İş talepleri (triyaj kuyruğu)" aside={<Chip>0017</Chip>}><p className="mb-3 text-xs text-muted">Hızlı talepler ajansın triyaj kuyruğuna düşer; göreve dönüşünce ve teslim edilince durumu burada görünür.</p><RequestsView embedded brandIds={[brand.id]} /></Card>
               <Card title="Taleplerim">{requests.length === 0 ? <Empty>Henüz talep yok.</Empty> : <Table heads={['Talep', 'Çıktı', 'Teslim', 'Durum']}>{requests.map((r) => <tr key={r.id}><td>{r.title}</td><td className="text-muted">{r.brief.deliverable}</td><td>{fmtDate(r.brief.deadline)}</td><td><Chip tone={r.status === 'accepted' ? 'ok' : r.status === 'rejected' ? 'bad' : 'warn'}>{r.status}</Chip></td></tr>)}</Table>}</Card>
               {(admin || !client) && <FormCard title="Yeni talep · brief (5 unsur)" busy={busy} submit="Talebi gönder" fields={[{ name: 'title', label: 'Talep başlığı', required: true, wide: true }, { name: 'goal', label: '1. Hedef', type: 'textarea', required: true }, { name: 'audience', label: '2. Hedef kitle', required: true }, { name: 'deliverable', label: '3. Çıktı / teslimat', required: true }, { name: 'message', label: '4. Mesaj / ton', required: true }, { name: 'deadline', label: '5. Tarih', type: 'date', required: true, def: '2026-10-30' }]}
                 onSubmit={(v) => act(() => repo!.save('client_requests', { brand_id: brand.id, title: String(v.title), status: 'new', created_by: me?.name ?? '', brief: { goal: String(v.goal), audience: String(v.audience), deliverable: String(v.deliverable), message: String(v.message), deadline: String(v.deadline) } }))} />}

@@ -10,6 +10,8 @@ export interface InboxItem {
   at: string; urgent: boolean;
   /** Bildirim kaynağıysa okundu bayrağı. */
   read?: boolean; notification_id?: string; approval_id?: string; task_id?: string;
+  /** 0017: ajan yazma önerisi (action_type='agent') → kuyrukta onay kartı. */
+  approval?: Approval;
 }
 export const INBOX_KIND_LABELS: Record<InboxKind, string> = { approval: 'Onay', due: 'Teslim', mention: 'Anma', trello: 'Trello', notification: 'Bildirim' };
 export type InboxFilter = 'all' | InboxKind;
@@ -35,7 +37,9 @@ export function buildInbox(i: InboxInput): InboxItem[] {
   }
   for (const a of i.approvals) {
     if (a.status !== 'pending' || !canDecideApproval(i.me.role, a.required_role)) continue;
-    out.push({ id: `approval:${a.id}`, kind: 'approval', title: a.title, body: `${a.action_type} · karar bekliyor`, href: '/app/approvals', at: a.due_at || a.created_at, urgent: !!a.due_at && a.due_at.slice(0, 10) <= i.today, approval_id: a.id });
+    const agent = a.action_type === 'agent';
+    const n = a.subject.payload?.tasks.length ?? 0;
+    out.push({ id: `approval:${a.id}`, kind: 'approval', title: a.title, body: agent ? `Ajan ${(a.subject.agent ?? 'kurul').toUpperCase()} önerisi · ${n} görev${a.subject.payload?.milestones?.length ? ` · ${a.subject.payload.milestones.length} kilometre taşı` : ''}` : `${a.action_type} · karar bekliyor`, href: '/app/approvals', at: a.due_at || a.created_at, urgent: agent || (!!a.due_at && a.due_at.slice(0, 10) <= i.today), approval_id: a.id, approval: agent ? a : undefined });
   }
   const since = daysAgo(i.today, i.trelloWindowDays ?? 7);
   for (const t of i.tasks) {

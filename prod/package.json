@@ -22,6 +22,10 @@
     "typecheck:rea": "npm -w apps/rea run typecheck",
     "test:rea": "npm -w apps/rea run test",
     "dev:admin": "npm -w apps/admin run dev",
-    "build:admin": "npm -w apps/admin run build"
+    "build:admin": "npm -w apps/admin run build",
+    "dev:site": "npm -w apps/site run dev",
+    "build:site": "npm -w apps/site run build",
+    "lint:site": "npm -w apps/site run lint",
+    "typecheck:site": "npm -w apps/site run typecheck"
   }
 }

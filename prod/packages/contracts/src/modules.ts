@@ -76,6 +76,14 @@ export const COLLECTIONS = {
   event_items: C('event_items', 'ev', 'events', 'internal', OPS_CR),
   automations: C('automations', 'au', 'automations', ['owner', 'org_admin', 'operations', 'integration_admin', 'auditor'], ['owner', 'org_admin', 'operations', 'integration_admin']),
   automation_runs: C('automation_runs', 'ar', 'automations', ['owner', 'org_admin', 'operations', 'integration_admin', 'auditor'], ['owner', 'org_admin', 'operations', 'integration_admin']),
+  /* ───── V8 (0017): kayıtlı görünümler, kilometre taşları, talepler, duyurular, proje üyeleri, ajan politikaları ───── */
+  saved_views: C('saved_views', 'vw', 'tasks', 'internal', [...OPS_CR, 'finance', 'hr', 'freelancer'], { native: ['owner_user_id', 'scope', 'entity'] }),
+  milestones: C('milestones', 'ms', 'projects', 'internal', OPS_CR, { native: ['project_id', 'status', 'due_at'] }),
+  requests: C('requests', 'req', 'requests', 'brand_all', [...OPS_CR, 'finance', 'hr', 'freelancer'], { clientWrite: ['client_admin'], native: ['brand_id', 'project_id', 'task_id', 'status', 'kind'] }),
+  announcements: C('announcements', 'an', 'overview', 'internal', ['owner', 'org_admin', 'operations', 'hr'], { native: ['requires_ack'] }),
+  announcement_acks: C('announcement_acks', 'ak', 'overview', 'internal', [...OPS_CR, 'finance', 'hr', 'payroll', 'freelancer', 'auditor', 'integration_admin'], { native: ['announcement_id', 'user_id'] }),
+  project_members: C('project_members', 'pm', 'projects', 'internal', OPS, { native: ['project_id', 'employee_id', 'role'] }),
+  agent_policies: C('agent_policies', 'pol', 'admin', ['owner', 'org_admin', 'auditor'], ['owner', 'org_admin'], { native: ['agent'] }),
 } as const satisfies Record<string, CollMeta>;
 export type CollKey = keyof typeof COLLECTIONS;
 export const COLL_KEYS = Object.keys(COLLECTIONS) as CollKey[];
@@ -183,6 +191,56 @@ export const AUTOMATION_ACTION_KINDS = ['create_task', 'notify', 'set_status', '
 export type AutomationActionKind = (typeof AUTOMATION_ACTION_KINDS)[number];
 export interface AutomationRun extends Base { automation_id: string; status: 'ok' | 'error' | 'pending_approval'; error: string | null; payload: string; event_type?: string | null; event_id?: string | null }
 
+/* ───────── V8 (0017) kayıt tipleri ───────── */
+/** Kayıtlı görünüm: görev/proje listesindeki filtre + sıralama + gruplama. `scope='personal'` yalnızca sahibine, `'org'` herkese görünür. */
+export interface SavedView extends Base {
+  owner_user_id: string; scope: 'personal' | 'org'; entity: 'tasks' | 'projects' | 'crm'; name: string;
+  query: SavedViewQuery;
+}
+export interface SavedViewQuery {
+  mine?: boolean; high?: boolean; q?: string; states?: string[]; assignee?: string | null; project?: string | null;
+  sort?: 'due' | 'priority' | 'title' | 'created'; group?: 'none' | 'state' | 'assignee' | 'project'; view?: 'list' | 'board';
+}
+export const MILESTONE_STATUS = ['planned', 'active', 'done', 'missed'] as const;
+export interface Milestone extends Base { project_id: string; name: string; due_at: string | null; status: (typeof MILESTONE_STATUS)[number] }
+export const REQUEST_KINDS = ['bug', 'idea', 'brief', 'client'] as const;
+export type RequestKind = (typeof REQUEST_KINDS)[number];
+export const REQUEST_KIND_LABELS: Record<RequestKind, string> = { bug: 'Hata', idea: 'Fikir', brief: 'Brief', client: 'Müşteri talebi' };
+export const REQUEST_STATUS = ['new', 'triaged', 'converted', 'closed', 'rejected'] as const;
+export type RequestStatus = (typeof REQUEST_STATUS)[number];
+export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = { new: 'Yeni', triaged: 'Değerlendirildi', converted: 'Göreve dönüştü', closed: 'Kapandı', rejected: 'Reddedildi' };
+/** İş talebi (intake): çalışan ya da müşteri kişisi açar; triyaj → göreve dönüşür; görev teslim/arşive gelince kendiliğinden kapanır. */
+export interface WorkRequest extends Base {
+  kind: RequestKind; title: string; body: string; status: RequestStatus;
+  /** Talep eden: çalışan (employees.id) ya da müşteri kişisi (serbest metin / kullanıcı adı). */
+  requester_employee_id: string | null; requester_name: string;
+  /** Alan = marka (areas = brands); isteğe bağlı proje. */
+  brand_id: string | null; project_id: string | null;
+  /** Dönüştürüldüğü görev (bir görev birden çok talebi kapsayabilir). */
+  task_id: string | null; client_visible?: boolean;
+}
+export interface AnnouncementAudience { all?: boolean; teams?: string[]; roles?: string[]; project_ids?: string[] }
+export interface Announcement extends Base {
+  author_user_id: string; author_name: string; title: string; body: string; audience: AnnouncementAudience; requires_ack: boolean;
+  /** Anket: seçenekler (boş/yok = anket yok). */
+  poll: { question: string; options: string[] } | null;
+}
+export interface AnnouncementAck extends Base { announcement_id: string; user_id: string; user_name: string; answer: string | null; at: string }
+export const PROJECT_ROLES = ['viewer', 'collaborator', 'manager', 'admin'] as const;
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
+export const PROJECT_ROLE_LABELS: Record<ProjectRole, string> = { viewer: 'İzleyici', collaborator: 'Katılımcı', manager: 'Yönetici', admin: 'Proje admini' };
+export interface ProjectMember extends Base { project_id: string; employee_id: string; role: ProjectRole }
+export const AGENT_MODES = ['ask', 'plan', 'act'] as const;
+export type AgentMode = (typeof AGENT_MODES)[number];
+export const AGENT_MODE_LABELS: Record<AgentMode, string> = { ask: 'Sor (salt okunur)', plan: 'Planla (onayla uygula)', act: 'Uygula (otomatik)' };
+/** Ajan yönetişimi: mod + aylık bütçe (₺) + sürekli otomatik onay kuralları. */
+export interface AgentPolicy extends Base {
+  agent: string; mode: AgentMode; monthly_budget_try: number;
+  /** Otomatik onay kuralları: eylem türleri (ör. 'task.create') ve eylem başına üst sınır. */
+  auto_approve: { actions: string[]; max_items?: number };
+  note?: string;
+}
+
 export interface Records {
   crm_deals: Deal; crm_contacts: Contact; crm_proposals: Proposal; crm_contracts: Contract; time_entries: TimeEntry; notifications: Notification;
   task_requests: TaskRequest; allocations: Allocation; leaves: Leave; skills: Skill; equipment: Equipment; equipment_bookings: EquipmentBooking;
@@ -193,6 +251,8 @@ export interface Records {
   media_assets: MediaAsset; review_comments: ReviewComment; share_links: ShareLink; transfers: Transfer; studio_items: StudioItem; social_posts: SocialPost;
   decks: Deck; campaigns: Campaign; segments: Segment; newsletters: Newsletter; mkt_leads: MktLead; event_items: EventItem; automations: Automation;
   automation_runs: AutomationRun;
+  saved_views: SavedView; milestones: Milestone; requests: WorkRequest; announcements: Announcement; announcement_acks: AnnouncementAck;
+  project_members: ProjectMember; agent_policies: AgentPolicy;
 }
 type Fields<K extends CollKey> = Omit<Records[K], 'id' | 'org_id' | 'created_at'>;
 /** Yeni kayıt: tüm alanlar; güncelleme: id + değişen alanlar. */
@@ -238,6 +298,29 @@ export const automationSchema = z.object({
   action_kind: z.enum(AUTOMATION_ACTION_KINDS).optional(),
   action_config: z.object({ title: z.string().max(200), message: z.string().max(500), state: z.string(), url: z.string().url(), project_id: z.string(), task_type: z.string() }).partial().optional(),
   last_fired_at: z.string().nullable().optional(),
+});
+/* V8 (0017) */
+export const savedViewQuerySchema = z.object({
+  mine: z.boolean().optional(), high: z.boolean().optional(), q: z.string().max(200).optional(), states: z.array(z.string()).max(8).optional(),
+  assignee: z.string().nullable().optional(), project: z.string().nullable().optional(),
+  sort: z.enum(['due', 'priority', 'title', 'created']).optional(), group: z.enum(['none', 'state', 'assignee', 'project']).optional(), view: z.enum(['list', 'board']).optional(),
+}).strict();
+export const savedViewSchema = z.object({ owner_user_id: z.string().min(1), scope: z.enum(['personal', 'org']), entity: z.enum(['tasks', 'projects', 'crm']), name: z.string().trim().min(1).max(80), query: savedViewQuerySchema });
+export const milestoneSchema = z.object({ project_id: z.string().min(1), name: z.string().trim().min(1).max(160), due_at: z.string().min(8).nullable(), status: z.enum(MILESTONE_STATUS) });
+export const requestSchema = z.object({
+  kind: z.enum(REQUEST_KINDS), title: z.string().trim().min(2).max(200), body: z.string().max(5000), status: z.enum(REQUEST_STATUS),
+  requester_employee_id: z.string().nullable(), requester_name: z.string().max(120), brand_id: z.string().nullable(), project_id: z.string().nullable(), task_id: z.string().nullable(), client_visible: z.boolean().optional(),
+});
+export const announcementSchema = z.object({
+  author_user_id: z.string(), author_name: z.string(), title: z.string().trim().min(2).max(160), body: z.string().max(10000),
+  audience: z.object({ all: z.boolean().optional(), teams: z.array(z.string()).optional(), roles: z.array(z.string()).optional(), project_ids: z.array(z.string()).optional() }),
+  requires_ack: z.boolean(), poll: z.object({ question: z.string().max(200), options: z.array(z.string().min(1).max(80)).min(2).max(6) }).nullable(),
+});
+export const announcementAckSchema = z.object({ announcement_id: z.string().min(1), user_id: z.string().min(1), user_name: z.string(), answer: z.string().max(80).nullable(), at: z.string() });
+export const projectMemberSchema = z.object({ project_id: z.string().min(1), employee_id: z.string().min(1), role: z.enum(PROJECT_ROLES) });
+export const agentPolicySchema = z.object({
+  agent: z.string().min(1), mode: z.enum(AGENT_MODES), monthly_budget_try: z.number().min(0).max(1e9),
+  auto_approve: z.object({ actions: z.array(z.string()), max_items: z.number().int().min(0).optional() }), note: z.string().max(300).optional(),
 });
 export const studioDraftOutputSchema = z.object({ summary: z.string(), concepts: z.array(z.object({ title: z.string(), idea: z.string(), tone: z.string() })).min(1).max(6) });
 

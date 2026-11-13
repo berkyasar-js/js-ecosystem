@@ -1,6 +1,6 @@
-import { TASK_STATES, type Task, type TaskState, type TeamMember } from '@jscore/contracts';
+import { TASK_STATES, applyViewQuery, type SavedViewQuery, type Task, type TaskState, type TeamMember } from '@jscore/contracts';
 
-export type WorkView = 'list' | 'board' | 'summary' | 'files';
+export type WorkView = 'list' | 'board' | 'summary' | 'files' | 'activity' | 'members';
 export const DONE_STATES: readonly TaskState[] = ['delivery', 'archive'];
 export const isDone = (t: Pick<Task, 'state'>) => DONE_STATES.includes(t.state);
 export const PRIORITY_LABEL = { high: 'Yüksek', normal: 'Normal', low: 'Düşük' } as const;
@@ -20,11 +20,11 @@ export function progressOf(tasks: Task[]) {
   return { total: tasks.length, done, pct: tasks.length ? Math.round((done / tasks.length) * 100) : 0 };
 }
 
-export interface WorkFilters { mine: boolean; high: boolean; q: string }
-export function applyFilters(tasks: Task[], f: WorkFilters, employeeId?: string): Task[] {
-  const q = f.q.trim().toLocaleLowerCase('tr');
-  return tasks.filter((t) => (!f.mine || (!!employeeId && t.assignee_id === employeeId)) && (!f.high || t.priority === 'high') && (!q || t.title.toLocaleLowerCase('tr').includes(q)));
-}
+/** Liste filtreleri = kayıtlı görünüm sorgusu (0017): mine/high/q + aşama, sorumlu, sıralama, gruplama. */
+export type WorkFilters = SavedViewQuery & { mine: boolean; high: boolean; q: string };
+export const EMPTY_FILTERS: WorkFilters = { mine: false, high: false, q: '' };
+export const applyFilters = (tasks: Task[], f: WorkFilters, employeeId?: string): Task[] => applyViewQuery(tasks, f, employeeId);
+export const isFiltered = (f: WorkFilters) => !!(f.mine || f.high || f.q.trim() || f.states?.length || f.assignee || f.project || (f.sort && f.sort !== 'due') || (f.group && f.group !== 'none'));
 
 /** Bugünün odağı: açık görevler arasında gecikmiş → yüksek öncelik → en yakın tarih. */
 export function focusTask(tasks: Task[], today: string): Task | undefined {

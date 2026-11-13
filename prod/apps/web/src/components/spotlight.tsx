@@ -1,8 +1,8 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, CornerDownLeft, FolderKanban, Landmark, Plus, Search, Settings2, SquareKanban, User, Building2 } from 'lucide-react';
-import { MODULES, type Brand, type NavGroup, type Project, type Task, type TeamMember } from '@jscore/contracts';
+import { ArrowRight, CornerDownLeft, FolderKanban, Landmark, Plus, Search, Settings2, SquareKanban, Terminal, User, Building2 } from 'lucide-react';
+import { MODULES, SLASH_COMMANDS, parseSlash, slashHref, type Brand, type NavGroup, type Project, type Role, type Task, type TeamMember } from '@jscore/contracts';
 import { ICONS } from './icons';
 import { useSession } from './session';
 import { moduleVisible } from '@/lib/nav';
@@ -11,6 +11,22 @@ import { moduleVisible } from '@/lib/nav';
 export interface Hit { id: string; label: string; kind: string; href: string; hint?: string; icon?: React.ComponentType<{ size?: number; 'aria-hidden'?: boolean }> }
 const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL ?? '';
 const lc = (s: string) => s.toLocaleLowerCase('tr');
+
+/** Slash komutları (0017): `/görev <başlık>`, `/talep`, `/duyuru`, `/kurul <soru>` (owner), `/git <modül>`; `/` tek başına komut listesi. */
+export function slashHits(q: string, o: { role: Role | null; adminUrl?: string; modules: Array<{ id: string; name: string; slug: string }> }): Hit[] | null {
+  const t = q.trim();
+  if (!t.startsWith('/')) return null;
+  const allowed = SLASH_COMMANDS.filter((c) => !c.roles || (o.role && c.roles.includes(o.role)));
+  const p = parseSlash(t);
+  if (p && allowed.some((c) => c.cmd === p.cmd)) {
+    const def = allowed.find((c) => c.cmd === p.cmd)!;
+    const href = slashHref(p.cmd, p.arg, o);
+    if (!href) return [{ id: 'slash:none', label: p.cmd === 'go' ? `"${p.arg}" adında modül yok` : 'Bu komut için bağlantı tanımlı değil (NEXT_PUBLIC_ADMIN_URL)', kind: 'Komut', href: '#', icon: Terminal }];
+    return [{ id: `slash:${p.cmd}`, label: `${def.hint}${p.arg ? `: ${p.arg}` : ''}`, kind: 'Komut', href, hint: def.label, icon: Terminal }];
+  }
+  const word = lc(t.slice(1).split(/\s+/)[0]);
+  return allowed.filter((c) => !word || c.aliases.some((a) => a.startsWith(word))).map<Hit>((c) => ({ id: `slash:list:${c.cmd}`, label: c.label, kind: 'Komut', href: `#slash:${c.aliases[0]}`, hint: c.hint, icon: Terminal }));
+}
 
 /** Saf eşleme: boş sorguda hızlı eylemler + sayfalar; doluda tüm kaynaklar (en çok 12). */
 export function searchHits(q: string, src: { pages: Hit[]; actions: Hit[]; tasks: Task[]; projects: Project[]; brands: Brand[]; team: TeamMember[] }): Hit[] {
@@ -58,10 +74,14 @@ export function Spotlight({ open, onClose, groups }: { open: boolean; onClose():
     }
     return a;
   }, [me]);
-  const hits = useMemo(() => searchHits(q, { pages, actions, ...data }), [q, pages, actions, data]);
+  const hits = useMemo(() => slashHits(q, { role: me?.role ?? null, adminUrl: ADMIN_URL || undefined, modules: MODULES }) ?? searchHits(q, { pages, actions, ...data }), [q, pages, actions, data, me]);
   useEffect(() => setI(0), [q]);
   if (!open) return null;
-  const go = (h: Hit) => { onClose(); if (/^https?:/.test(h.href)) window.open(h.href, '_blank', 'noopener'); else router.push(h.href); };
+  const go = (h: Hit) => {
+    if (h.href === '#') return;
+    if (h.href.startsWith('#slash:')) { setQ(`/${h.href.slice(7)} `); inputRef.current?.focus(); return; }
+    onClose(); if (/^https?:/.test(h.href)) window.open(h.href, '_blank', 'noopener'); else router.push(h.href);
+  };
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setI((n) => Math.min(hits.length - 1, n + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setI((n) => Math.max(0, n - 1)); }
@@ -70,7 +90,7 @@ export function Spotlight({ open, onClose, groups }: { open: boolean; onClose():
   return (
     <div className="palette-backdrop" onMouseDown={onClose} role="presentation">
       <div className="palette card" role="dialog" aria-modal="true" aria-label="Spotlight arama" onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKey}>
-        <div className="palette-input"><Search size={16} aria-hidden /><input ref={inputRef} className="input" placeholder="Ara: sayfa, görev, proje, marka, kişi… ya da bir eylem" aria-label="Ara" value={q} onChange={(e) => setQ(e.target.value)} /><kbd>Esc</kbd></div>
+        <div className="palette-input"><Search size={16} aria-hidden /><input ref={inputRef} className="input" placeholder="Ara: sayfa, görev, proje, marka, kişi… ya da / ile komut (/görev, /talep, /git)" aria-label="Ara" value={q} onChange={(e) => setQ(e.target.value)} /><kbd>Esc</kbd></div>
         <ul className="palette-list" role="listbox" aria-label="Sonuçlar">
           {hits.map((h, n) => { const Icon = h.icon ?? ArrowRight; return (
             <li key={h.id} role="option" aria-selected={n === i}>
@@ -79,7 +99,7 @@ export function Spotlight({ open, onClose, groups }: { open: boolean; onClose():
               </button>
             </li>
           ); })}
-          {hits.length === 0 && <li className="p-3 text-sm text-muted">Sonuç yok. ⌘J ile soru sorabilirsin.</li>}
+          {hits.length === 0 && <li className="p-3 text-sm text-muted">Sonuç yok. ⌘J ile soru sorabilirsin; <code>/</code> ile komutlar.</li>}
         </ul>
       </div>
     </div>

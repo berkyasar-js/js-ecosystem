@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="JS Workspace — ajanslar için yapay zekâ destekli çalışma alanı">
+  <defs>
+    <radialGradient id="g1" cx="50%" cy="0%" r="70%"><stop offset="0" stop-color="#1b25e0" stop-opacity=".55"/><stop offset="1" stop-color="#080a17" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="90%" cy="30%" r="40%"><stop offset="0" stop-color="#00f0ff" stop-opacity=".18"/><stop offset="1" stop-color="#080a17" stop-opacity="0"/></radialGradient>
+    <linearGradient id="t" x1="0" x2="1"><stop offset="0" stop-color="#8c93ff"/><stop offset=".5" stop-color="#00f0ff"/><stop offset="1" stop-color="#ccff00"/></linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48" fill="none" stroke="#ffffff" stroke-opacity=".05"/></pattern>
+  </defs>
+  <rect width="1200" height="630" fill="#080a17"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#g1)"/>
+  <rect width="1200" height="630" fill="url(#g2)"/>
+  <g transform="translate(80 80)">
+    <rect width="64" height="64" rx="16" fill="#01041E" stroke="#ffffff" stroke-opacity=".14"/>
+    <path d="M18 13h13v26c0 10-6 15-15 15V43c4 0 5-1 5-5V13" fill="#edf0ff"/>
+    <circle cx="46" cy="46" r="7" fill="#ff4200"/>
+    <text x="84" y="44" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="30" font-weight="700" fill="#f0f0f7">JS <tspan fill="#8c93ff">Workspace</tspan></text>
+  </g>
+  <text x="80" y="300" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="68" font-weight="700" fill="#f0f0f7" letter-spacing="-2">Ajanslar için yapay zekâ</text>
+  <text x="80" y="380" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="68" font-weight="700" fill="url(#t)" letter-spacing="-2">destekli çalışma alanı</text>
+  <text x="80" y="450" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="26" fill="#a2a6bc">Projeler · Müşteriler · Üretim · Ekip · Finans · 9 kişilik yapay zekâ kurulu</text>
+  <g transform="translate(80 500)" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="18" font-weight="600">
+    <rect width="190" height="40" rx="20" fill="#202438"/><text x="95" y="26" text-anchor="middle" fill="#c9cdf0">Trello iki yönlü</text>
+    <rect x="204" width="110" height="40" rx="20" fill="#202438"/><text x="259" y="26" text-anchor="middle" fill="#c9cdf0">MCP</text>
+    <rect x="328" width="170" height="40" rx="20" fill="#202438"/><text x="413" y="26" text-anchor="middle" fill="#c9cdf0">Supabase RLS</text>
+    <rect x="512" width="160" height="40" rx="20" fill="#2f2a55"/><text x="592" y="26" text-anchor="middle" fill="#c9bbff">Kurul Sohbeti</text>
+  </g>
+  <text x="1120" y="580" text-anchor="end" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="20" fill="#6c7190">bir Jobs Studio ürünü</text>
+</svg>

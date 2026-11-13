@@ -179,13 +179,22 @@ describe('entitlement → menü', () => {
 describe('şema', () => {
   it('0005 migration her koleksiyon tablosunu oluşturur ve RLS açar (mevcut tablolar ALTER)', () => {
     const sql = readFileSync(fileURLToPath(new URL('../../../../../packages/schema/supabase/migrations/0005_modules.sql', import.meta.url)), 'utf8');
+    const v8 = readFileSync(fileURLToPath(new URL('../../../../../packages/schema/supabase/migrations/0017_workspace_v8.sql', import.meta.url)), 'utf8');
     const existing = new Set(['time_entries', 'invoices', 'surveys', 'survey_responses']);
+    const later = new Set(['saved_views', 'milestones', 'requests', 'announcements', 'announcement_acks', 'project_members', 'agent_policies']); // 0017
     for (const k of COLL_KEYS) {
       const t = COLLECTIONS[k].table;
       if (existing.has(t)) expect(sql).toContain(`alter table public.${t} add column if not exists data`);
+      else if (later.has(t)) { expect(v8).toContain(`create table if not exists public.${t} (`); expect(v8).toContain(`alter table public.${t} enable row level security;`); expect(v8).toContain(`create policy ${t}_r on`); }
       else { expect(sql).toContain(`create table public.${t} (`); expect(sql).toContain(`alter table public.${t} enable row level security;`); expect(sql).toContain(`create policy ${t}_r on`); }
     }
     expect(sql).toContain('function public.hire_candidate');
+    // 0017 idempotent + realtime + approvals 'agent'
+    expect(v8).toContain("add constraint approvals_action_type_check check (action_type in ('content','budget','scope','client_decision','access','agent'))");
+    expect(v8).toContain('alter table public.tasks add column if not exists milestone_id');
+    expect(v8).toContain('alter table public.brands add column if not exists default_assignee_id');
+    expect(v8).toContain('supabase_realtime add table');
+    expect(v8).not.toMatch(/create table public\./);
   });
   it('koleksiyon önekleri benzersiz', () => { const p = COLL_KEYS.map((k) => COLLECTIONS[k].prefix); expect(new Set(p).size).toBe(p.length); });
 });
