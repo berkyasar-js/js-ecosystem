@@ -309,6 +309,7 @@ main .grid:not([class*='grid-cols']) { grid-template-columns: minmax(0, 1fr); }
 .bottom-tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; border-radius: 12px; font-size: 10px; font-weight: 600; color: var(--muted); }
 .bottom-tab[aria-current="page"] { color: var(--brand-ink); background: rgba(144,108,255,.12); }
 .bottom-tab .count-dot { top: -6px; right: -10px; }
+@media (min-width: 1024px) { .bottom-tabs { display: none; } }
 
 /* ───── Spotlight (⌘K) ve Sor (⌘J) ───── */
 .palette-backdrop, .drawer-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(1,4,30,.55); backdrop-filter: blur(3px); }
