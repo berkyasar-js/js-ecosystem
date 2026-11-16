@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { notify } from '../notify';
 import { applyEscalation, escalationsDue, stepRecipients, type Approval, type ApprovalPolicy, type ApprovalStep, type TeamMember } from '@jscore/contracts';
 
 type Row = Record<string, unknown>;
@@ -32,8 +33,8 @@ export async function runEscalations(sb: SupabaseClient, now = new Date().toISOS
       const orgTeam = team.filter((t) => t.org_id === a.org_id);
       const targets = stepRecipients({ approver_role: null, approvers: [], escalated_to: next.escalated_to }, orgTeam);
       if (targets.length) {
-        await ok(sb.from('notifications').insert(targets.map((emp) => ({ org_id: a.org_id, data: { employee_id: emp, kind: 'approval', title: `SLA aşıldı, sana yükseltildi: ${a.title}`, body: `Adım ${next.step_index + 1} süresinde karara bağlanmadı.`, read: false, href: '/app/approvals' } }))).select('id'));
-        res.notified += targets.length;
+        const r = await notify(sb, { org_id: a.org_id as string, kind: 'approval_sla', employee_ids: targets, title: `SLA aşıldı, sana yükseltildi: ${a.title}`, body: `Adım ${next.step_index + 1} süresinde karara bağlanmadı.`, href: '/app/approvals', dedupe_key: `approval:${a.id}:sla:${next.step_index}` }, () => now);
+        res.notified += r.inserted;
       }
       await sb.from('audit_events').insert({ org_id: a.org_id, actor: null, action: 'approval.escalated', resource: `approvals/${a.id}`, meta: { step: next.step_index, to: next.escalated_to } });
     } catch (err) { res.errors.push(`${a.id}: ${err instanceof Error ? err.message : 'hata'}`); }

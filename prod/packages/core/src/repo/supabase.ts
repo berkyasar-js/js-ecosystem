@@ -9,8 +9,10 @@ import {
   DEFAULT_PREFS, brandCreateSchema, employeeCreateSchema, employeePatchSchema, projectCreateSchema, userPrefsPatchSchema, userPrefsSchema, type Brand, type BrandCreate, type EmployeeCreate, type EmployeePatch, type Project, type ProjectCreate, type UserPrefs,
   brandPatchSchema, buildTimeline, type ActivityEntry, type BrandPatch,
   blockersOf, moveNeedsOverride, can, type ApprovalAction, type ApprovalSubject, type TaskLink,
+  notificationRuleSchema, type Notification, type NotificationRule,
 } from '@jscore/contracts';
 import { createApprovalWithChain, decideWithChain, matchPolicy, policySubjectOf, type ApprovalIO } from '../approvals/engine';
+import { onAnnouncement, onComment, onRequestConverted, onTaskWritten } from '../notify/producers';
 import { assertCan, assertCanEditTask, guardCollectionSave, invalidatePermissionCache, permissionContext } from '../permissions';
 import { DEFAULT_SETTINGS } from './defaults';
 import { addDaysIso, generateToken, sha256Hex, tokenPrefix } from '../token';
@@ -83,6 +85,60 @@ export class SupabaseRepo implements Repo {
     await this.ok(this.sb.from('user_prefs').upsert({ user_id: user.id, org_id: await this.org(), prefs: next, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }).select('user_id'));
     return next;
   }
+
+  /* ───────── Bildirimler (0019) ───────── */
+  async listNotifications(opts: { mine?: boolean; since?: string; limit?: number; dedupe_key?: string } = {}): Promise<Notification[]> {
+    let q = this.sb.from('notifications').select('*').eq('org_id', await this.org()).order('created_at', { ascending: false }).limit(opts.limit ?? 50);
+    if (opts.since) q = q.gte('created_at', opts.since);
+    if (opts.dedupe_key) q = q.filter('data->>dedupe_key', 'eq', opts.dedupe_key);
+    if (opts.mine) { const me = await this.me(); if (!me?.employee_id) return []; q = q.filter('data->>employee_id', 'eq', me.employee_id); }
+    return (await this.ok<Row[]>(q)).map((r) => this.fromRow<'notifications'>(r));
+  }
+  async markNotificationsRead(ids: string[]) {
+    if (!ids.length) return;
+    const me = await this.me();
+    const rows = await this.ok<Row[]>(this.sb.from('notifications').select('id,data').in('id', ids));
+    for (const r of rows) {
+      const d = (r.data as Row) ?? {};
+      if (d.read === true || (me?.employee_id && d.employee_id !== me.employee_id)) continue;
+      await this.ok(this.sb.from('notifications').update({ data: { ...d, read: true } }).eq('id', r.id as string).select('id'));
+    }
+  }
+  subscribeNotifications(cb: (n: Notification) => void) {
+    let ch: ReturnType<SupabaseClient['channel']> | null = null;
+    let alive = true;
+    void (async () => {
+      const me = await this.me().catch(() => null);
+      if (!me || !alive) return;
+      // Realtime süzgeci yalnızca gerçek sütunlarda çalışır (org_id); kişi süzgeci istemcide (RLS zaten org içi).
+      ch = this.sb.channel(`notif:${me.org_id}:${me.employee_id ?? me.id}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `org_id=eq.${me.org_id}` }, (p) => {
+        const n = this.fromRow<'notifications'>(p.new as Row);
+        if (!me.employee_id || n.employee_id === me.employee_id) cb(n);
+      }).subscribe();
+    })();
+    return () => { alive = false; if (ch) void this.sb.removeChannel(ch); };
+  }
+  async listNotificationRules(): Promise<NotificationRule[]> {
+    const rows = await this.ok<Row[]>(this.sb.from('notification_rules').select('id,event_type,channel,roles,enabled').eq('org_id', await this.org()).order('event_type'));
+    return rows.map((r) => ({ id: r.id as string, event_type: r.event_type as string, channel: r.channel as NotificationRule['channel'], roles: ((r.roles as string[]) ?? []) as NotificationRule['roles'], enabled: r.enabled !== false }));
+  }
+  async saveNotificationRules(rules: NotificationRule[]): Promise<NotificationRule[]> {
+    const me = await this.me();
+    if (!me || !['owner', 'org_admin'].includes(me.role)) throw new ForbiddenError('Bildirim kurallarını yalnızca owner / org_admin düzenler');
+    const org = await this.org();
+    const v = rules.map((r) => notificationRuleSchema.parse(r));
+    const cur = await this.listNotificationRules();
+    const keep = new Set(v.map((r) => r.id).filter(Boolean));
+    const gone = cur.filter((r) => r.id && !keep.has(r.id)).map((r) => r.id as string);
+    if (gone.length) await this.ok(this.sb.from('notification_rules').delete().in('id', gone).eq('org_id', org).select('id'));
+    for (const r of v) {
+      const row = { org_id: org, event_type: r.event_type, channel: r.channel, roles: r.roles, enabled: r.enabled };
+      if (r.id && cur.some((c) => c.id === r.id)) await this.ok(this.sb.from('notification_rules').update(row).eq('id', r.id).select('id'));
+      else await this.ok(this.sb.from('notification_rules').insert(row).select('id'));
+    }
+    await this.audit('notification_rules.update', `organizations/${org}`, { count: v.length });
+    return this.listNotificationRules();
+  }
   async createBrand(input: BrandCreate): Promise<Brand> {
     const v = brandCreateSchema.parse(input);
     const org = await this.org();
@@ -121,8 +177,15 @@ export class SupabaseRepo implements Repo {
   }
   async createTask(input: TaskCreate) {
     const v = taskCreateSchema.parse(input);
-    await assertCan(this, await this.me(), 'tasks.create', { projectId: v.project_id });
-    return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').insert({ ...v, org_id: await this.org() }).select().single()));
+    const me = await this.me();
+    await assertCan(this, me, 'tasks.create', { projectId: v.project_id });
+    const t = await this.ok<Task>(this.sb.from('tasks').insert({ ...v, org_id: await this.org() }).select().single());
+    await this.afterTaskWrite(me, t, null);
+    return this.pushSoon(t);
+  }
+  /** Bildirim üreticileri (atandı / anma): yazma başarısını asla bozmaz. */
+  private async afterTaskWrite(me: Me | null, after: Task, before: Pick<Task, 'assignee_id' | 'description'> | null) {
+    try { await onTaskWritten(this, me, after, before, await this.team()); } catch { /* bildirim yan etkisi */ }
   }
   /** 0018: yetki (tasks.move_stage + kendi/her görev) → bağımlılık koruması (SQL tetikleyicisi de uygular) → task_stage onay kapısı → yazma. */
   async moveTask(id: string, state: TaskState, opts: { approved?: boolean } = {}) {
@@ -153,9 +216,12 @@ export class SupabaseRepo implements Repo {
   }
   async updateTask(id: string, patch: TaskPatch) {
     const v = taskPatchSchema.parse(patch);
-    const cur = await this.ok<Task | null>(this.sb.from('tasks').select('id,assignee_id,project_id').eq('id', id).maybeSingle());
-    if (cur) await assertCanEditTask(this, await this.me(), cur);
-    return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').update(v).eq('id', id).select().single()));
+    const me = await this.me();
+    const cur = await this.ok<Task | null>(this.sb.from('tasks').select('id,assignee_id,project_id,description').eq('id', id).maybeSingle());
+    if (cur) await assertCanEditTask(this, me, cur);
+    const t = await this.ok<Task>(this.sb.from('tasks').update(v).eq('id', id).select().single());
+    if (v.assignee_id !== undefined || v.description !== undefined) await this.afterTaskWrite(me, t, cur ? { assignee_id: cur.assignee_id, description: cur.description ?? null } : null);
+    return this.pushSoon(t);
   }
   /** Best-effort satır içi JS → Trello itmesi (tarayıcıda, beklemeden). Kaçırılırsa /api/events/dispatch cron'u olaydan yeniden itiyor; itme idempotent. */
   private pushSoon(t: Task): Task {
@@ -181,7 +247,12 @@ export class SupabaseRepo implements Repo {
     const me = await this.me();
     if (!me) throw new ForbiddenError();
     const row = { org_id: me.org_id, task_id: taskId, author_id: me.id, author_name: me.name, body: commentBodySchema.parse(body) };
-    return this.detailsSoon(await this.one<TaskComment>(this.sb.from('task_comments').insert(row).select(), 'Görev'));
+    const c = await this.one<TaskComment>(this.sb.from('task_comments').insert(row).select(), 'Görev');
+    try {
+      const t = await this.ok<Pick<Task, 'id' | 'project_id' | 'title' | 'assignee_id'> | null>(this.sb.from('tasks').select('id,project_id,title,assignee_id').eq('id', taskId).maybeSingle());
+      if (t) await onComment(this, me, t, c, await this.team());
+    } catch { /* bildirim yan etkisi */ }
+    return this.detailsSoon(c);
   }
   async updateComment(id: string, body: string) { return this.detailsSoon(await this.one<TaskComment>(this.sb.from('task_comments').update({ body: commentBodySchema.parse(body) }).eq('id', id).select(), 'Yorum')); }
   async deleteComment(id: string) { await this.one(this.sb.from('task_comments').delete().eq('id', id).select('id'), 'Yorum'); this.detailsSoon(0); }
@@ -498,7 +569,22 @@ export class SupabaseRepo implements Repo {
       ? await this.ok<Row>(this.sb.from(table).update(row).eq('id', input.id).select().single())
       : await this.ok<Row>(this.sb.from(table).insert({ ...row, org_id: await this.org() }).select().single());
     await this.audit(`${kind}.${input.id ? 'update' : 'create'}`, `${kind}/${saved.id as string}`);
-    return this.fromRow<K>(saved);
+    const out = this.fromRow<K>(saved);
+    await this.afterCollectionSave(kind, out as unknown as Row, cur ? (this.fromRow(cur) as unknown as Row) : null);
+    return out;
+  }
+  /** Bildirim üreticileri: duyuru → hedef kitle, talep → göreve dönüştü. */
+  private async afterCollectionSave(kind: CollKey, rec: Row, before: Row | null) {
+    try {
+      if (kind === 'announcements' && !before) {
+        const me = await this.me();
+        const [team, members] = await Promise.all([this.team(), this.list('project_members').catch(() => [])]);
+        const pm: Record<string, string[]> = {};
+        for (const m of members) (pm[m.employee_id] ??= []).push(m.project_id);
+        await onAnnouncement(this, undefined, me, rec as never, team, pm);
+      }
+      if (kind === 'requests' && before && rec.status === 'converted' && before.status !== 'converted') await onRequestConverted(this, await this.me(), rec as never);
+    } catch { /* bildirim yan etkisi */ }
   }
   async remove(kind: CollKey, id: string) {
     const me = await this.me();

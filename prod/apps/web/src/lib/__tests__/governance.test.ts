@@ -277,7 +277,7 @@ describe('DemoRepo 0018', () => {
     const after1 = await owner.decideApproval(a.id, 'approved', 'olur');
     expect(after1).toMatchObject({ status: 'pending', current_step: 1, due_at: '2026-10-16T10:00:00.000Z' });
     const notif = (await owner.list('notifications')).filter((n) => n.title.includes('Wellana çekim ek bütçesi'));
-    expect(notif.some((n) => n.employee_id === 'BA' && n.kind === 'approval')).toBe(true);           // finans bilgilendirildi
+    expect(notif.some((n) => n.employee_id === 'BA' && n.kind === 'approval_requested')).toBe(true);           // finans bilgilendirildi
     const fin = new DemoRepo({ accountId: 'finance', now, storage });
     expect((await fin.decideApproval(a.id, 'approved')).current_step).toBe(2);
     const done = await owner.decideApproval(a.id, 'rejected', 'bütçe yok');

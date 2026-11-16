@@ -5,6 +5,7 @@
   "description": "Ortak sunucu/istemci çekirdeği: Supabase istemcileri, Repo (SupabaseRepo + DemoRepo), ajan çalışma zamanı, env, hmac.",
   "exports": {
     "./repo": "./src/repo/index.ts",
+    "./notify": "./src/notify/index.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {

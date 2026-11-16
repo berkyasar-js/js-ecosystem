@@ -3,6 +3,7 @@ import { askBoard, boardChatClient } from '@jscore/core/agents/board-chat';
 import { enforceAgentCap } from '@jscore/core/agents/cap';
 import { json } from '@jscore/core/api';
 import { getRepo } from '@jscore/core/repo';
+import { onBoardPlanReady } from '@jscore/core/notify/producers';
 import { SupabaseRepo } from '@jscore/core/repo/supabase';
 import { audit, adminRoute, ok } from '@/lib/route';
 import { chatStore, demoReply, historyTurns, orgSnapshot, parseModelOutput, shouldSummarize, summaryTurns, systemPrompt, validateAttachments } from '@/lib/board-chat';
@@ -83,5 +84,10 @@ export const POST = adminRoute(async (ctx, req, { params }: P) => {
     if (error) console.error('agent_runs yazılamadı', error.message);
   }
   await audit(ctx, 'board.chat.message', `board_thread:${id}`, { message_id: user.id, assistant_id: assistant.id, cost_usd: usage.cost_usd, plan: !!out.plan, demo });
+  // 0019: plan üretildiyse owner'lara "kurul planı hazır" bildirimi (servis rolü; demo: oturumun repo'su).
+  if (out.plan?.tasks.length) {
+    const current = await store.getThread(id);
+    await onBoardPlanReady(ctx.sb ?? await getRepo(), ctx.orgId, { thread_id: id, message_id: assistant.id, tasks: out.plan.tasks.length, title: current?.title && current.title !== 'Yeni konu' ? current.title : undefined }).catch(() => undefined);
+  }
   return ok({ user, assistant: { ...assistant, demo }, thread: await store.getThread(id) }, 201);
 });

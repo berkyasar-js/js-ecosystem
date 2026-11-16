@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, Bookmark, ChevronRight, Keyboard, LogOut, Menu, MessageCircleQuestion, Moon, PanelLeftClose, PanelLeftOpen, Search, Star, Sun, X } from 'lucide-react';
+import { Bookmark, ChevronRight, Keyboard, LogOut, Menu, MessageCircleQuestion, Moon, PanelLeftClose, PanelLeftOpen, Search, Star, Sun, X } from 'lucide-react';
 import { GO_TARGETS, MODULES, ROLE_LABELS, SHORTCUTS, canDecideApproval, isClientRole, type NavGroup, type Notification, type SavedView } from '@jscore/contracts';
 import { OrbitDialog } from './dialog';
 import { crumbFor, mobileTabs, moduleVisible, navGroups, routeVerdict } from '@/lib/nav';
@@ -14,6 +14,7 @@ import { Avatar } from './avatar';
 import { Loading } from './ui';
 import { Spotlight } from './spotlight';
 import { AskDrawer } from './ask-drawer';
+import { NotificationBell } from './notifications';
 
 export const hrefOf = (slug: string) => `/app/${slug}`;
 /** Kendi başına (kabuksuz) açılan rotalar. */
@@ -77,7 +78,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!repo || !me) return;
     let alive = true;
-    Promise.all([repo.listApprovals().catch(() => []), repo.list('notifications').catch(() => [] as Notification[])]).then(([a, n]) => {
+    Promise.all([repo.listApprovals().catch(() => []), repo.listNotifications({ mine: true, limit: 200 }).catch(() => [] as Notification[])]).then(([a, n]) => {
       if (!alive) return;
       const done = new Set(prefs.inbox_done);
       const ap = a.filter((x) => x.status === 'pending' && canDecideApproval(me.role, x.required_role) && !done.has(`approval:${x.id}`)).length;
@@ -185,9 +186,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                 <i className="demo-dot" /><span className="demo-text">Demo · 14 Ekim 2026</span>
               </button>
             )}
-            <Link href="/app/inbox" className="btn btn-ghost icon-btn" aria-label={`Gelen kutusu (${attention} dikkat isteyen)`}>
-              <Bell size={17} />{attention > 0 && <span className="count-dot">{attention}</span>}
-            </Link>
+            <NotificationBell />
             <button className="btn btn-ghost icon-btn" onClick={toggleTheme} aria-label="Temayı değiştir">{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button>
             <Link href="/app/profile" className="avatar-link" aria-label="Profil" title={me.name}><Avatar id={avatarId} name={me.name} size="md" /></Link>
             <button className="btn btn-ghost icon-btn hidden sm:inline-flex" onClick={() => void logout()} aria-label="Çıkış"><LogOut size={17} /></button>

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Automation } from '@jscore/contracts';
+import type { Automation, Role } from '@jscore/contracts';
+import { notify as notifyAll } from '@jscore/core/notify';
 import { signBody } from '@jscore/core/hmac';
 import { syncEvent } from '@jscore/core/integrations/trello-push';
 import type { TrelloConfig } from '@jscore/contracts';
@@ -7,7 +8,7 @@ import type { DispatchPorts } from '@jscore/core/automations/dispatch';
 
 type Row = Record<string, unknown>;
 const flat = (r: Row) => { const { data, ...rest } = r; return { ...rest, ...((data as Row | null) ?? {}) }; };
-const NOTIFY_ROLES = ['owner', 'org_admin', 'operations'];
+const NOTIFY_ROLES: Role[] = ['owner', 'org_admin', 'operations'];
 
 /** Servis rolüyle çalışır (RLS dışı) — yalnızca sunucu. Webhook gövdesi JSCORE_WEBHOOK_SECRET ile HMAC-SHA256 imzalanır (lib/hmac.ts). */
 export function supabasePorts(sb: SupabaseClient, env: { webhookSecret?: string; fetch?: typeof fetch } = {}): DispatchPorts {
@@ -25,9 +26,7 @@ export function supabasePorts(sb: SupabaseClient, env: { webhookSecret?: string;
       await ok(sb.from('automations').update({ data: { ...data, runs: (rule.runs ?? 0) + 1, last_fired_at: firedAt } }).eq('id', id as string).eq('org_id', org).select('id'));
     },
     async notify(org, n) {
-      const emps = await ok<Row[]>(sb.from('employees').select('id').eq('org_id', org).in('app_role', NOTIFY_ROLES));
-      if (!emps.length) return;
-      await ok(sb.from('notifications').insert(emps.map((e) => ({ org_id: org, data: { employee_id: e.id, kind: 'system', title: n.title, body: n.body, read: false, href: n.href } }))).select('id'));
+      await notifyAll(sb, { org_id: org, kind: 'system', role: NOTIFY_ROLES, title: n.title, body: n.body, href: n.href });
     },
     async createTask(org, input) {
       const v = { planned_minutes: 0, qty: 1, priority: 'normal', ...input };

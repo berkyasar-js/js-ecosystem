@@ -6,12 +6,14 @@ import type {
   TrelloImportResult, TrelloMode, TrelloPublicState,
   AttachmentInput, CheckItemCreate, CheckItemPatch, TaskAttachment, TaskBadges, TaskCheckItem, TaskChecklist, TaskComment,
   BrandCreate, EmployeeCreate, EmployeePatch, ProjectCreate, UserPrefs,
-  ActivityEntry, BrandPatch, ApprovalAction, ApprovalSubject,
+  ActivityEntry, BrandPatch, ApprovalAction, ApprovalSubject, Notification, NotificationRule,
 } from '@jscore/contracts';
 import type { TrelloSnapshot } from '../integrations/trello-map';
 
 export interface Repo {
   readonly mode: 'demo' | 'supabase';
+  /** Saat (demo: sabit tarih enjekte edilebilir; Supabase: gerçek). Bildirim tekilleştirme penceresi bunu kullanır. */
+  clock?(): string;
   // orgs & me
   listOrgs(): Promise<Organization[]>;
   me(): Promise<Me | null>;
@@ -23,6 +25,17 @@ export interface Repo {
   /** Kullanıcı tercihleri (user_prefs.prefs; demo: localStorage). Favoriler, karşılama bayrağı, gelen kutusu "tamam" kümesi. */
   getPrefs(): Promise<UserPrefs>;
   savePrefs(patch: Partial<UserPrefs>): Promise<UserPrefs>;
+  // bildirimler (0019): merkez + canlı akış + org kuralları
+  /** Bildirim satırları (yeni → eski). `mine`: yalnızca benim çalışan kimliğim; `since` ISO; `limit` varsayılan 50. */
+  listNotifications(opts?: { mine?: boolean; since?: string; limit?: number; dedupe_key?: string }): Promise<Notification[]>;
+  /** Okundu işaretler (yalnızca kendi satırlarım; başkasınınki sessizce atlanır). */
+  markNotificationsRead(ids: string[]): Promise<void>;
+  /** Canlı: bana yazılan yeni bildirimler (Supabase Realtime `notifications` insert / demo bellek içi yayın). */
+  subscribeNotifications(cb: (n: Notification) => void): () => void;
+  /** Org bildirim kuralları (Supabase: notification_rules; demo: settings.notifications.rules). */
+  listNotificationRules(): Promise<NotificationRule[]>;
+  /** Kuralları bütünüyle değiştirir (owner / org_admin). */
+  saveNotificationRules(rules: NotificationRule[]): Promise<NotificationRule[]>;
   // work
   /** Kurulum / hızlı oluşturma: marka (müşteri kaydı adla açılır) ve proje. */
   createBrand(input: BrandCreate): Promise<Brand>;

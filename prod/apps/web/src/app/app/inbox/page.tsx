@@ -31,7 +31,7 @@ function Queue() {
   const { me, mode, repo, prefs, setPrefs, bump } = useSession();
   const q = useData(async (r) => {
     const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
-    const [tasks, approvals, notifications, steps, team, delegations] = await Promise.all([safe(r.listTasks()), safe(r.listApprovals()), safe(r.list('notifications')), safe(r.list('approval_steps')), safe(r.team()), safe(r.list('delegations'))]);
+    const [tasks, approvals, notifications, steps, team, delegations] = await Promise.all([safe(r.listTasks()), safe(r.listApprovals()), safe(r.listNotifications({ mine: true, limit: 200 })), safe(r.list('approval_steps')), safe(r.team()), safe(r.list('delegations'))]);
     return { tasks, approvals, notifications: notifications as Notification[], steps: steps as ApprovalStep[], team: team as TeamMember[], delegations: delegations as Delegation[] };
   });
   const [filter, setFilter] = useState<InboxFilter>('all');

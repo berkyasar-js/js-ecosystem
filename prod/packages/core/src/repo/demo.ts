@@ -8,8 +8,11 @@ import {
   DEFAULT_PREFS, brandCreateSchema, employeeCreateSchema, employeePatchSchema, projectCreateSchema, userPrefsPatchSchema, userPrefsSchema, type BrandCreate, type EmployeeCreate, type EmployeePatch, type ProjectCreate, type TeamMember, type UserPrefs,
   brandPatchSchema, buildTimeline, requestsToClose, type ActivityEntry, type BrandPatch, type WorkRequest,
   applyEscalation, blockersOf, can, escalationsDue, moveNeedsOverride, newlyUnblocked, stepRecipients, type ApprovalAction, type ApprovalPolicy, type ApprovalStep, type ApprovalSubject, type TaskLink,
+  notificationRuleSchema, orgRuleAllows, type Notification, type NotificationRule,
 } from '@jscore/contracts';
-import { createApprovalWithChain, decideWithChain, matchPolicy, notifyEmployees, policySubjectOf, type ApprovalIO } from '../approvals/engine';
+import { createApprovalWithChain, decideWithChain, matchPolicy, policySubjectOf, type ApprovalIO } from '../approvals/engine';
+import { notify } from '../notify';
+import { onAnnouncement, onComment, onRequestConverted, onTaskWritten } from '../notify/producers';
 import { assertCan, assertCanEditTask, guardCollectionSave, invalidatePermissionCache, permissionContext } from '../permissions';
 import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
 import { addDetails, emptyDetailsSummary, syncCardDetails, type DetailStore } from '../integrations/trello-details';
@@ -30,6 +33,8 @@ export const APPLY_QUEUE_KEY = 'js_apply_queue_v1';
 /** Kullanıcı tercihleri (hesap başına ayrı anahtar; demo sıfırlama buna dokunmaz). */
 export const PREFS_KEY_PREFIX = 'js_user_prefs_v1:';
 const listeners = new Map<string, Set<(m: Message) => void>>();
+/** Demo canlı bildirim yayını (aynı sekme; sekmeler arası için storage olayı dinlenmez). */
+const notifListeners = new Set<(n: Notification) => void>();
 
 /** Otomasyon bildirimlerinin alıcıları (in-app). */
 const NOTIFY_ROLES: Role[] = ['owner', 'org_admin', 'operations'];
@@ -44,6 +49,7 @@ export interface DemoOptions { accountId?: string; orgId?: string; storage?: KV 
  */
 export class DemoRepo implements Repo {
   readonly mode = 'demo' as const;
+  clock() { return this.now(); }
   private mem: DemoDb | null = null;
   private account: DemoAccount;
   private orgId: string;
@@ -126,6 +132,38 @@ export class DemoRepo implements Repo {
     if (this.storage) { try { this.storage.setItem(this.prefsKey(), JSON.stringify(next)); } catch { /* kota */ } } else this.memPrefs = next;
     return next;
   }
+  /* ───────── Bildirimler (0019) ───────── */
+  async listNotifications(opts: { mine?: boolean; since?: string; limit?: number; dedupe_key?: string } = {}): Promise<Notification[]> {
+    const me = this.account.employee_id;
+    let rows = (this.col(this.db(), 'notifications') as Notification[]).filter((n) => n.org_id === this.orgId);
+    if (opts.mine) rows = me ? rows.filter((n) => n.employee_id === me) : [];
+    if (opts.dedupe_key) rows = rows.filter((n) => n.dedupe_key === opts.dedupe_key);
+    if (opts.since) rows = rows.filter((n) => n.created_at >= opts.since!);
+    const num = (id: string) => Number(id.replace(/\D/g, '')) || 0;
+    return rows.sort((a, b) => b.created_at.localeCompare(a.created_at) || num(b.id) - num(a.id)).slice(0, opts.limit ?? 50).map((n) => ({ ...n }));
+  }
+  async markNotificationsRead(ids: string[]) {
+    const db = this.db();
+    const me = this.account.employee_id;
+    for (const n of this.col(db, 'notifications') as Notification[]) if (ids.includes(n.id) && (!me || n.employee_id === me)) n.read = true;
+    this.persist(db);
+  }
+  subscribeNotifications(cb: (n: Notification) => void) {
+    const me = this.account.employee_id;
+    const fn = (n: Notification) => { if (n.org_id === this.orgId && (!me || n.employee_id === me)) cb(n); };
+    notifListeners.add(fn);
+    return () => { notifListeners.delete(fn); };
+  }
+  async listNotificationRules(): Promise<NotificationRule[]> {
+    const rules = this.db().settings[this.orgId]?.notifications?.rules ?? [];
+    return rules.map((r, i) => ({ id: `nr${i + 1}`, event_type: r.event, channel: r.channel, roles: (r.roles ?? []) as NotificationRule['roles'], enabled: r.enabled }));
+  }
+  async saveNotificationRules(rules: NotificationRule[]): Promise<NotificationRule[]> {
+    if (!['owner', 'org_admin'].includes(this.role)) throw new ForbiddenError('Bildirim kurallarını yalnızca owner / org_admin düzenler');
+    const v = rules.map((r) => notificationRuleSchema.parse(r));
+    await this.saveSettings({ notifications: { rules: v.map((r) => ({ event: r.event_type, channel: r.channel, enabled: r.enabled, roles: r.roles })) } });
+    return this.listNotificationRules();
+  }
   async createBrand(input: BrandCreate): Promise<Brand> {
     if (!['owner', 'org_admin', 'operations', 'account'].includes(this.role)) throw new ForbiddenError();
     const v = brandCreateSchema.parse(input);
@@ -187,6 +225,7 @@ export class DemoRepo implements Repo {
     this.log(db, 'task.create', `tasks/${task.id}`, { title: task.title });
     await this.fire(db, 'tasks.insert', 'tasks', task);
     this.persist(db);
+    await onTaskWritten(this, await this.me(), task, null, await this.team()).catch(() => undefined);
     return task;
   }
   /** 0018: yetki → bağımlılık koruması (settings.workflow.enforce_dependencies) → task_stage onay kapısı → yazma → son engel kalkınca task.unblocked + bildirim. */
@@ -219,7 +258,7 @@ export class DemoRepo implements Repo {
       const unblocked = newlyUnblocked(id, links, db.tasks).map((uid) => db.tasks.find((x) => x.id === uid)!);
       for (const u of unblocked) await this.fire(db, 'task.unblocked', 'tasks', { id: u.id, title: u.title, project_id: u.project_id, assignee_id: u.assignee_id, unblocked_by: id });
       this.persist(db);
-      for (const u of unblocked) if (u.assignee_id) await notifyEmployees(this, [u.assignee_id], { kind: 'unblocked', title: `Önün açıldı: ${u.title}`, body: `"${t.title}" tamamlandı; bu görev artık engelli değil.`, href: `/app/projects/${u.project_id}?task=${u.id}` });
+      for (const u of unblocked) if (u.assignee_id) await notify(this, { kind: 'unblocked', employee_ids: [u.assignee_id], title: `Önün açıldı: ${u.title}`, body: `"${t.title}" tamamlandı; bu görev artık engelli değil.`, href: `/app/projects/${u.project_id}?task=${u.id}`, dedupe_key: `unblocked:${u.id}` }).catch(() => undefined);
       return { ...t };
     }
     this.persist(db);
@@ -236,12 +275,14 @@ export class DemoRepo implements Repo {
     const db = this.db();
     const t = db.tasks.find((x) => x.id === id && x.org_id === this.orgId);
     if (!t) throw new NotFoundError('Görev');
-    await assertCanEditTask(this, await this.me(), t);
+    const me = await this.me();
+    await assertCanEditTask(this, me, t);
     const before = { ...t };
     Object.assign(t, v);
     this.log(db, 'task.update', `tasks/${id}`, v);
     await this.fire(db, 'tasks.update', 'tasks', t, before);
     this.persist(db);
+    if (v.assignee_id !== undefined || v.description !== undefined) await onTaskWritten(this, me, { ...t }, before, await this.team()).catch(() => undefined);
     return { ...t };
   }
 
@@ -264,6 +305,7 @@ export class DemoRepo implements Repo {
     this.log(db, 'task.comment', `tasks/${taskId}`, { comment: c.id });
     await this.fire(db, 'task.commented', 'tasks', { ...c, id: t.id });
     this.persist(db);
+    await onComment(this, await this.me(), t, c, await this.team()).catch(() => undefined);
     return { ...c };
   }
   private ownComment(db: DemoDb, id: string): TaskComment {
@@ -795,9 +837,14 @@ export class DemoRepo implements Repo {
       logRun: async (org, run) => { const rows = this.col(db, 'automation_runs'); rows.push({ ...run, id: this.nextId('ar', rows.map((r) => r.id)), org_id: org, created_at: now() }); },
       touchRule: async (_o, rule, at) => { const r = this.col(db, 'automations').find((x) => x.id === rule.id); if (r) { r.runs += 1; r.last_fired_at = at; } },
       notify: async (org, n) => {
+        // Otomasyon bildirimi: org kuralı uygulanır (notify); bu db örneği henüz kalıcılaşmadığından satırlar doğrudan buraya yazılır.
         const rows = this.col(db, 'notifications');
+        const rules = await this.listNotificationRules().catch(() => [] as NotificationRule[]);
         for (const m of db.team.filter((t) => (t.org_id === org || t.org_id === ORG_JOBS) && NOTIFY_ROLES.includes(t.app_role as Role))) {
-          rows.push({ id: this.nextId('n', rows.map((r) => r.id)), org_id: org, created_at: now(), employee_id: m.id, kind: 'system', title: n.title, body: n.body, read: false, href: n.href });
+          if (!orgRuleAllows(rules, 'system', 'in_app', m.app_role)) continue;
+          const row: Notification = { id: this.nextId('n', rows.map((r) => r.id)), org_id: org, created_at: now(), employee_id: m.id, kind: 'system', title: n.title, body: n.body, read: false, href: n.href };
+          rows.push(row);
+          notifListeners.forEach((fn) => fn({ ...row }));
         }
       },
       createTask: async (org, input) => {
@@ -858,6 +905,7 @@ export class DemoRepo implements Repo {
       this.log(db, `${kind}.update`, `${kind}/${cur.id}`);
       if (kind !== 'automation_runs' && kind !== 'automations') await this.fire(db, `${COLLECTIONS[kind].table}.update`, COLLECTIONS[kind].table, cur, before);
       this.persist(db);
+      if (kind === 'requests' && (cur as unknown as WorkRequest).status === 'converted' && (before as unknown as WorkRequest).status !== 'converted') await onRequestConverted(this, await this.me(), cur as unknown as WorkRequest).catch(() => undefined);
       return { ...cur };
     }
     const rec = { ...merged, id: this.nextId(COLLECTIONS[kind].prefix, rows.map((r) => r.id)), org_id: this.orgId, created_at: this.now() } as Records[K];
@@ -866,6 +914,12 @@ export class DemoRepo implements Repo {
     // Otomasyon çalıştırma günlüğü / otomasyonların kendisi olay üretmez (döngü önleme).
     if (kind !== 'automation_runs' && kind !== 'automations') await this.fire(db, `${COLLECTIONS[kind].table}.insert`, COLLECTIONS[kind].table, rec);
     this.persist(db);
+    if (kind === 'notifications') notifListeners.forEach((fn) => fn({ ...(rec as unknown as Notification) }));
+    if (kind === 'announcements') {
+      const pm: Record<string, string[]> = {};
+      for (const m of this.col(db, 'project_members')) (pm[m.employee_id] ??= []).push(m.project_id);
+      await onAnnouncement(this, undefined, await this.me(), rec as never, await this.team(), pm).catch(() => undefined);
+    }
     return { ...rec };
   }
   async remove(kind: CollKey, id: string) {

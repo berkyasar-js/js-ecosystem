@@ -4,6 +4,7 @@ import { API_TOKEN_SCOPES, TOKEN_ADMIN_ROLES } from '@jscore/contracts';
 import { Async, Empty, PageHeader, Tabs, fmtDate, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
 import { TrelloCard } from './trello-card';
+import { EmailCard } from './email-card';
 
 export default function IntegrationsPage() {
   const { repo, me, mode, bump } = useSession();
@@ -36,12 +37,13 @@ export default function IntegrationsPage() {
   };
   return (
     <>
-      <PageHeader title="Entegrasyonlar" sub="Trello, MCP sunucuları, API anahtarları ve webhook’lar" />
+      <PageHeader title="Entegrasyonlar" sub="Trello, e-posta bildirimleri, MCP sunucuları, API anahtarları ve webhook’lar" />
       <Tabs<typeof tab> tabs={[['int', 'Entegrasyonlar'], ['mcp', 'MCP sunucuları'], ['api', 'API & Webhook’lar'], ['keys', 'API Anahtarları']]} value={tab} onChange={setTab} />
       {err && <p role="alert" className="mb-3 text-sm text-magenta">{err}</p>}
       <Async q={q}>{(d) => tab === 'int' ? (
         <>
         <TrelloCard />
+        <EmailCard />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {d.integrations.filter((i) => i.provider !== 'trello').map((i) => (
             <article key={i.id} className="card">

@@ -1,8 +1,9 @@
 import {
   applyDecision, buildSteps, canDecideApproval, canDecideStep, chainView, defaultStep, requiredRoleFor, resolvePolicy, stepDueAt, stepRecipients,
-  type Approval, type ApprovalAction, type ApprovalCreate, type ApprovalPolicy, type ApprovalStep, type Brand, type Delegation, type Me, type PolicySubject, type TeamMember,
+  type Approval, type ApprovalAction, type ApprovalCreate, type ApprovalPolicy, type ApprovalStep, type Brand, type Delegation, type Me, type NotificationKind, type PolicySubject, type TeamMember,
 } from '@jscore/contracts';
 import { executeAgentAction, isAgentApproval } from '../agents/execute';
+import { notify } from '../notify';
 import { ForbiddenError, NotFoundError, type Repo } from '../repo/types';
 
 /**
@@ -21,11 +22,9 @@ export interface ApprovalIO {
 const safe = async <T,>(p: Promise<T[]>): Promise<T[]> => p.catch(() => [] as T[]);
 const NOTIFY_HREF = '/app/approvals';
 
-export async function notifyEmployees(repo: Repo, ids: Iterable<string>, n: { kind: 'approval' | 'task' | 'system' | 'unblocked' | 'delegation'; title: string; body: string; href?: string }, except?: string | null) {
-  for (const id of new Set(ids)) {
-    if (!id || id === except) continue;
-    await repo.save('notifications', { employee_id: id, kind: n.kind, title: n.title, body: n.body, read: false, href: n.href ?? NOTIFY_HREF }).catch(() => undefined);
-  }
+/** Onay bildirimleri tek kapıdan (core/notify): org kuralı + 24 sa tekilleştirme; eylemi yapan hariç. */
+export async function notifyEmployees(repo: Repo, ids: Iterable<string>, n: { kind: NotificationKind; title: string; body: string; href?: string; dedupe_key?: string }, except?: string | null) {
+  await notify(repo, { kind: n.kind, employee_ids: [...new Set(ids)].filter(Boolean), except: except ?? null, title: n.title, body: n.body, href: n.href ?? NOTIFY_HREF, dedupe_key: n.dedupe_key }).catch(() => undefined);
 }
 
 /** Politika konusu: subject + marka durumu (brand_id → brands). */
@@ -57,7 +56,7 @@ export async function createApprovalWithChain(io: ApprovalIO, input: ApprovalCre
     });
     rows.push(row);
   }
-  await notifyEmployees(io.repo, stepRecipients(rows[0], team), { kind: 'approval', title: `Onay sırası sende: ${approval.title}`, body: `${policy ? `${policy.name} · adım 1/${rows.length}` : 'Onay bekliyor'}` }, me.employee_id);
+  await notifyEmployees(io.repo, stepRecipients(rows[0], team), { kind: 'approval_requested', title: `Onay sırası sende: ${approval.title}`, body: `${policy ? `${policy.name} · adım 1/${rows.length}` : 'Onay bekliyor'}`, dedupe_key: `approval:${approval.id}:step:0` }, me.employee_id);
   return approval;
 }
 
@@ -107,7 +106,7 @@ export async function decideWithChain(io: ApprovalIO, id: string, decision: 'app
   }
   if (r.outcome === 'advanced') {
     const next = r.steps.find((s) => s.step_index === r.nextIndex)!;
-    await notifyEmployees(io.repo, stepRecipients(next, team), { kind: 'approval', title: `Onay sırası sende: ${approval.title}`, body: `Adım ${next.step_index + 1}/${r.steps.length}` }, me.employee_id);
+    await notifyEmployees(io.repo, stepRecipients(next, team), { kind: 'approval_requested', title: `Onay sırası sende: ${approval.title}`, body: `Adım ${next.step_index + 1}/${r.steps.length}`, dedupe_key: `approval:${approval.id}:step:${next.step_index}` }, me.employee_id);
     return { approval, outcome: 'advanced' };
   }
   if (r.outcome === 'waiting') return { approval, outcome: 'waiting' };
@@ -120,7 +119,7 @@ const policySla = (policies: ApprovalPolicy[], policyId: string | null | undefin
 async function finishApproval(io: ApprovalIO, a: Approval, decision: 'approved' | 'rejected', me: Me, team: TeamMember[]): Promise<Approval> {
   const requester = team.find((t) => t.id === a.requested_by)?.id ?? null;
   if (decision === 'rejected') {
-    if (requester) await notifyEmployees(io.repo, [requester], { kind: 'approval', title: `Reddedildi: ${a.title}`, body: a.decision_note ? `Not: ${a.decision_note}` : `${me.name} reddetti`, href: sourceHref(a) }, me.employee_id);
+    if (requester) await notifyEmployees(io.repo, [requester], { kind: 'approval_decided', title: `Reddedildi: ${a.title}`, body: a.decision_note ? `Not: ${a.decision_note}` : `${me.name} reddetti`, href: sourceHref(a), dedupe_key: `approval:${a.id}:decided` }, me.employee_id);
     return a;
   }
   let out = a;
@@ -150,7 +149,7 @@ async function finishApproval(io: ApprovalIO, a: Approval, decision: 'approved' 
     // Yan etki başarısızsa onay kararı korunur; hata notu düşülür (kullanıcı tekrar deneyebilir).
     out = await io.patchApproval(a.id, { decision_note: `${a.decision_note ? `${a.decision_note} · ` : ''}Yan etki hatası: ${e instanceof Error ? e.message : 'bilinmiyor'}` }).catch(() => a);
   }
-  if (requester) await notifyEmployees(io.repo, [requester], { kind: 'approval', title: `Onaylandı: ${a.title}`, body: `${me.name} onayladı`, href: sourceHref(a) }, me.employee_id);
+  if (requester) await notifyEmployees(io.repo, [requester], { kind: 'approval_decided', title: `Onaylandı: ${a.title}`, body: `${me.name} onayladı`, href: sourceHref(a), dedupe_key: `approval:${a.id}:decided` }, me.employee_id);
   return out;
 }
 export const sourceHref = (a: Pick<Approval, 'subject'>) => (a.subject.task_id && a.subject.project_id ? `/app/projects/${a.subject.project_id}?task=${a.subject.task_id}` : a.subject.request_ids?.length ? '/app/requests' : a.subject.announcement ? '/app/announcements' : NOTIFY_HREF);

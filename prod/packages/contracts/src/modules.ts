@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Role } from './roles';
 import type { ApprovalPolicy, ApprovalStep, Delegation, TaskLink } from './governance';
+import type { LegacyNotificationKind, NotificationKind } from './notifications';
 
 const isClientRole = (r: Role) => r === 'client_admin' || r === 'client_viewer';
 
@@ -123,7 +124,15 @@ export interface Contract extends Base {
   inclusions: Record<string, number>; revision_limit: number; revisions_used: number; auto_renew: boolean; status: 'active' | 'expiring' | 'ended';
 }
 export interface TimeEntry extends Base { employee_id: string; task_id: string | null; minutes: number; note: string; worked_on: string; started_at: string | null; ended_at: string | null }
-export interface Notification extends Base { employee_id: string; kind: 'task' | 'approval' | 'system' | 'mention' | 'unblocked' | 'delegation'; title: string; body: string; read: boolean; href?: string }
+export interface Notification extends Base {
+  employee_id: string;
+  /** Bkz. NOTIFICATION_KINDS (notifications.ts); eski satırlarda 'task' | 'approval' olabilir → normalizeKind. */
+  kind: NotificationKind | LegacyNotificationKind; title: string; body: string; read: boolean; href?: string;
+  /** 24 saatlik tekilleştirme anahtarı (employee_id ile birlikte). */
+  dedupe_key?: string | null;
+  /** E-posta işi: anlık gönderim durumu (cron yazar). */
+  email_state?: 'sent' | 'skipped' | 'digest' | 'error' | null;
+}
 export interface TaskRequest extends Base { task_id: string; employee_id: string; kind: 'snooze' | 'reschedule' | 'help'; note: string; new_due: string | null; to_employee: string | null; status: 'open' | 'done' }
 export interface Allocation extends Base { employee_id: string; week: string; hours: number; project_id: string | null; note?: string }
 export const LEAVE_TYPES = { yillik: 'Yıllık izin', hastalik: 'Hastalık', mazeret: 'Mazeret', ucretsiz: 'Ücretsiz' } as const;

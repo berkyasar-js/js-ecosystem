@@ -1,9 +1,15 @@
 'use client';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Avatar } from '@/components/avatar';
 import { MODULES, ROLE_LABELS, canAccessModule, hasPermission } from '@jscore/contracts';
 import { PageHeader } from '@/components/ui';
 import { useSession } from '@/components/session';
 import { DelegationPanel } from '@/components/delegations';
+import { NotificationPrefsPanel } from '@/components/notification-prefs';
+
+type Tab = 'profile' | 'notifications' | 'delegate';
+const TABS: Array<[Tab, string]> = [['profile', 'Profil'], ['notifications', 'Bildirimler'], ['delegate', 'Delege et']];
 
 const CHECKS: Array<[string, string, string, string]> = [
   ['Görev güncelle', 'work', 'task', 'update'], ['Onay karara bağla', 'core', 'approval', 'decide'],
@@ -12,12 +18,24 @@ const CHECKS: Array<[string, string, string, string]> = [
 
 export default function Profile() {
   const { me, orgs, orgId, theme, toggleTheme, logout, mode } = useSession();
+  const qs = useSearchParams();
+  const tab: Tab = (TABS.find(([t]) => t === qs.get('tab'))?.[0]) ?? 'profile';
   if (!me) return null;
   const extra = me.scopes.flatMap((s) => (s === 'can.read.hr_archive' ? ['hr:hr_archive:*'] : s === 'can.read.payroll' ? ['payroll:*:*'] : []));
   return (
     <>
-      <PageHeader title="Profilim" sub="Kapsam, yetkiler ve tercihler" />
-      <div className="grid gap-5 lg:grid-cols-2">
+      <PageHeader title="Profilim" sub="Kapsam, yetkiler, bildirimler ve delegasyon" />
+      <nav className="tabs" role="tablist" aria-label="Profil sekmeleri">
+        {TABS.map(([t, label]) => <Link key={t} role="tab" href={t === 'profile' ? '/app/profile' : `/app/profile?tab=${t}`} aria-selected={tab === t} className="tab" scroll={false}>{label}</Link>)}
+      </nav>
+      {tab === 'notifications' && <NotificationPrefsPanel />}
+      {tab === 'delegate' && (
+        <>
+          <p className="mb-3 text-sm text-muted">İzin ya da seyahatte yetkilerini geçici olarak bir ekip arkadaşına devret. Onay kararı ve finans yetkileri owner onayından geçer; süre bitince kendiliğinden düşer.</p>
+          <DelegationPanel />
+        </>
+      )}
+      {tab === 'profile' && <div className="grid gap-5 lg:grid-cols-2">
         <section className="card">
           <div className="flex items-center gap-4"><Avatar id={me.employee_id || me.id} name={me.name} size="lg" />
             <div><h2 className="text-lg font-bold">{me.name}</h2><p className="text-sm text-muted">{me.title}</p><p className="text-xs text-muted">{me.email}</p></div></div>
@@ -37,10 +55,7 @@ export default function Profile() {
           })}</ul>
           <p className="mt-3 text-xs text-muted">Owner/Org Admin, bordro ve özlük arşivine varsayılan olarak erişemez; ayrı yetki gerekir.</p>
         </section>
-      </div>
-      <h2 className="mt-8 mb-3 text-lg font-bold">Delege et</h2>
-      <p className="mb-3 text-sm text-muted">İzin ya da seyahatte yetkilerini geçici olarak bir ekip arkadaşına devret. Onay kararı ve finans yetkileri owner onayından geçer; süre bitince kendiliğinden düşer.</p>
-      <DelegationPanel />
+      </div>}
     </>
   );
 }

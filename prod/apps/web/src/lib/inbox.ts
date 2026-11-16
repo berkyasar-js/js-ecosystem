@@ -36,8 +36,9 @@ export function buildInbox(i: InboxInput): InboxItem[] {
   for (const n of i.notifications) {
     if (me && n.employee_id !== me) continue;
     if (n.read) continue;
-    const kind: InboxKind = n.kind === 'mention' ? 'mention' : n.kind === 'unblocked' ? 'unblocked' : 'notification';
-    out.push({ id: `${kind}:${n.id}`, kind, title: n.title, body: n.body, href: n.href ?? '/app/overview', at: n.created_at, urgent: n.kind === 'approval', read: n.read, notification_id: n.id });
+    const kind: InboxKind = n.kind === 'mention' ? 'mention' : n.kind === 'unblocked' ? 'unblocked' : n.kind === 'trello_change' ? 'trello' : 'notification';
+    const urgent = n.kind === 'approval' || n.kind === 'approval_requested' || n.kind === 'approval_sla' || n.kind === 'task_overdue';
+    out.push({ id: `${kind}:${n.id}`, kind, title: n.title, body: n.body, href: n.href ?? '/app/overview', at: n.created_at, urgent, read: n.read, notification_id: n.id });
   }
   const now = i.now ?? `${i.today}T12:00:00Z`;
   for (const a of i.approvals) {

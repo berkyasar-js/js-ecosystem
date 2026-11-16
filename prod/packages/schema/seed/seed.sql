@@ -29,5 +29,6 @@ insert into brands (org_id, client_id, name, sector, status, account_owner, art_
 insert into task_types (org_id, key, label, sla_hours, default_minutes, unit_price_minor) select :'org_id', * from s_tt;
 insert into decision_rights (org_id, action, level, decider, limit_minor, notes) select :'org_id', * from s_dr;
 insert into notification_rules (org_id, event_type, channel, roles, enabled)
-  select :'org_id', event_type, channel, string_to_array(roles, ';')::core.app_role[], enabled from s_nd;
+  select :'org_id', event_type, channel, coalesce(string_to_array(nullif(roles, ''), ';')::core.app_role[], '{}'), enabled from s_nd
+  on conflict (org_id, event_type, channel) do nothing;
 commit;

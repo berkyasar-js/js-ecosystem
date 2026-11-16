@@ -7,8 +7,9 @@ import { Msg, errText } from '@/components/admin-ui';
 import { useSession } from '@/components/session';
 import { useAdminSettings } from '@/lib/client';
 import { ApprovalPoliciesEditor } from '@/components/approval-policies';
+import { NotificationRulesEditor } from '@/components/notification-rules';
 
-type Tab = 'general' | 'nav' | 'approvals' | 'data';
+type Tab = 'general' | 'nav' | 'approvals' | 'notifications' | 'data';
 
 export default function Organization() {
   const st = useAdminSettings();
@@ -25,11 +26,11 @@ export default function Organization() {
   };
   return (
     <>
-      <PageHeader title="Organizasyon" sub="Ad, logo, saat dilimi, para birimi, çalışma saatleri, gezinme düzeni, onay akışları, veri dökümü" />
-      <Tabs<Tab> tabs={[['general', 'Genel'], ['nav', 'Gezinme'], ['approvals', 'Onay akışları'], ['data', 'Veri']]} value={tab} onChange={setTab} />
+      <PageHeader title="Organizasyon" sub="Ad, logo, saat dilimi, para birimi, çalışma saatleri, gezinme düzeni, onay akışları, bildirim kuralları, veri dökümü" />
+      <Tabs<Tab> tabs={[['general', 'Genel'], ['nav', 'Gezinme'], ['approvals', 'Onay akışları'], ['notifications', 'Bildirim kuralları'], ['data', 'Veri']]} value={tab} onChange={setTab} />
       <Msg m={msg} />
       <Async q={{ data: st.settings, error: st.error, loading: st.loading }}>{(settings) => (
-        <div className="grid max-w-3xl gap-5">
+        <div className={`grid gap-5 ${tab === 'notifications' ? 'max-w-5xl' : 'max-w-3xl'}`}>
           {tab === 'general' && g && (
             <form className="card grid gap-4" onSubmit={save}>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -53,6 +54,7 @@ export default function Organization() {
               <ApprovalPoliciesEditor />
             </>
           )}
+          {tab === 'notifications' && <NotificationRulesEditor />}
           {tab === 'nav' && <NavEditor nav={settings.nav ?? {}} onSave={async (nav) => { try { await st.save({ nav }); setMsg({ ok: true, text: 'Gezinme düzeni kaydedildi; kullanıcı uygulamasında bir sonraki yenilemede etkin.' }); } catch (e) { setMsg({ ok: false, text: errText(e) }); } }} />}
           {tab === 'data' && (
             <>

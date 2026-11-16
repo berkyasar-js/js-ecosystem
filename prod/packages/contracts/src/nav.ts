@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { coerceNotificationPrefs, notificationPrefsSchema } from './notifications';
 import type { Role } from './index';
 
 /* ───────── Gruplu gezinme (Volobox ruhu: ~9 üst alan) ─────────
@@ -80,8 +81,8 @@ export const userPrefsSchema = z.object({
   favorites: z.array(z.string()).max(12).default([]),
   /** /app/welcome tamamlandı (ya da atlandı). */
   welcome_done: z.boolean().default(false),
-  /** Bildirim tercihleri (taslak; e-posta/Slack kanalı henüz yok). */
-  notifications: z.object({ in_app: z.boolean().default(true), email_digest: z.boolean().default(false), mentions: z.boolean().default(true) }).default({ in_app: true, email_digest: false, mentions: true }),
+  /** Bildirim tercihleri (kanallar, tür başına, özet, sessiz saatler). Eski taslak şekli ({in_app, email_digest, mentions}) okunurken dönüştürülür. */
+  notifications: z.preprocess((v) => coerceNotificationPrefs(v), notificationPrefsSchema).default({}),
   /** Gelen kutusunda "tamam" denen öğe kimlikleri (son 300). */
   inbox_done: z.array(z.string()).max(300).default([]),
   /** Kenar çubuğu daraltılmış. */

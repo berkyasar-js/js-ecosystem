@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { ArrowRight, Check, Keyboard, Sparkles } from 'lucide-react';
-import { ROLE_LABELS, type Role } from '@jscore/contracts';
+import { ROLE_LABELS, kindPref, type Role } from '@jscore/contracts';
 import { Avatar } from '@/components/avatar';
 import { useSession } from '@/components/session';
 
@@ -41,9 +41,9 @@ export default function Welcome() {
         <section className="card grid gap-4">
           <h1 className="text-2xl font-bold">Bildirimler</h1>
           <p className="text-sm text-muted">Uygulama içi bildirimler her zaman gelen kutusuna düşer. Diğer kanallar yakında.</p>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notif.in_app} onChange={(e) => setNotif({ ...notif, in_app: e.target.checked })} /> Uygulama içi bildirimler</label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notif.mentions} onChange={(e) => setNotif({ ...notif, mentions: e.target.checked })} /> Anıldığımda haber ver</label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notif.email_digest} onChange={(e) => setNotif({ ...notif, email_digest: e.target.checked })} /> Günlük e-posta özeti <span className="chip">yakında</span></label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notif.channels.inapp} onChange={(e) => setNotif({ ...notif, channels: { ...notif.channels, inapp: e.target.checked } })} /> Uygulama içi bildirimler</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={kindPref(notif, 'mention').inapp} onChange={(e) => setNotif({ ...notif, kinds: { ...notif.kinds, mention: { ...kindPref(notif, 'mention'), inapp: e.target.checked } } })} /> Anıldığımda haber ver</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notif.channels.email && notif.digest !== 'off'} onChange={(e) => setNotif({ ...notif, digest: e.target.checked ? 'daily' : 'off' })} /> Günlük e-posta özeti (08:30) <span className="text-xs text-muted">· ayrıntı Profil → Bildirimler</span></label>
         </section>
       )}
       {step === 2 && (

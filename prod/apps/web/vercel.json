@@ -5,6 +5,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/jobs/notify",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/integrations/trello/reconcile",
       "schedule": "0 * * * *"
     }

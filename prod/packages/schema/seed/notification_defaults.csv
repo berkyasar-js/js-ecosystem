@@ -1,7 +1,11 @@
 event_type,channel,roles,enabled
-approval.created,in_app,"owner;account;pm",true
-approval.decided,email,"owner;account",true
-task.overdue,in_app,"pm;account;creative",true
-task.updated,in_app,"pm",false
-invoice.overdue,email,"owner;finance",true
-board.weekly,slack,"owner",false
+approval_requested,in_app,,true
+approval_requested,email,,true
+approval_decided,email,,true
+task_overdue,in_app,,true
+task_overdue,email,,true
+mention,email,,true
+task_assigned,email,,true
+comment,email,,false
+system,email,,false
+trello_change,email,,false

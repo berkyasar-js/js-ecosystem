@@ -1,5 +1,6 @@
 import { CAP_LABELS, delegationSchema, type Capability, type Delegation, type Me, type TeamMember } from '@jscore/contracts';
 import { addDaysIso } from './token';
+import { notify } from './notify';
 import type { Repo } from './repo/types';
 
 export type DelegationInput = Omit<Delegation, 'id' | 'org_id' | 'created_at' | 'status' | 'approval_id' | 'created_by'>;
@@ -20,7 +21,7 @@ export async function requestDelegation(repo: Repo, me: Me, input: DelegationInp
     approvalId = a.id;
     await repo.save('delegations', { id: d.id, approval_id: a.id }).catch(() => undefined);
   }
-  await repo.save('notifications', { employee_id: d.to_employee_id, kind: 'delegation', title: d.status === 'pending' ? `Delegasyon onay bekliyor: ${from} → sen` : `${from} sana yetki devretti`, body: `${capsText} · ${d.starts_at.slice(0, 10)} – ${d.ends_at.slice(0, 10)}${d.reason ? ` · ${d.reason}` : ''}`, read: false, href: '/app/profile' }).catch(() => undefined);
+  await notify(repo, { kind: 'delegation', employee_ids: [d.to_employee_id], except: me.employee_id ?? null, title: d.status === 'pending' ? `Delegasyon onay bekliyor: ${from} → sen` : `${from} sana yetki devretti`, body: `${capsText} · ${d.starts_at.slice(0, 10)} – ${d.ends_at.slice(0, 10)}${d.reason ? ` · ${d.reason}` : ''}`, href: '/app/profile', dedupe_key: `delegation:${d.id}` }).catch(() => undefined);
   return { delegation: approvalId ? { ...d, approval_id: approvalId } : d, approvalId };
 }
 export const revokeDelegation = (repo: Repo, id: string) => repo.save('delegations', { id, status: 'revoked' });
