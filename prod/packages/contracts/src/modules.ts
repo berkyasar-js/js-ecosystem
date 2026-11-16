@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { Role } from './index';
+import type { Role } from './roles';
+import type { ApprovalPolicy, ApprovalStep, Delegation, TaskLink } from './governance';
 
 const isClientRole = (r: Role) => r === 'client_admin' || r === 'client_viewer';
 
@@ -84,6 +85,11 @@ export const COLLECTIONS = {
   announcement_acks: C('announcement_acks', 'ak', 'overview', 'internal', [...OPS_CR, 'finance', 'hr', 'payroll', 'freelancer', 'auditor', 'integration_admin'], { native: ['announcement_id', 'user_id'] }),
   project_members: C('project_members', 'pm', 'projects', 'internal', OPS, { native: ['project_id', 'employee_id', 'role'] }),
   agent_policies: C('agent_policies', 'pol', 'admin', ['owner', 'org_admin', 'auditor'], ['owner', 'org_admin'], { native: ['agent'] }),
+  /* ───── 0018: bağımlılık, yetki ve onay ───── */
+  task_links: C('task_links', 'tl', 'tasks', 'internal', OPS_CR, { native: ['from_task_id', 'to_task_id', 'kind', 'created_by'] }),
+  approval_policies: C('approval_policies', 'ap', 'approvals', 'internal', ['owner', 'org_admin'], { native: ['action_type', 'condition', 'steps', 'escalation', 'active'] }),
+  approval_steps: C('approval_steps', 'as', 'approvals', 'internal', [...OPS_CR, 'finance', 'hr', 'payroll', 'freelancer'], { native: ['approval_id', 'step_index', 'approver_role', 'status', 'decided_by', 'decided_at', 'note', 'due_at'] }),
+  delegations: C('delegations', 'dg', 'profile', 'internal', [...OPS_CR, 'finance', 'hr', 'payroll', 'freelancer', 'integration_admin'], { native: ['from_employee_id', 'to_employee_id', 'caps', 'starts_at', 'ends_at', 'reason', 'status'] }),
 } as const satisfies Record<string, CollMeta>;
 export type CollKey = keyof typeof COLLECTIONS;
 export const COLL_KEYS = Object.keys(COLLECTIONS) as CollKey[];
@@ -117,7 +123,7 @@ export interface Contract extends Base {
   inclusions: Record<string, number>; revision_limit: number; revisions_used: number; auto_renew: boolean; status: 'active' | 'expiring' | 'ended';
 }
 export interface TimeEntry extends Base { employee_id: string; task_id: string | null; minutes: number; note: string; worked_on: string; started_at: string | null; ended_at: string | null }
-export interface Notification extends Base { employee_id: string; kind: 'task' | 'approval' | 'system' | 'mention'; title: string; body: string; read: boolean; href?: string }
+export interface Notification extends Base { employee_id: string; kind: 'task' | 'approval' | 'system' | 'mention' | 'unblocked' | 'delegation'; title: string; body: string; read: boolean; href?: string }
 export interface TaskRequest extends Base { task_id: string; employee_id: string; kind: 'snooze' | 'reschedule' | 'help'; note: string; new_due: string | null; to_employee: string | null; status: 'open' | 'done' }
 export interface Allocation extends Base { employee_id: string; week: string; hours: number; project_id: string | null; note?: string }
 export const LEAVE_TYPES = { yillik: 'Yıllık izin', hastalik: 'Hastalık', mazeret: 'Mazeret', ucretsiz: 'Ücretsiz' } as const;
@@ -253,6 +259,7 @@ export interface Records {
   automation_runs: AutomationRun;
   saved_views: SavedView; milestones: Milestone; requests: WorkRequest; announcements: Announcement; announcement_acks: AnnouncementAck;
   project_members: ProjectMember; agent_policies: AgentPolicy;
+  task_links: TaskLink; approval_policies: ApprovalPolicy; approval_steps: ApprovalStep; delegations: Delegation;
 }
 type Fields<K extends CollKey> = Omit<Records[K], 'id' | 'org_id' | 'created_at'>;
 /** Yeni kayıt: tüm alanlar; güncelleme: id + değişen alanlar. */

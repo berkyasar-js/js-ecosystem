@@ -158,6 +158,8 @@ const approvals: Approval[] = approvalRows.map(([id, title, action_type, status,
   id, org_id: projOrg[project_id] ?? ORG_JOBS, action_type, title, subject: { project_id: project_id || undefined, brand_id: brand_id || undefined, amount_minor: amount ? amount * 100 : undefined, version: version || undefined },
   required_role, status, requested_by: by, decided_by: status === 'approved' ? 'u_account' : null, decided_at: status === 'approved' ? '2026-10-02T10:00:00Z' : null,
   decision_note: status === 'approved' ? 'Baskı provası onaylandı.' : null, due_at, created_at: '2026-10-13T09:00:00Z',
+  /* 0018: a6 "Kapsam değişikliği" zincirinde (ap3), owner adımında. */
+  policy_id: id === 'a6' ? 'ap3' : null, current_step: id === 'a6' ? 1 : null,
 }));
 
 const channels: Channel[] = [

@@ -3,13 +3,13 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { Bot, Check, CheckCheck, Inbox as InboxIcon, Mail } from 'lucide-react';
-import { markInboxDone, type Notification } from '@jscore/contracts';
+import { markInboxDone, type ApprovalStep, type Delegation, type Notification, type TeamMember } from '@jscore/contracts';
 import { Async, Empty, PageHeader, fmtDate, todayFor, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
 import { EmailInbox } from '@/components/inbox/email-inbox';
 import { INBOX_KIND_LABELS, buildInbox, filterInbox, inboxCounts, type InboxFilter } from '@/lib/inbox';
 
-const FILTERS: Array<[InboxFilter, string]> = [['all', 'Tümü'], ['approval', 'Onaylar'], ['due', 'Teslimler'], ['mention', 'Anmalar'], ['trello', 'Trello'], ['notification', 'Bildirimler']];
+const FILTERS: Array<[InboxFilter, string]> = [['all', 'Tümü'], ['approval', 'Onaylar'], ['due', 'Teslimler'], ['unblocked', 'Önün açıldı'], ['mention', 'Anmalar'], ['trello', 'Trello'], ['notification', 'Bildirimler']];
 
 /** Gelen Kutusu: dikkat isteyen her şey tek kuyrukta (bildirim, bana düşen onay, anma, görevimdeki Trello değişikliği, bugün biten / geciken). */
 export default function InboxPage() {
@@ -31,8 +31,8 @@ function Queue() {
   const { me, mode, repo, prefs, setPrefs, bump } = useSession();
   const q = useData(async (r) => {
     const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
-    const [tasks, approvals, notifications] = await Promise.all([safe(r.listTasks()), safe(r.listApprovals()), safe(r.list('notifications'))]);
-    return { tasks, approvals, notifications: notifications as Notification[] };
+    const [tasks, approvals, notifications, steps, team, delegations] = await Promise.all([safe(r.listTasks()), safe(r.listApprovals()), safe(r.list('notifications')), safe(r.list('approval_steps')), safe(r.team()), safe(r.list('delegations'))]);
+    return { tasks, approvals, notifications: notifications as Notification[], steps: steps as ApprovalStep[], team: team as TeamMember[], delegations: delegations as Delegation[] };
   });
   const [filter, setFilter] = useState<InboxFilter>('all');
   const today = todayFor(mode);
@@ -80,7 +80,7 @@ function Queue() {
               </li>
             ) : (
               <li key={x.id} className="home-row">
-                <span className={`chip ${x.kind === 'approval' ? 'chip-warn' : x.kind === 'due' && x.urgent ? 'chip-bad' : x.kind === 'mention' ? 'chip-brand' : ''}`}>{INBOX_KIND_LABELS[x.kind]}</span>
+                <span className={`chip ${x.kind === 'approval' ? 'chip-warn' : x.kind === 'due' && x.urgent ? 'chip-bad' : x.kind === 'mention' || x.kind === 'unblocked' ? 'chip-brand' : ''}`}>{INBOX_KIND_LABELS[x.kind]}</span>
                 <Link href={x.href} className="min-w-0 flex-1 truncate" onClick={() => { if (x.notification_id) void markRead(x.notification_id); }}>
                   <span className="font-semibold">{x.title}</span><span className="ml-2 text-xs text-muted">{x.body}</span>
                 </Link>

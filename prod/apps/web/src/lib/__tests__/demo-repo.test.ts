@@ -63,8 +63,11 @@ describe('DemoRepo', () => {
     const a = await owner.decideApproval('a5', 'approved', 'tamam');
     expect(a).toMatchObject({ status: 'approved', decided_at: '2026-10-14T10:00:00Z', decision_note: 'tamam' });
     await expect(owner.decideApproval('a5', 'rejected')).rejects.toBeInstanceOf(ForbiddenError);
-    const orgAdminLike = new DemoRepo({ accountId: 'account' });
-    expect((await orgAdminLike.decideApproval('a6', 'approved')).status).toBe('approved');
+    const account = new DemoRepo({ accountId: 'account' });
+    expect((await account.decideApproval('a1', 'approved')).status).toBe('approved');          // tek adımlı (politikasız) onay: required_role kuralı
+    // 0018: a6 "Kapsam değişikliği" zincirinde; PM adımı kapandı, sıra owner'da → account artık karar veremez
+    await expect(account.decideApproval('a6', 'approved')).rejects.toBeInstanceOf(ForbiddenError);
+    expect((await new DemoRepo({ accountId: 'owner' }).decideApproval('a6', 'approved')).status).toBe('approved');
   });
 
   it('only owner answers board decisions', async () => {

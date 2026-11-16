@@ -1,9 +1,10 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Flame, Plus, Search, User, X } from 'lucide-react';
-import { TASK_STATES, TASK_STATE_LABELS, groupTasks, isClientRole, parseViewQuery, type Milestone, type Priority, type Project, type SavedView, type Task, type TaskBadges, type TaskPatch, type TaskState, type TaskType, type TeamMember } from '@jscore/contracts';
+import { Flame, Lock, Plus, Search, User, X } from 'lucide-react';
+import { TASK_STATES, TASK_STATE_LABELS, blockedMap, can, groupTasks, isClientRole, parseViewQuery, type Approval, type Milestone, type Priority, type Project, type SavedView, type Task, type TaskBadges, type TaskLink, type TaskLinkKind, type TaskPatch, type TaskState, type TaskType, type TeamMember } from '@jscore/contracts';
+import { PendingApprovalError } from '@jscore/core/repo/types';
 import { TaskBids } from '../modules/bids';
-import { useFeature, useSession } from '../session';
+import { useCan, useFeature, useSession } from '../session';
 import { OrbitDialog } from '../dialog';
 import { useToast } from '../toasts';
 import { NewTaskDialog } from './NewTaskDialog';
@@ -32,10 +33,12 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view:
   projectId?: string; showProject?: boolean; today: string; canBid?: boolean; allowCreate?: boolean; hideMineFilter?: boolean; emptyText?: string; openRequest?: { id: string; n: number } | null;
   milestones?: Milestone[]; defaultAssigneeId?: string | null; showViews?: boolean;
 }) {
-  const { repo, me } = useSession();
+  const { repo, me, features } = useSession();
   const bidsOn = useFeature('tasks.bids');
   const boardOn = useFeature('tasks.board_view');
-  const canBid = canBidRole && bidsOn;
+  const mayCreate = useCan('tasks.create');
+  const mayAssign = useCan('tasks.assign');
+  const canBid = canBidRole && bidsOn && mayAssign;
   const view = wantedView === 'board' && !boardOn ? 'list' : wantedView;
   const toast = useToast();
   const mobile = useMobile();
@@ -55,6 +58,10 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view:
   const [bulkBusy, setBulkBusy] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelText, setLabelText] = useState('');
+  // 0018: bağımlılıklar + bekleyen aşama onayları (teslim kapısı)
+  const [links, setLinks] = useState<TaskLink[]>([]);
+  const [gatedApprovals, setGated] = useState<Approval[]>([]);
+  const [depRev, setDepRev] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
   const addBtn = useRef<HTMLButtonElement>(null);
 
@@ -68,8 +75,20 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view:
     const v = sp.get('view');
     if (v && repo) repo.list('saved_views').then((vs) => { const sv = vs.find((x) => x.id === v); if (sv) { setFilters(fromQuery(sv.query)); setViewId(sv.id); } }, () => undefined);
   }, [allowCreate, readonly, repo]);
+  useEffect(() => {
+    if (!repo) return;
+    let alive = true;
+    const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
+    void Promise.all([safe(repo.list('task_links')), safe(repo.listApprovals())]).then(([l, a]) => { if (alive) { setLinks(l); setGated(a.filter((x) => x.status === 'pending' && x.action_type === 'task_stage' && !!x.subject.task_id)); } });
+    return () => { alive = false; };
+  }, [repo, depRev, tasks.length]);
+  const blocked = useMemo(() => blockedMap(tasks, links), [tasks, links]);
+  const gatedById = useMemo(() => Object.fromEntries(gatedApprovals.map((a) => [a.subject.task_id as string, a])) as Record<string, Approval>, [gatedApprovals]);
+  const canLink = !!me && !readonly && can(me, 'tasks.link', { overrides: features.permissions ?? null });
+  // Yetki matrisi: görev oluşturma kapalıysa "Görev ekle" gizlenir (proje üyeliği rolü Repo'da ayrıca açabilir; o durumda da RLS taban).
+  allowCreate = allowCreate && mayCreate;
   const sel = tasks.find((t) => t.id === selId) ?? null;
-  const visible = useMemo(() => applyFilters(tasks, filters, employeeId), [tasks, filters, employeeId]);
+  const visible = useMemo(() => applyFilters(tasks, filters, employeeId, blocked), [tasks, filters, employeeId, blocked]);
   const projectName = useCallback((id: string) => projects.find((p) => p.id === id)?.name ?? '', [projects]);
   const typeLabel = (t: Task) => taskTypes.find((x) => x.key === t.task_type)?.label ?? t.task_type;
   const nameOf = useCallback((id: string | null) => memberName(team, id), [team]);
@@ -102,6 +121,8 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view:
       if (!quiet) toast.success(...ok(t));
     } catch (e) {
       rollback?.();
+      // 0018: işlem yapılmadı, onay kartı açıldı (ör. riskli markada teslim) → hata değil, bilgi
+      if (e instanceof PendingApprovalError) { toast.success('Onaya gönderildi', e.message); setDepRev((n) => n + 1); return; }
       setErr({ id, msg: e instanceof Error ? e.message : 'İşlem başarısız' });
     } finally {
       setPending((s) => { const n = new Set(s); n.delete(id); return n; });
@@ -117,6 +138,16 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view:
   const complete = (t: Task) => move(t, 'delivery');
   const patch = (t: Task, p: TaskPatch, quiet = false) => {
     if (repo) return run(t.id, () => repo.updateTask(t.id, p), (n) => ['description' in p ? 'Açıklama kaydedildi' : 'cover' in p ? 'Kapak güncellendi' : 'Görev güncellendi', n.title], undefined, quiet);
+  };
+  const addLink = async (input: { from_task_id: string; to_task_id: string; kind: TaskLinkKind }) => {
+    if (!repo) return;
+    try { const l = await repo.save('task_links', { ...input, created_by: employeeId ?? null }); setLinks((ls) => [...ls, l]); toast.success('Bağ eklendi'); setErr(null); }
+    catch (e) { setErr({ id: selId, msg: e instanceof Error ? e.message : 'Bağ eklenemedi' }); }
+  };
+  const removeLink = async (id: string) => {
+    if (!repo) return;
+    try { await repo.remove('task_links', id); setLinks((ls) => ls.filter((l) => l.id !== id)); toast.success('Bağ kaldırıldı'); }
+    catch (e) { setErr({ id: selId, msg: e instanceof Error ? e.message : 'Bağ kaldırılamadı' }); }
   };
   const create = async (input: { project_id: string; title: string; assignee_id: string | null; priority: Priority; due_at: string }) => {
     if (!repo) throw new Error('Oturum hazır değil');
@@ -163,7 +194,8 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view:
   const detail = sel && (
     <TaskDetails task={sel} team={team} context={projectName(sel.project_id) || '—'} typeLabel={typeLabel(sel)} readonly={readonly} pending={pendingIds.has(sel.id)}
       milestones={milestones.filter((m) => m.project_id === sel.project_id)}
-      error={err?.id === sel.id ? err.msg : undefined} onClose={close} onComplete={() => void complete(sel)} onStage={(s) => void move(sel, s)} onPatch={(p) => void patch(sel, p)} onBadges={onBadges} onLocalPatch={onLocalPatch} />
+      error={err?.id === sel.id ? err.msg : undefined} onClose={close} onComplete={() => void complete(sel)} onStage={(s) => void move(sel, s)} onPatch={(p) => void patch(sel, p)} onBadges={onBadges} onLocalPatch={onLocalPatch}
+      tasks={tasks} links={links} canLink={canLink} gated={gatedById[sel.id] ?? null} onAddLink={(i) => void addLink(i)} onRemoveLink={(id) => void removeLink(id)} onOpenTask={(id) => { const t = tasks.find((x) => x.id === id); if (t) open(t); }} />
   );
   const filtered = isFiltered(filters);
   const cols = 6 + (canBid ? 1 : 0) + (readonly ? 0 : 1);
@@ -177,6 +209,7 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view:
           {allowCreate && !readonly && <button ref={addBtn} type="button" className="wk-btn" data-primary onClick={() => setNewOpen(true)} title="Kısayol: c"><Plus size={15} aria-hidden />Görev ekle</button>}
           {!hideMineFilter && <button type="button" className="wk-filter" aria-pressed={filters.mine} disabled={!employeeId} title={employeeId ? undefined : 'Hesabın bir çalışan kaydına bağlı değil'} onClick={() => setFilters((f) => ({ ...f, mine: !f.mine }))}><User size={14} aria-hidden />Bana atanan</button>}
           <button type="button" className="wk-filter" aria-pressed={filters.high} onClick={() => setFilters((f) => ({ ...f, high: !f.high }))}><Flame size={14} aria-hidden />Yüksek öncelik</button>
+          <button type="button" className="wk-filter" aria-pressed={!!filters.blocked} title="Açık engeli olan görevler" onClick={() => setFilters((f) => ({ ...f, blocked: !f.blocked }))}><Lock size={14} aria-hidden />Engelli{Object.keys(blocked).length > 0 && <span className="wk-chip">{Object.keys(blocked).length}</span>}</button>
           <span className="wk-grow" />
           <label className="wk-search"><Search size={15} aria-hidden /><span className="wk-sr">Görevlerde ara</span>
             <input type="search" placeholder="Görevlerde ara…" value={filters.q} onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))} /></label>
@@ -208,7 +241,7 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view:
         ) : visible.length === 0 ? (
           <div className="wk-empty"><h3>Filtreyle eşleşen görev yok</h3><p>Filtreleri gevşetmeyi ya da aramayı temizlemeyi dene.</p><button type="button" className="wk-btn" onClick={() => { setFilters(EMPTY_FILTERS); setViewId(null); }}>Filtreleri temizle</button></div>
         ) : view === 'board' ? (
-          <TaskBoard tasks={visible} nameOf={nameOf} today={today} selectedId={selId} pendingIds={pendingIds} readonly={readonly} onOpen={open} onMove={(t, to) => void move(t, to, true)} badges={badges} />
+          <TaskBoard tasks={visible} nameOf={nameOf} today={today} selectedId={selId} pendingIds={pendingIds} readonly={readonly} onOpen={open} onMove={(t, to) => void move(t, to, true)} badges={badges} blocked={blocked} gated={Object.fromEntries(Object.keys(gatedById).map((k) => [k, true]))} />
         ) : (
           <div className="wk-table-wrap">
             <table className="wk-task-table">
@@ -223,7 +256,7 @@ export function TaskWorkArea({ tasks, setTasks, team, projects, taskTypes, view:
                     {g.label && <tr className="wk-group-row"><th scope="colgroup" colSpan={cols}>{g.label} <span className="wk-chip">{g.tasks.length}</span></th></tr>}
                     {g.tasks.map((t) => (
                       <RowGroup key={t.id}>
-                        <TaskRow task={t} badges={badges[t.id]} assignee={nameOf(t.assignee_id)} today={today} selected={selId === t.id} pending={pendingIds.has(t.id)} readonly={readonly} cursor={cursor === t.id}
+                        <TaskRow task={t} badges={badges[t.id]} blockers={blocked[t.id] ?? 0} gated={!!gatedById[t.id]} assignee={nameOf(t.assignee_id)} today={today} selected={selId === t.id} pending={pendingIds.has(t.id)} readonly={readonly} cursor={cursor === t.id}
                           lead={!readonly ? <input type="checkbox" className="wk-select" aria-label={`${t.title} seç`} checked={checked.has(t.id)} onChange={() => toggleCheck(t.id)} onClick={(e) => e.stopPropagation()} /> : undefined}
                           category={[showProject ? projectName(t.project_id) : '', typeLabel(t), t.milestone_id ? `◆ ${milestones.find((m) => m.id === t.milestone_id)?.name ?? ''}` : ''].filter(Boolean).join(' · ')} onOpen={() => open(t)} onComplete={() => void complete(t)}
                           extra={canBid ? <button type="button" className="wk-btn" data-sm aria-expanded={bidOpen === t.id} onClick={() => setBidOpen(bidOpen === t.id ? null : t.id)}>İhale</button> : undefined} />

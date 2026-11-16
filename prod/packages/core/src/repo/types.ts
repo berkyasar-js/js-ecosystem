@@ -6,7 +6,7 @@ import type {
   TrelloImportResult, TrelloMode, TrelloPublicState,
   AttachmentInput, CheckItemCreate, CheckItemPatch, TaskAttachment, TaskBadges, TaskCheckItem, TaskChecklist, TaskComment,
   BrandCreate, EmployeeCreate, EmployeePatch, ProjectCreate, UserPrefs,
-  ActivityEntry, BrandPatch,
+  ActivityEntry, BrandPatch, ApprovalAction, ApprovalSubject,
 } from '@jscore/contracts';
 import type { TrelloSnapshot } from '../integrations/trello-map';
 
@@ -35,7 +35,11 @@ export interface Repo {
   listTaskTypes(): Promise<TaskType[]>;
   listTasks(filter?: { project_id?: string }): Promise<Task[]>;
   createTask(input: TaskCreate): Promise<Task>;
-  moveTask(id: string, state: TaskState): Promise<Task>;
+  /**
+   * Aşama değiştirir. 0018: engelli görev production+ aşamaya taşınamaz (owner/org_admin/pm hariç; settings.workflow.enforce_dependencies);
+   * eşleşen `task_stage` onay politikası varsa görev taşınmaz, onay açılır ve `PendingApprovalError` fırlatılır. `opts.approved` yan etki yolu (kapı atlanır).
+   */
+  moveTask(id: string, state: TaskState, opts?: { approved?: boolean }): Promise<Task>;
   /** Görev alanlarını (başlık, sorumlu, öncelik, bitiş) günceller; aşama değişimi için moveTask kullanılır. */
   updateTask(id: string, patch: TaskPatch): Promise<Task>;
   // görev ayrıntıları (0012): yorum, checklist, ek. Yazma başarısı sunucu onayıyla döner; hata fırlatır.
@@ -67,6 +71,8 @@ export interface Repo {
   listApprovals(): Promise<Approval[]>;
   createApproval(input: ApprovalCreate): Promise<Approval>;
   decideApproval(id: string, decision: 'approved' | 'rejected', note?: string): Promise<Approval>;
+  /** 0018: eylem için eşleşen onay politikası varsa onay açar (`gated`), yoksa çağıran doğrudan devam eder. */
+  gateApproval(action: ApprovalAction, title: string, subject: ApprovalSubject): Promise<{ gated: false } | { gated: true; approval: Approval }>;
   // comms
   listInbox(): Promise<Message[]>;
   listChannels(): Promise<Channel[]>;
@@ -125,6 +131,10 @@ export interface Repo {
 
 export class ForbiddenError extends Error {
   constructor(msg = 'Bu işlem için yetkin yok') { super(msg); this.name = 'ForbiddenError'; }
+}
+/** 0018: işlem yapılmadı, onay kartı açıldı (ör. riskli markada teslim). */
+export class PendingApprovalError extends Error {
+  constructor(public approvalId: string, msg = 'Bu işlem onaya gönderildi') { super(msg); this.name = 'PendingApprovalError'; }
 }
 export class NotFoundError extends Error {
   constructor(what = 'Kayıt') { super(`${what} bulunamadı`); this.name = 'NotFoundError'; }

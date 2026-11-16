@@ -1,4 +1,4 @@
-import { COLLECTIONS, type CollKey, type Records, type SaveInput } from '@jscore/contracts';
+import { COLLECTIONS, DEFAULT_APPROVAL_POLICIES, type CollKey, type Records, type SaveInput } from '@jscore/contracts';
 
 const J = 'org_jobs';
 const E = 'org_edit';
@@ -291,6 +291,23 @@ export function makeModuleSeed(): ModuleCols {
     { project_id: 'p1', employee_id: 'SK', role: 'manager' }, { project_id: 'p1', employee_id: 'SO', role: 'collaborator' }, { project_id: 'p1', employee_id: 'OE', role: 'admin' },
     { project_id: 'p3', employee_id: 'HO', role: 'manager' }, { project_id: 'p3', employee_id: 'DO', role: 'collaborator' },
     { project_id: 'p2', employee_id: 'OE', role: 'admin' }, { project_id: 'p2', employee_id: 'DO', role: 'collaborator' },
+  ]);
+  /* ───── 0018: bağımlılık, onay politikaları/adımları, delegasyon ───── */
+  c.task_links = rows('task_links', [
+    { from_task_id: 't1', to_task_id: 't12', kind: 'blocks', created_by: 'OE' },     // Wellana ana görsel → Kasım yenileme teklifi
+    { from_task_id: 't4', to_task_id: 't12', kind: 'blocks', created_by: 'OE' },     // Wellana metin seti → Kasım yenileme teklifi (2 engel)
+    { from_task_id: 't9', to_task_id: 't10', kind: 'blocks', created_by: 'SO' },     // Badem post seti → Reels kurgu
+    { from_task_id: 't7', to_task_id: 't3', kind: 'blocks', created_by: 'HO' },      // Çekim günü planı (arşiv) → offline kurgu (engeli kalkmış)
+    { from_task_id: 't11', to_task_id: 't3', kind: 'relates', created_by: 'DO' },
+  ]);
+  c.approval_policies = rows('approval_policies', DEFAULT_APPROVAL_POLICIES.map((p) => ({ ...p })));
+  // a6 (Anova kapsam dışı iş) "Kapsam değişikliği" zincirinde (ap3): PM adımını OE onayladı → owner sırada. a4 (₺19.500) bütçe eşiği altı: tek adım.
+  c.approval_steps = rows('approval_steps', [
+    { approval_id: 'a6', step_index: 0, approver_role: 'pm', approvers: [], mode: 'any', status: 'approved', decisions: [{ by: 'OE', answer: 'approved', at: '2026-10-13T12:00:00Z', note: 'Sözleşme dışı; teklifle ilerleyelim.' }], decided_by: 'OE', decided_at: '2026-10-13T12:00:00Z', note: 'Sözleşme dışı; teklifle ilerleyelim.', started_at: '2026-10-13T09:00:00Z', due_at: '2026-10-14T09:00:00Z', escalated_at: null, escalated_to: [] },
+    { approval_id: 'a6', step_index: 1, approver_role: 'owner', approvers: [], mode: 'any', status: 'pending', decisions: [], decided_by: null, decided_at: null, note: null, started_at: '2026-10-13T12:00:00Z', due_at: '2026-10-15T12:00:00Z', escalated_at: null, escalated_to: [] },
+  ]);
+  c.delegations = rows('delegations', [
+    { from_employee_id: 'OE', to_employee_id: 'SO', caps: ['approvals.decide', 'tasks.assign'], starts_at: '2026-10-13T00:00:00Z', ends_at: '2026-10-20T00:00:00Z', reason: 'Yıllık izin (13–19 Ekim)', status: 'active', created_by: 'u_owner', approval_id: null },
   ]);
   c.agent_policies = rows('agent_policies', [
     { agent: 'chair', mode: 'plan', monthly_budget_try: 1500, auto_approve: { actions: [], max_items: 0 }, note: 'Kurul planları onayla uygulanır.' },

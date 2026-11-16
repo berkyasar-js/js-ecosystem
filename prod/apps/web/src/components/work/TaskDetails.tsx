@@ -1,16 +1,20 @@
 'use client';
 import { useId } from 'react';
 import { Check, X } from 'lucide-react';
-import { TASK_STATES, TASK_STATE_LABELS, type Milestone, type Priority, type Task, type TaskBadges, type TaskPatch, type TaskState, type TeamMember } from '@jscore/contracts';
+import { TASK_STATES, TASK_STATE_LABELS, type Approval, type Milestone, type Priority, type Task, type TaskBadges, type TaskLink, type TaskLinkKind, type TaskPatch, type TaskState, type TeamMember } from '@jscore/contracts';
 import { Avatar } from '../avatar';
 import { useFeature } from '../session';
+import { DependencySection } from './deps';
 import { TaskExtras } from './task-extras';
 import { PRIORITY_LABEL, dueDay, isDone, isTrello } from './work-utils';
 
 /** Kontrollü ayrıntı paneli. Sunucu durumu üst bileşende kalır; pending / error görünür. */
-export function TaskDetails({ task, team, context, typeLabel, milestones = [], readonly = false, pending = false, error, onClose, onComplete, onStage, onPatch, onBadges, onLocalPatch, headingRef }: {
+export function TaskDetails({ task, team, context, typeLabel, milestones = [], readonly = false, pending = false, error, onClose, onComplete, onStage, onPatch, onBadges, onLocalPatch, headingRef, tasks = [], links = [], canLink = false, gated, onAddLink, onRemoveLink, onOpenTask }: {
   task: Task; team: TeamMember[]; context: string; typeLabel: string; milestones?: Milestone[]; readonly?: boolean; pending?: boolean; error?: string;
   onClose: () => void; onComplete: () => void; onStage: (s: TaskState) => void; onPatch: (p: TaskPatch) => void; onBadges: (taskId: string, b: TaskBadges) => void; onLocalPatch: (taskId: string, p: Partial<Task>) => void; headingRef?: React.Ref<HTMLHeadingElement>;
+  /** 0018: bağımlılıklar (arama havuzu = görünür görevler), bekleyen teslim onayı rozeti. */
+  tasks?: Task[]; links?: TaskLink[]; canLink?: boolean; gated?: Approval | null;
+  onAddLink?: (input: { from_task_id: string; to_task_id: string; kind: TaskLinkKind }) => void; onRemoveLink?: (id: string) => void; onOpenTask?: (id: string) => void;
 }) {
   const id = useId();
   const trelloOn = useFeature('tasks.trello_sync');
@@ -63,10 +67,12 @@ export function TaskDetails({ task, team, context, typeLabel, milestones = [], r
             </div>
           )}
         </div>
+        {gated && <p className="wk-detail-note" data-tone="info"><span className="wk-chip" data-tone="warn">Onayda</span> {gated.title} · {TASK_STATE_LABELS[gated.subject.to_state ?? 'delivery']} için onay bekliyor{gated.current_step !== null && gated.current_step !== undefined ? ` (adım ${gated.current_step + 1})` : ''}.</p>}
         {error && <p role="alert" className="wk-detail-note" data-tone="error">{error}</p>}
         {pending && <p role="status" className="wk-detail-note wk-muted">Değişiklik kaydediliyor…</p>}
         {readonly && <p className="wk-detail-note wk-muted">Bu rolle görevler salt okunurdur.</p>}
         <TaskExtras task={task} team={team} readonly={readonly} pending={pending} onPatch={onPatch} onBadges={onBadges} onLocalPatch={onLocalPatch} />
+        {onAddLink && onRemoveLink && <DependencySection task={task} tasks={tasks} links={links} canEdit={canLink && !readonly} busy={pending} onAdd={onAddLink} onRemove={onRemoveLink} onOpen={onOpenTask} />}
         <section className="wk-detail-section">
           <h3>Detaylar</h3>
           <ul className="wk-list">

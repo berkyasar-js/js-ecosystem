@@ -6,7 +6,7 @@ import { ROLES, ROLE_LABELS, audienceLabel, audienceMatches, canWriteColl, pendi
 import { OrbitDialog } from './dialog';
 import { MdLite } from './work/md-lite';
 import { Card, Chip, ModulePage, useAct } from './mod';
-import { useSession } from './session';
+import { useCan, useSession } from './session';
 import { useToast } from './toasts';
 import { Empty, fmtTime, useData } from './ui';
 
@@ -14,10 +14,12 @@ function useAnnouncements() {
   const { me, rev } = useSession();
   return useData(async (r) => {
     const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
-    const [list, acks, team, projects, members] = await Promise.all([safe(r.list('announcements')), safe(r.list('announcement_acks')), safe(r.team()), safe(r.listProjects()), safe(r.list('project_members'))]);
+    const [list, acks, team, projects, members, approvals] = await Promise.all([safe(r.list('announcements')), safe(r.list('announcement_acks')), safe(r.team()), safe(r.listProjects()), safe(r.list('project_members')), safe(r.listApprovals())]);
     const mine = team.find((t) => t.id === me?.employee_id);
     const viewer = { role: me?.role ?? 'client_viewer', team: mine?.team ?? null, employee_id: me?.employee_id ?? null, project_ids: (members as ProjectMember[]).filter((m) => m.employee_id === me?.employee_id).map((m) => m.project_id) } as const;
-    return { list: list as Announcement[], acks: acks as AnnouncementAck[], team, projects, viewer };
+    // 0018: benim açtığım, onay bekleyen duyurular (announcement_post)
+    const pending = approvals.filter((a) => a.status === 'pending' && a.action_type === 'announcement_post' && (!me?.employee_id || a.requested_by === me.employee_id));
+    return { list: list as Announcement[], acks: acks as AnnouncementAck[], team, projects, viewer, pending };
   }, [me?.id, rev]);
 }
 
@@ -64,15 +66,19 @@ export function AnnouncementsView({ tab }: { tab?: string }) {
   const { act, busy, Err } = useAct();
   const [compose, setCompose] = useState<{ title: string } | null>(null);
   useEffect(() => { const sp = new URLSearchParams(window.location.search); if (sp.get('new') === '1') setCompose({ title: sp.get('title') ?? '' }); }, []);
-  const canWrite = !!me && canWriteColl(me.role, 'announcements');
+  const canWrite = useCan('announcements.post') && !!me && canWriteColl(me.role, 'announcements');
   const manager = !!me && ['owner', 'org_admin', 'operations', 'hr', 'account', 'pm'].includes(me.role);
   return (
     <ModulePage id="announcements" title="Duyurular" sub="Ekip duyuruları, okundu onayı ve kısa anketler" tabs={[['feed', 'Akış'], ...(manager ? [['stats', 'Onay & anket sayımları'] as [string, string]] : [])]} tab={tab}
       actions={canWrite ? <button className="btn btn-primary btn-sm" onClick={() => setCompose({ title: '' })}><Plus size={14} aria-hidden /> Yeni duyuru</button> : undefined}>
       {(t) => {
         if (!q.data || !me) return <p className="text-sm text-muted">Yükleniyor…</p>;
-        const { list, acks, team, projects, viewer } = q.data;
+        const { list, acks, team, projects, viewer, pending } = q.data;
         const visible = list.filter((a) => audienceMatches(a.audience, viewer) || a.author_user_id === me.id || manager).sort((a, b) => b.created_at.localeCompare(a.created_at));
+        const pendingBox = pending.length > 0 && t === 'feed' ? (
+          <section className="card" aria-label="Onay bekleyen duyurular"><h2 className="font-bold">Onay bekleyen duyurularım</h2>
+            <ul className="mt-2 grid gap-1 text-sm">{pending.map((a) => <li key={a.id} className="flex flex-wrap items-center gap-2"><span className="chip chip-warn">Onayda</span><span>{a.title.replace(/^Duyuru: /, '')}</span>{a.current_step !== null && a.current_step !== undefined && <span className="text-xs text-muted">adım {a.current_step + 1}</span>}</li>)}</ul></section>
+        ) : null;
         const myAck = (id: string) => acks.find((x) => x.announcement_id === id && x.user_id === me.id);
         const ack = (a: Announcement, answer: string | null) => void act(() => repo!.save('announcement_acks', { announcement_id: a.id, user_id: me.id, user_name: me.name, answer, at: new Date().toISOString() }));
         if (t === 'stats') {
@@ -94,7 +100,7 @@ export function AnnouncementsView({ tab }: { tab?: string }) {
           );
         }
         return (
-          <div className="grid gap-4">{Err}
+          <div className="grid gap-4">{Err}{pendingBox}
             {visible.length === 0 ? <Empty>Henüz duyuru yok.</Empty> : visible.map((a) => { const k = myAck(a.id); return (
               <article key={a.id} className="card">
                 <div className="flex flex-wrap items-center gap-2"><Megaphone size={16} aria-hidden /><h2 className="font-bold">{a.title}</h2><span className="text-xs text-muted">{a.author_name} · {fmtTime(a.created_at)}</span><Chip>{audienceLabel(a.audience)}</Chip>{a.requires_ack && <Chip tone={k ? 'ok' : 'warn'}>{k ? 'Onayladın' : 'Onay gerekli'}</Chip>}</div>
@@ -139,7 +145,11 @@ export function ComposeDialog({ open, onClose, team, projects, initialTitle = ''
     if (pollOn && (pollQ.trim().length < 2 || options.length < 2)) { setErr('Anket için soru ve en az 2 seçenek gerekli.'); return; }
     setBusy(true); setErr(null);
     try {
-      await repo.save('announcements', { author_user_id: me.id, author_name: me.name, title: title.trim(), body: body.trim(), audience, requires_ack: requiresAck && !pollOn, poll: pollOn ? { question: pollQ.trim(), options: options.slice(0, 6) } : null });
+      const announcement = { author_user_id: me.id, author_name: me.name, title: title.trim(), body: body.trim(), audience, requires_ack: requiresAck && !pollOn, poll: pollOn ? { question: pollQ.trim(), options: options.slice(0, 6) } : null };
+      // 0018: "Duyuru yayını" onay politikası varsa duyuru onaylanınca yayımlanır.
+      const gate = await repo.gateApproval('announcement_post', `Duyuru: ${announcement.title}`, { announcement, labels: mode === 'all' ? ['herkes'] : [mode] });
+      if (gate.gated) { toast.success('Onaya gönderildi', 'Onaylanınca duyuru yayımlanır.'); onSaved?.(); onClose(); return; }
+      await repo.save('announcements', announcement);
       toast.success('Duyuru yayımlandı', title.trim()); onSaved?.(); onClose();
     } catch (ex) { setErr(ex instanceof Error ? ex.message : 'Yayımlanamadı'); } finally { setBusy(false); }
   };

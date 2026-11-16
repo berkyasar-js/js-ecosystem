@@ -4,6 +4,7 @@ import { dispatchEvent, type AutomationEvent, type DispatchResult } from '@jscor
 import { supabasePorts } from '@/lib/automations/supabase-ports';
 import { verifyHmac } from '@jscore/core/hmac';
 import { createAdmin } from '@jscore/core/supabase/admin';
+import { runEscalations } from '@jscore/core/approvals/escalate';
 
 export const maxDuration = 60;
 const BATCH = 100;
@@ -30,10 +31,12 @@ async function run(req: Request, raw: string) {
   const admin = createAdmin();
   if (!admin) return json({ error: 'Supabase servis rolü tanımlı değil (demo modunda olaylar DemoRepo içinde anında işlenir)' }, 503);
 
+  // 0018: SLA aşımı yükseltmesi (bekleyen onay adımı due_at + after_hours geçtiyse hedefe yükselt + bildir). Hata olay işlemeyi durdurmaz.
+  const escalation = await runEscalations(admin).catch((e: unknown) => ({ checked: 0, escalated: 0, notified: 0, errors: [e instanceof Error ? e.message : 'hata'] }));
   // Talep et: önce processed_at yazılır (aynı anda iki çağrı aynı olayı işlemez), sonra işlenir.
   const { data: pending, error: e1 } = await admin.from('events').select('id').is('processed_at', null).order('occurred_at').limit(BATCH);
   if (e1) return json({ error: e1.message }, 500);
-  if (!pending?.length) return json({ processed: 0, fired: 0 });
+  if (!pending?.length) return json({ processed: 0, fired: 0, escalation });
   const { data: claimed, error: e2 } = await admin.from('events').update({ processed_at: new Date().toISOString() }).in('id', pending.map((p) => p.id)).is('processed_at', null).select('*');
   if (e2) return json({ error: e2.message }, 500);
 
@@ -45,7 +48,7 @@ async function run(req: Request, raw: string) {
     try { for (const r of await dispatchEvent(ev, ports)) results.push({ ...r, event_id: ev.id as string }); }
     catch { failed++; /* olay işaretli kalır; hatalı kural günlüğe düşer, tek olay tüm partiyi durdurmaz */ }
   }
-  return json({ processed: claimed?.length ?? 0, fired: results.length, errors: results.filter((r) => r.status === 'error').length, failed });
+  return json({ processed: claimed?.length ?? 0, fired: results.length, errors: results.filter((r) => r.status === 'error').length, failed, escalation });
 }
 
 export async function POST(req: Request) { try { return await run(req, await req.text()); } catch (e) { return fail(e); } }

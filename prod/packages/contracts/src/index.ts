@@ -3,18 +3,8 @@ import { studioDraftOutputSchema } from './modules';
 import { navSettingsSchema, setupStateSchema } from './nav';
 
 /* ───────── Roller & izinler ───────── */
-export const ROLES = [
-  'owner', 'org_admin', 'operations', 'account', 'pm', 'creative', 'hr', 'payroll',
-  'finance', 'client_admin', 'client_viewer', 'freelancer', 'auditor', 'integration_admin',
-] as const;
-export type Role = (typeof ROLES)[number];
-
-export const ROLE_LABELS: Record<Role, string> = {
-  owner: 'Owner', org_admin: 'Org Admin', operations: 'Operasyon', account: 'Account', pm: 'PM',
-  creative: 'Creative', hr: 'İK', payroll: 'Bordro', finance: 'Finans', client_admin: 'Client Admin',
-  client_viewer: 'Client Viewer', freelancer: 'Freelancer', auditor: 'Denetçi', integration_admin: 'Entegrasyon Admin',
-};
-export const isClientRole = (r: Role) => r === 'client_admin' || r === 'client_viewer';
+export { ROLES, ROLE_LABELS, isClientRole, canDecideApproval, type Role } from './roles';
+import { ROLES, type Role } from './roles';
 
 export type Scope = 'own' | 'team' | 'brand' | 'org';
 /** Permission = organization + product + resource + action + scope */
@@ -49,16 +39,6 @@ export function hasPermission(role: Role, product: string, resource: string, act
   if (ok(extraGrants)) return true;
   if ((role === 'owner' || role === 'org_admin') && DEFAULT_DENY.some((d) => (!d.product || d.product === product) && (!d.resource || d.resource === resource))) return false;
   return ok(ROLE_GRANTS[role]);
-}
-
-/** Onay kararı: kim hangi required_role'ü karara bağlayabilir. */
-export function canDecideApproval(role: Role, required: Role): boolean {
-  if (role === 'owner') return true;
-  if (role === 'org_admin') return required !== 'owner';
-  if (role === required) return true;
-  if (required === 'pm') return role === 'operations' || role === 'account';
-  if (required === 'account') return role === 'operations';
-  return false;
 }
 
 /* ───────── Modül kataloğu (prototip ile aynı id'ler) ───────── */
@@ -208,21 +188,29 @@ export interface TaskAttachment extends SyncFields { id: string; org_id: string;
 /** TaskRow / pano kartı rozetleri (Trello rozetleri gibi). */
 export interface TaskBadges { comments: number; attachments: number; checkTotal: number; checkDone: number }
 export interface TaskType { key: string; label: string; sla_hours: number; default_minutes: number; unit_price_minor: number }
-export type ApprovalAction = 'content' | 'budget' | 'scope' | 'client_decision' | 'access' | 'agent';
+export type ApprovalAction = 'content' | 'budget' | 'scope' | 'client_decision' | 'access' | 'agent' | 'task_stage' | 'request_convert' | 'announcement_post';
 /** Ajan yazma önerisi (action_type='agent'): onaylanınca `executeAgentAction` uygular. */
 export interface AgentActionPayload {
   kind: 'board_plan_apply';
   project_id?: string; new_project?: { name: string; brand_id: string };
-  tasks: Array<{ title: string; assignee_id: string | null; priority: 'low' | 'normal' | 'high'; planned_minutes: number; due_at: string | null; labels: string[]; description?: string; milestone?: string | null }>;
+  tasks: Array<{ title: string; assignee_id: string | null; priority: 'low' | 'normal' | 'high'; planned_minutes: number; due_at: string | null; labels: string[]; description?: string; milestone?: string | null; /** 0018: bağımlı olduğu görev başlıkları → task_links(blocks) */ depends_on?: string[] }>;
   milestones?: Array<{ name: string; due_at: string | null }>;
   members?: string[];
 }
-export interface ApprovalSubject { project_id?: string; brand_id?: string; amount_minor?: number; version?: string; note?: string; bid_id?: string; task_id?: string; agent?: string; run_id?: string; payload?: AgentActionPayload; executed?: { at: string; task_ids: string[] } }
+export interface ApprovalSubject {
+  project_id?: string; brand_id?: string; amount_minor?: number; version?: string; note?: string; bid_id?: string; task_id?: string; agent?: string; run_id?: string; payload?: AgentActionPayload; executed?: { at: string; task_ids: string[] };
+  /** 0018: task_stage (hedef aşama), request_convert (talep + görev girdisi), announcement_post (duyuru), access (delegasyon). */
+  to_state?: TaskState; task_type?: string; labels?: string[]; request_ids?: string[]; task_input?: Record<string, unknown>; announcement?: Record<string, unknown>; delegation_id?: string;
+  /** Yan etki sonucu (teslim edilen görev, oluşturulan görev/duyuru/delegasyon). */
+  effect?: { at: string; task_id?: string; announcement_id?: string; delegation_id?: string };
+}
 export interface Approval {
   id: string; org_id: string; action_type: ApprovalAction; title: string;
   subject: ApprovalSubject;
   required_role: Role; status: 'pending' | 'approved' | 'rejected'; requested_by: string; decided_by: string | null; decided_at: string | null;
   decision_note: string | null; due_at: string; created_at: string;
+  /** 0018 onay zinciri: eşleşen politika, aktif adım dizini (approval_steps.step_index). */
+  policy_id?: string | null; current_step?: number | null;
 }
 export interface Channel { id: string; org_id: string; name: string; kind: 'channel' | 'dm' | 'inbox'; brand_id: string | null }
 export interface Message {
@@ -326,15 +314,16 @@ export const taskMoveSchema = z.object({ id: z.string().min(1), state: taskState
 export const agentActionPayloadSchema = z.object({
   kind: z.literal('board_plan_apply'),
   project_id: z.string().min(1).optional(), new_project: z.object({ name: z.string().trim().min(2).max(200), brand_id: z.string().min(1) }).optional(),
-  tasks: z.array(z.object({ title: z.string().trim().min(2).max(200), assignee_id: z.string().nullable(), priority: z.enum(['low', 'normal', 'high']), planned_minutes: z.number().int().min(0).max(100000), due_at: z.string().nullable(), labels: z.array(z.string()), description: z.string().optional(), milestone: z.string().nullable().optional() })).max(200),
+  tasks: z.array(z.object({ title: z.string().trim().min(2).max(200), assignee_id: z.string().nullable(), priority: z.enum(['low', 'normal', 'high']), planned_minutes: z.number().int().min(0).max(100000), due_at: z.string().nullable(), labels: z.array(z.string()), description: z.string().optional(), milestone: z.string().nullable().optional(), depends_on: z.array(z.string()).optional() })).max(200),
   milestones: z.array(z.object({ name: z.string().min(1), due_at: z.string().nullable() })).optional(),
   members: z.array(z.string()).optional(),
 });
 export const approvalCreateSchema = z.object({
-  action_type: z.enum(['content', 'budget', 'scope', 'client_decision', 'access', 'agent']),
+  action_type: z.enum(['content', 'budget', 'scope', 'client_decision', 'access', 'agent', 'task_stage', 'request_convert', 'announcement_post']),
   title: z.string().trim().min(2).max(200),
   subject: z.object({ project_id: z.string().optional(), brand_id: z.string().optional(), amount_minor: z.number().int().optional(), version: z.string().optional(), note: z.string().optional(), bid_id: z.string().optional(), task_id: z.string().optional(),
-    agent: z.string().optional(), run_id: z.string().optional(), payload: agentActionPayloadSchema.optional() }).default({}),
+    agent: z.string().optional(), run_id: z.string().optional(), payload: agentActionPayloadSchema.optional(),
+    to_state: taskStateSchema.optional(), task_type: z.string().optional(), labels: z.array(z.string()).optional(), request_ids: z.array(z.string()).optional(), task_input: z.record(z.string(), z.unknown()).optional(), announcement: z.record(z.string(), z.unknown()).optional(), delegation_id: z.string().optional() }).default({}),
   required_role: roleSchema,
   due_at: z.string().min(8),
 });
@@ -401,6 +390,10 @@ export const orgSettingsSchema = z.object({
   setup: setupStateSchema.optional(),
   /** Gezinme düzeni: grup sırası + rol başına gizlenen modüller (apps/admin → Organizasyon → Gezinme). */
   nav: navSettingsSchema.optional(),
+  /** 0018 yetki matrisi sapmaları: {rol: {yetki: bool}} (apps/admin → Kullanıcılar & Roller → Yetki matrisi). Yoksa varsayılan (DEFAULT_PERMISSIONS). */
+  permissions: z.record(z.string(), z.record(z.string(), z.boolean())).optional(),
+  /** 0018 iş akışı: enforce_dependencies (varsayılan açık) → engelli görev production+ aşamaya taşınamaz (owner/org_admin/pm hariç). */
+  workflow: z.object({ enforce_dependencies: z.boolean().optional() }).optional(),
 });
 export type OrgSettings = z.infer<typeof orgSettingsSchema>;
 export const orgSettingsPatchSchema = orgSettingsSchema.partial();
@@ -505,3 +498,4 @@ export interface TrelloImportResult {
 export const trelloMemberMapSchema = z.object({ member_map: z.record(z.string().min(1), z.string().min(1)) });
 export * from './board-chat';
 export * from './workspace';
+export * from './governance';

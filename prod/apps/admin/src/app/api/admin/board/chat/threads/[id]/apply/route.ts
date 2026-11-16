@@ -1,4 +1,4 @@
-import { agentSpendTry, boardApplySchema, decideAgentWrite, type AgentActionPayload, type AgentPolicy, type BoardApplyResult } from '@jscore/contracts';
+import { agentSpendTry, boardApplySchema, decideAgentWrite, planDependencyLinks, type AgentActionPayload, type AgentPolicy, type BoardApplyResult } from '@jscore/contracts';
 import { DEFAULT_USD_TRY } from '@jscore/core/agents/cap';
 import { json } from '@jscore/core/api';
 import { getRepo } from '@jscore/core/repo';
@@ -34,7 +34,7 @@ export const POST = adminRoute(async (ctx, req, { params }: P) => {
     const emp = t.assignee_name ? matchEmployee(t.assignee_name, snap.employees, hint ? { employee_id: hint.employee_id, employee_code: hint.employee_code } : undefined) : null;
     if (t.assignee_name && !emp) unmatched.add(t.assignee_name);
     const labels = Array.from(new Set(['kurul', ...(t.phase ? [t.phase.trim()] : [])].filter(Boolean)));
-    return { title: t.title, assignee_id: emp?.id ?? null, priority: t.priority, planned_minutes: t.estimate_minutes, due_at: dueAt(snap.today, t.due_in_days), labels, description: taskDescription(t.description, t.acceptance) ?? undefined, milestone: msOf(t) };
+    return { title: t.title, assignee_id: emp?.id ?? null, priority: t.priority, planned_minutes: t.estimate_minutes, due_at: dueAt(snap.today, t.due_in_days), labels, description: taskDescription(t.description, t.acceptance) ?? undefined, milestone: msOf(t), depends_on: t.depends_on };
   });
   const milestones = (plan.milestones ?? []).map((m) => ({ name: m.name, due_at: dueAt(snap.today, m.due_in_days) }));
   const members = Array.from(new Set(plan.assignments.map((a) => matchEmployee(a.employee_name, snap.employees, { employee_id: a.employee_id, employee_code: a.employee_code })?.id).filter((x): x is string => !!x)));
@@ -105,12 +105,17 @@ export const POST = adminRoute(async (ctx, req, { params }: P) => {
     const r = await sb.from('milestones').insert({ org_id: ctx.orgId, project_id: projectId, status: 'planned', due_at: m.due_at, data: { name: m.name } }).select('id').single();
     if (!r.error) msIds.set(m.name, r.data.id as string);
   }
-  const base = rows.map(({ milestone, ...r }) => ({ ...r, org_id: ctx.orgId, project_id: projectId, source_ref: ref, state: 'brief' as const, task_type: 'general', milestone_id: milestone ? msIds.get(milestone) ?? null : null }));
-  let ins = await sb.from('tasks').insert(base).select('id');
-  if (ins.error && /milestone_id/.test(ins.error.message)) ins = await sb.from('tasks').insert(base.map(({ milestone_id, ...r }) => { void milestone_id; return r; })).select('id');
-  if (ins.error && /description/.test(ins.error.message)) ins = await sb.from('tasks').insert(base.map(({ description, milestone_id, ...r }) => { void description; void milestone_id; return r; })).select('id');
+  const base = rows.map(({ milestone, depends_on, ...r }) => { void depends_on; return { ...r, org_id: ctx.orgId, project_id: projectId, source_ref: ref, state: 'brief' as const, task_type: 'general', milestone_id: milestone ? msIds.get(milestone) ?? null : null }; });
+  let ins = await sb.from('tasks').insert(base).select('id,title');
+  if (ins.error && /milestone_id/.test(ins.error.message)) ins = await sb.from('tasks').insert(base.map(({ milestone_id, ...r }) => { void milestone_id; return r; })).select('id,title');
+  if (ins.error && /description/.test(ins.error.message)) ins = await sb.from('tasks').insert(base.map(({ description, milestone_id, ...r }) => { void description; void milestone_id; return r; })).select('id,title');
   if (ins.error) { await audit(ctx, 'board.chat.apply', `board_thread:${id}`, { error: ins.error.message }, 'error'); throw new Error(ins.error.message); }
   const task_ids = (ins.data ?? []).map((r) => r.id as string);
+  // 0018: depends_on (başlık) → task_links(blocks); tablo yoksa sessizce atlanır
+  let linksCreated = 0;
+  const idByTitle = new Map((ins.data ?? []).map((r) => [r.title as string, r.id as string]));
+  const linkRows = planDependencyLinks(rows, idByTitle).map((l) => ({ ...l, org_id: ctx.orgId, created_by: null }));
+  if (linkRows.length) { const lr = await sb.from('task_links').insert(linkRows).select('id'); if (!lr.error) linksCreated = lr.data?.length ?? 0; }
   // Proje üyeleri: plandaki atananlar + görev sorumluları (katılımcı); tekrar varsa yok sayılır
   const want = Array.from(new Set([...members, ...rows.map((r) => r.assignee_id).filter((x): x is string => !!x)]));
   let added = 0;
@@ -119,7 +124,7 @@ export const POST = adminRoute(async (ctx, req, { params }: P) => {
     const rowsM = want.filter((e) => !have.has(e)).map((employee_id) => ({ org_id: ctx.orgId, project_id: projectId, employee_id, role: 'collaborator' }));
     if (rowsM.length) { const r = await sb.from('project_members').insert(rowsM); if (!r.error) added = rowsM.length; }
   }
-  const result: BoardApplyResult = { created: task_ids.length, project_id: projectId, project_name: projectName, unmatched_assignees: [...unmatched], task_ids, milestones: msIds.size, members: added };
-  await audit(ctx, 'board.chat.apply', `board_thread:${id}`, { message_id: message.id, project_id: projectId, created: task_ids.length, unmatched: result.unmatched_assignees, new_project: !!v.new_project, milestones: msIds.size, members: added, mode: 'act' });
+  const result: BoardApplyResult = { created: task_ids.length, project_id: projectId, project_name: projectName, unmatched_assignees: [...unmatched], task_ids, milestones: msIds.size, members: added, links: linksCreated };
+  await audit(ctx, 'board.chat.apply', `board_thread:${id}`, { message_id: message.id, project_id: projectId, created: task_ids.length, unmatched: result.unmatched_assignees, new_project: !!v.new_project, milestones: msIds.size, members: added, links: linksCreated, mode: 'act' });
   return ok(result, 201);
 });

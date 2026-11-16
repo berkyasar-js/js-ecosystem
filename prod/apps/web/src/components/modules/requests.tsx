@@ -21,8 +21,10 @@ export function RequestsView({ tab, embedded = false, brandIds }: { tab?: string
   const client = !!me && isClientRole(me.role);
   const q = useData(async (r) => {
     const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
-    const [requests, brands, projects, tasks, team] = await Promise.all([safe(r.list('requests')), safe(r.listBrands()), safe(r.listProjects()), safe(r.listTasks()), safe(r.team())]);
-    return { requests: requests as WorkRequest[], brands, projects, tasks, team };
+    const [requests, brands, projects, tasks, team, approvals] = await Promise.all([safe(r.list('requests')), safe(r.listBrands()), safe(r.listProjects()), safe(r.listTasks()), safe(r.team()), safe(r.listApprovals())]);
+    // 0018: talep → görev onayı bekleyen talepler (kartta "Onayda" rozeti)
+    const gated = new Set(approvals.filter((a) => a.status === 'pending' && a.action_type === 'request_convert').flatMap((a) => a.subject.request_ids ?? []));
+    return { requests: requests as WorkRequest[], brands, projects, tasks, team, gated };
   }, [rev]);
   const [wantNew, setWantNew] = useState<{ title: string } | null>(null);
   const [convert, setConvert] = useState<WorkRequest[] | null>(null);
@@ -31,7 +33,7 @@ export function RequestsView({ tab, embedded = false, brandIds }: { tab?: string
   useEffect(() => { const sp = new URLSearchParams(window.location.search); if (sp.get('new') === '1') setWantNew({ title: sp.get('title') ?? '' }); }, []);
   const body = (t: string) => {
     if (!q.data) return null;
-    const { requests, brands, projects, tasks, team } = q.data;
+    const { requests, brands, projects, tasks, team, gated } = q.data;
     const scoped = brandIds ? requests.filter((r) => r.brand_id && brandIds.includes(r.brand_id)) : requests;
     const rows = scoped.filter((r) => (kind ? r.kind === kind : true) && (t === 'all' ? true : t === 'open' ? r.status === 'new' || r.status === 'triaged' : t === 'converted' ? r.status === 'converted' : r.status === 'closed' || r.status === 'rejected'))
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -48,7 +50,7 @@ export function RequestsView({ tab, embedded = false, brandIds }: { tab?: string
         </div>
         {rows.length === 0 ? <Empty>Bu sekmede talep yok.</Empty> : (
           <ul className="grid gap-3" aria-label="Talepler">
-            {rows.map((r) => <RequestCard key={r.id} r={r} brands={brands} projects={projects} tasks={tasks} team={team} client={client} checked={checked.has(r.id)} onCheck={() => setChecked((s) => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} onConvert={() => setConvert([r])} />)}
+            {rows.map((r) => <RequestCard key={r.id} r={r} brands={brands} projects={projects} tasks={tasks} team={team} client={client} gated={gated.has(r.id)} checked={checked.has(r.id)} onCheck={() => setChecked((s) => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} onConvert={() => setConvert([r])} />)}
           </ul>
         )}
         <p className="text-xs text-muted">Bir görev birden çok talebi kapsayabilir; görev teslim ya da arşive geçince bağlı talepler kendiliğinden kapanır. Yeni talep ve görevler markanın <strong>alan sahibine</strong> (CRM → marka kartı) düşer.</p>
@@ -61,7 +63,7 @@ export function RequestsView({ tab, embedded = false, brandIds }: { tab?: string
   return <ModulePage id="requests" title="Talepler" sub="Hata, fikir, brief ve müşteri talepleri: triyaj → göreve dönüştür" tabs={TABS} tab={tab}>{(t) => (q.loading ? <p className="text-sm text-muted">Yükleniyor…</p> : body(t))}</ModulePage>;
 }
 
-function RequestCard({ r, brands, projects, tasks, team, client, checked, onCheck, onConvert }: { r: WorkRequest; brands: Brand[]; projects: Project[]; tasks: Task[]; team: TeamMember[]; client: boolean; checked: boolean; onCheck: () => void; onConvert: () => void }) {
+function RequestCard({ r, brands, projects, tasks, team, client, checked, onCheck, onConvert, gated = false }: { r: WorkRequest; brands: Brand[]; projects: Project[]; tasks: Task[]; team: TeamMember[]; client: boolean; checked: boolean; onCheck: () => void; onConvert: () => void; gated?: boolean }) {
   const { repo } = useSession();
   const { act, busy, Err } = useAct();
   const task = r.task_id ? tasks.find((t) => t.id === r.task_id) : null;
@@ -74,7 +76,7 @@ function RequestCard({ r, brands, projects, tasks, team, client, checked, onChec
       <div className="flex flex-wrap items-start gap-3">
         {!client && open && <input type="checkbox" className="mt-1" aria-label={`${r.title} seç`} checked={checked} onChange={onCheck} />}
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2"><strong>{r.title}</strong><Chip tone={TONE[r.status]}>{REQUEST_STATUS_LABELS[r.status]}</Chip><Chip tone={r.kind === 'bug' ? 'bad' : r.kind === 'client' ? 'brand' : undefined}>{REQUEST_KIND_LABELS[r.kind]}</Chip></div>
+          <div className="flex flex-wrap items-center gap-2"><strong>{r.title}</strong><Chip tone={TONE[r.status]}>{REQUEST_STATUS_LABELS[r.status]}</Chip><Chip tone={r.kind === 'bug' ? 'bad' : r.kind === 'client' ? 'brand' : undefined}>{REQUEST_KIND_LABELS[r.kind]}</Chip>{gated && <Chip tone="warn">Göreve dönüşüm onayda</Chip>}</div>
           {r.body && <p className="mt-1 whitespace-pre-wrap text-sm text-muted">{r.body}</p>}
           <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted">
             <span>{r.requester_name || nameOf(team, r.requester_employee_id)}</span><span>· {fmtDate(r.created_at)}</span>
@@ -163,7 +165,15 @@ function ConvertDialog({ reqs, onClose, brands, projects, tasks, team, today }: 
       if (mode === 'new') {
         if (!project) throw new Error('Proje seçilmeli');
         const input = requestToTask({ ...first, title, body: reqs.map((r) => r.body).filter(Boolean).join('\n\n— — —\n\n') }, { project_id: project, today, brand, assignee_id: assignee || null });
-        const t = await repo.createTask({ project_id: input.project_id, title: input.title, assignee_id: input.assignee_id, priority: input.priority, due_at: input.due_at, task_type: input.task_type, qty: 1, source_ref: reqs.length > 1 ? `request:${reqs.map((r) => r.id).join(',')}` : input.source_ref, state: 'brief' });
+        const taskInput = { project_id: input.project_id, title: input.title, assignee_id: input.assignee_id, priority: input.priority, due_at: input.due_at, task_type: input.task_type, qty: 1, source_ref: reqs.length > 1 ? `request:${reqs.map((r) => r.id).join(',')}` : input.source_ref, state: 'brief' as const };
+        // 0018: "Talep → görev" onay politikası varsa görev onaylanınca açılır (talep 'triaged' kalır, kartta "Onayda").
+        const gate = await repo.gateApproval('request_convert', `Talep → görev: ${title}`, { project_id: project, brand_id: first.brand_id ?? undefined, task_type: input.task_type, labels: ['talep', ...new Set(reqs.map((r) => r.kind))], request_ids: reqs.map((r) => r.id), task_input: { ...taskInput, description: input.description, labels: ['talep', ...new Set(reqs.map((r) => r.kind))] } });
+        if (gate.gated) {
+          for (const r of reqs) if (r.status === 'new') await repo.save('requests', { id: r.id, status: 'triaged' }).catch(() => undefined);
+          toast.success('Onaya gönderildi', 'Onaylanınca görev açılır ve talepler bağlanır.');
+          bump(); onClose(); return;
+        }
+        const t = await repo.createTask(taskInput);
         await repo.updateTask(t.id, { description: input.description, labels: ['talep', ...new Set(reqs.map((r) => r.kind))] }).catch(() => undefined);
         taskId = t.id;
       } else if (!taskId) throw new Error('Görev seçilmeli');

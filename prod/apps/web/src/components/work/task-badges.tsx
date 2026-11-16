@@ -1,17 +1,19 @@
 'use client';
-import { AlignLeft, CheckSquare, MessageSquare, Paperclip } from 'lucide-react';
+import { AlignLeft, CheckSquare, Lock, MessageSquare, Paperclip } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Task, TaskAttachment, TaskBadges } from '@jscore/contracts';
 import { useSession } from '../session';
 import { useAttachmentUrl } from './use-task-extras';
 
 /** Trello benzeri küçük rozetler: açıklama · checklist 4/12 · yorum · ek. Hepsi sıfırsa hiçbir şey çizmez. */
-export function TaskBadgeList({ task, badges }: { task: Task; badges?: TaskBadges }) {
+export function TaskBadgeList({ task, badges, blockers = 0, gated = false }: { task: Task; badges?: TaskBadges; blockers?: number; gated?: boolean }) {
   const desc = !!task.description?.trim();
   const b = badges;
-  if (!desc && !(b && (b.comments || b.attachments || b.checkTotal))) return null;
+  if (!desc && !blockers && !gated && !(b && (b.comments || b.attachments || b.checkTotal))) return null;
   return (
     <span className="wk-x-badges">
+      {blockers > 0 && <span className="wk-x-badge" data-blocked title={`${blockers} açık engel: önce bağımlı olduğu görevler bitmeli`}><Lock size={13} aria-hidden />{blockers} engel</span>}
+      {gated && <span className="wk-x-badge" data-gated title="Aşama geçişi onay bekliyor">Onayda</span>}
       {desc && <span className="wk-x-badge" title="Açıklaması var"><AlignLeft size={13} aria-hidden /><span className="wk-sr">Açıklaması var</span></span>}
       {!!b?.checkTotal && <span className="wk-x-badge" data-done={b.checkDone === b.checkTotal} title={`Checklist ${b.checkDone}/${b.checkTotal}`}><CheckSquare size={13} aria-hidden />{b.checkDone}/{b.checkTotal}<span className="wk-sr"> checklist maddesi tamamlandı</span></span>}
       {!!b?.comments && <span className="wk-x-badge" title={`${b.comments} yorum`}><MessageSquare size={13} aria-hidden />{b.comments}<span className="wk-sr"> yorum</span></span>}

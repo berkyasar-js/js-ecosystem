@@ -326,3 +326,25 @@ button.wk-chip { cursor: pointer; }
 .wk-kbd { display: inline-block; min-width: 22px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--js-work-control-line); background: var(--js-work-pressed); font: 600 12px/1.4 ui-monospace, monospace; text-align: center; }
 .wk-keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 20px; }
 .wk-keys li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--js-work-control-line); font-size: 13px; }
+
+/* ───── 0018: bağımlılık / onay rozetleri, zincir görünümü ───── */
+.wk-chip[data-tone="warn"] { color: var(--js-work-urgent); border-color: var(--js-work-urgent-dot); background: transparent; }
+.wk-chip[data-tone="bad"] { color: var(--js-danger); border-color: var(--js-danger); background: transparent; }
+.wk-x-badge[data-blocked] { color: var(--js-work-urgent); }
+.wk-x-badge[data-gated] { color: var(--js-work-accent-text); border: 1px solid currentColor; border-radius: 6px; padding: 1px 6px; }
+.wk-card[data-blocked] { border-left: 3px solid var(--js-work-urgent-dot); }
+.wk-detail-note[data-tone="info"] { color: var(--js-work-text); }
+.wk-dep-add { display: grid; gap: 6px; margin-top: 8px; position: relative; }
+.wk-dep-hits { list-style: none; margin: 0; padding: 4px; border: 1px solid var(--js-work-border); border-radius: 8px; background: var(--js-work-column); display: grid; gap: 2px; }
+.wk-dep-hits button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 8px; border-radius: 6px; border: 0; background: transparent; color: var(--js-work-text); font: inherit; font-size: 13px; cursor: pointer; }
+.wk-dep-hits button:hover, .wk-dep-hits button:focus-visible { background: var(--js-work-chip); }
+.wk-dep-hits button:disabled { opacity: .5; cursor: not-allowed; }
+.wk-dep-hits button span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-chain { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.wk-chain li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--js-work-border); background: var(--js-work-column); position: relative; }
+.wk-chain li[data-blocked] { border-left: 3px solid var(--js-work-urgent-dot); }
+.wk-chain li[data-cycle] { border-style: dashed; }
+.wk-chain-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--js-work-subtle); flex: none; }
+.wk-chain li[data-blocked] .wk-chain-dot { background: var(--js-work-urgent-dot); }
+.wk-chain .wk-task-title { font-size: 13px; }
+.wk-chain-by { flex-basis: 100%; padding-left: 16px; }

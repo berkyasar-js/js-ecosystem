@@ -76,6 +76,6 @@ export interface BoardApplyResult {
   created: number; project_id: string; project_name: string; unmatched_assignees: string[]; task_ids: string[]; demo?: boolean;
   /** 0017: CHAIR 'Uygula' modunda değilse görevler yerine bir onay kartı açılır; owner onaylayınca uygulanır. */
   pending_approval?: boolean; approval_id?: string;
-  /** Oluşturulan kilometre taşı ve proje üyesi sayısı. */
-  milestones?: number; members?: number;
+  /** Oluşturulan kilometre taşı, proje üyesi ve (0018) bağımlılık bağı sayısı. */
+  milestones?: number; members?: number; links?: number;
 }

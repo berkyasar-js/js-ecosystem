@@ -7,8 +7,10 @@ import {
   BID_ROLES, TOKEN_ADMIN_ROLES, bidProposalSchema, checkTokenPolicy, tokenCreateSchema, type AccessToken, type BidAssignResult, type BidProposal, type TaskAssignment, type TaskBid, type TokenCreate,
   DEFAULT_PREFS, brandCreateSchema, employeeCreateSchema, employeePatchSchema, projectCreateSchema, userPrefsPatchSchema, userPrefsSchema, type BrandCreate, type EmployeeCreate, type EmployeePatch, type ProjectCreate, type TeamMember, type UserPrefs,
   brandPatchSchema, buildTimeline, requestsToClose, type ActivityEntry, type BrandPatch, type WorkRequest,
+  applyEscalation, blockersOf, can, escalationsDue, moveNeedsOverride, newlyUnblocked, stepRecipients, type ApprovalAction, type ApprovalPolicy, type ApprovalStep, type ApprovalSubject, type TaskLink,
 } from '@jscore/contracts';
-import { executeAgentAction, isAgentApproval } from '../agents/execute';
+import { createApprovalWithChain, decideWithChain, matchPolicy, notifyEmployees, policySubjectOf, type ApprovalIO } from '../approvals/engine';
+import { assertCan, assertCanEditTask, guardCollectionSave, invalidatePermissionCache, permissionContext } from '../permissions';
 import { TRELLO_FIXTURE } from '../integrations/trello-fixture';
 import { addDetails, emptyDetailsSummary, syncCardDetails, type DetailStore } from '../integrations/trello-details';
 import { memberKey, resolveEmployee, runImport, type CardDetailsHook, type StoreTask, type TaskDraft, type TrelloSnapshot, type TrelloStore } from '../integrations/trello-map';
@@ -19,7 +21,7 @@ import { DEMO_ACCOUNTS, ORG_JOBS, accountToMe, makeDemoDb, type DemoAccount, typ
 import { makeModuleSeed } from '../demo-seed-modules';
 import { offerToEmployee } from '../domain';
 import { validateRecord } from './validate';
-import { ForbiddenError, NotFoundError, type Repo } from './types';
+import { ForbiddenError, NotFoundError, PendingApprovalError, type Repo } from './types';
 
 export interface KV { getItem(k: string): string | null; setItem(k: string, v: string): void }
 export const DEMO_STORAGE_KEY = 'js_demo_db_v1';
@@ -137,6 +139,7 @@ export class DemoRepo implements Repo {
   }
   async createProject(input: ProjectCreate): Promise<Project> {
     if (!['owner', 'org_admin', 'operations', 'account', 'pm'].includes(this.role)) throw new ForbiddenError();
+    await assertCan(this, await this.me(), 'projects.create');
     const v = projectCreateSchema.parse(input);
     const db = this.db();
     if (!db.brands.some((b) => b.id === v.brand_id && b.org_id === this.orgId)) throw new NotFoundError('Marka');
@@ -171,6 +174,7 @@ export class DemoRepo implements Repo {
   async createTask(input: TaskCreate): Promise<Task> {
     if (isClientRole(this.role) || this.role === 'auditor') throw new ForbiddenError();
     const v = taskCreateSchema.parse(input);
+    await assertCan(this, await this.me(), 'tasks.create', { projectId: v.project_id });
     const db = this.db();
     const project = db.projects.find((p) => p.id === v.project_id && p.org_id === this.orgId);
     if (!project) throw new NotFoundError('Proje');
@@ -185,16 +189,39 @@ export class DemoRepo implements Repo {
     this.persist(db);
     return task;
   }
-  async moveTask(id: string, state: TaskState): Promise<Task> {
+  /** 0018: yetki → bağımlılık koruması (settings.workflow.enforce_dependencies) → task_stage onay kapısı → yazma → son engel kalkınca task.unblocked + bildirim. */
+  async moveTask(id: string, state: TaskState, opts: { approved?: boolean } = {}): Promise<Task> {
     if (isClientRole(this.role) || this.role === 'auditor') throw new ForbiddenError();
     const db = this.db();
     const t = db.tasks.find((x) => x.id === id && x.org_id === this.orgId);
     if (!t) throw new NotFoundError('Görev');
+    if (t.state === state) return { ...t };
+    const me = await this.me();
+    const ctx = await assertCanEditTask(this, me, t);
+    if (!can(me, 'tasks.move_stage', ctx)) throw new ForbiddenError('Aşama değiştirme yetkin yok');
+    const links = this.col(db, 'task_links') as TaskLink[];
+    if (!opts.approved) {
+      if (db.settings[this.orgId]?.workflow?.enforce_dependencies !== false) {
+        const n = blockersOf(id, links, db.tasks).length;
+        if (moveNeedsOverride(state, n) && !can(me, 'tasks.override_block', ctx)) throw new ForbiddenError(`Görev engelli: önce bağımlı olduğu ${n} görev teslim edilmeli`);
+      }
+      const brand = db.projects.find((p) => p.id === t.project_id)?.brand_id;
+      const gate = await this.gateApproval('task_stage', `Teslim onayı: ${t.title}`, { task_id: t.id, project_id: t.project_id, to_state: state, task_type: t.task_type, labels: t.labels, brand_id: brand });
+      if (gate.gated) throw new PendingApprovalError(gate.approval.id, 'Bu aşama geçişi onaya gönderildi (onaylanınca uygulanır)');
+    }
     const before = { ...t };
     t.state = state;
     this.log(db, 'task.move', `tasks/${id}`, { state });
     await this.fire(db, 'tasks.update', 'tasks', t, before);
     this.closeRequests(db, t);
+    if (['delivery', 'archive'].includes(state) && !['delivery', 'archive'].includes(before.state)) {
+      // Son engel kalkan görevler: olay (otomasyon tetikleyicisi) + sorumluya bildirim. Bildirim ayrı yazma döngüsüdür (storage) → önce bu db kalıcılaşır.
+      const unblocked = newlyUnblocked(id, links, db.tasks).map((uid) => db.tasks.find((x) => x.id === uid)!);
+      for (const u of unblocked) await this.fire(db, 'task.unblocked', 'tasks', { id: u.id, title: u.title, project_id: u.project_id, assignee_id: u.assignee_id, unblocked_by: id });
+      this.persist(db);
+      for (const u of unblocked) if (u.assignee_id) await notifyEmployees(this, [u.assignee_id], { kind: 'unblocked', title: `Önün açıldı: ${u.title}`, body: `"${t.title}" tamamlandı; bu görev artık engelli değil.`, href: `/app/projects/${u.project_id}?task=${u.id}` });
+      return { ...t };
+    }
     this.persist(db);
     return { ...t };
   }
@@ -209,6 +236,7 @@ export class DemoRepo implements Repo {
     const db = this.db();
     const t = db.tasks.find((x) => x.id === id && x.org_id === this.orgId);
     if (!t) throw new NotFoundError('Görev');
+    await assertCanEditTask(this, await this.me(), t);
     const before = { ...t };
     Object.assign(t, v);
     this.log(db, 'task.update', `tasks/${id}`, v);
@@ -346,20 +374,65 @@ export class DemoRepo implements Repo {
   }
 
   async listApprovals() {
-    return this.db().approvals.filter((a) => {
+    const db = this.db();
+    this.escalateOverdue(db);
+    return db.approvals.filter((a) => {
       if (a.org_id !== this.orgId) return false;
       if (!isClientRole(this.role)) return true;
       return a.required_role.startsWith('client') && !!a.subject.brand_id && this.account.brand_ids.includes(a.subject.brand_id);
     });
   }
+  /** SLA aşımı yükseltmesi (demo: cron yerine listelemede çalışır; Supabase'de /api/events/dispatch). */
+  private escalateOverdue(db: DemoDb) {
+    const steps = this.col(db, 'approval_steps') as ApprovalStep[];
+    const due = escalationsDue(db.approvals.filter((a) => a.org_id === this.orgId), steps, this.col(db, 'approval_policies') as ApprovalPolicy[], this.now());
+    if (!due.length) return;
+    for (const e of due) {
+      const i = steps.findIndex((s) => s.id === e.step.id);
+      if (i < 0) continue;
+      steps[i] = applyEscalation(steps[i], e, this.now());
+      const a = db.approvals.find((x) => x.id === e.approval_id)!;
+      const rows = this.col(db, 'notifications');
+      for (const emp of stepRecipients({ approver_role: null, approvers: [], escalated_to: steps[i].escalated_to }, db.team)) rows.push({ id: this.nextId('n', rows.map((r) => r.id)), org_id: this.orgId, created_at: this.now(), employee_id: emp, kind: 'approval', title: `SLA aşıldı, sana yükseltildi: ${a.title}`, body: `Adım ${steps[i].step_index + 1} süresinde karara bağlanmadı.`, read: false, href: '/app/approvals' });
+      this.log(db, 'approval.escalated', `approvals/${a.id}`, { step: steps[i].step_index, to: steps[i].escalated_to });
+    }
+    this.persist(db);
+  }
+  /* ───────── 0018 onay zinciri (approvals/engine ile ortak) ───────── */
+  private approvalIO(): ApprovalIO {
+    const self = this;
+    return {
+      repo: this, now: () => this.now(),
+      insertApproval: async (row) => {
+        const db = self.db();
+        const a: Approval = {
+          id: self.nextId('a', db.approvals.map((x) => x.id)), org_id: self.orgId, action_type: row.action_type, title: row.title, subject: row.subject as ApprovalSubject,
+          required_role: row.required_role, status: 'pending', requested_by: row.requested_by ?? self.account.employee_id ?? self.account.id, decided_by: null, decided_at: null,
+          decision_note: null, due_at: row.due_at, created_at: self.now(), policy_id: row.policy_id, current_step: row.current_step,
+        };
+        db.approvals.push(a);
+        await self.fire(db, 'approvals.insert', 'approvals', a);
+        self.persist(db);
+        return { ...a };
+      },
+      patchApproval: async (id, patch) => {
+        const db = self.db(); const a = db.approvals.find((x) => x.id === id && x.org_id === self.orgId);
+        if (!a) throw new NotFoundError('Onay');
+        const before = { ...a }; Object.assign(a, patch);
+        if (patch.status) { self.log(db, `approval.${patch.status}`, `approvals/${id}`, { note: a.decision_note }); await self.fire(db, 'approvals.update', 'approvals', a, before); }
+        self.persist(db);
+        return { ...a };
+      },
+      getApproval: async (id) => { const a = self.db().approvals.find((x) => x.id === id && x.org_id === self.orgId); return a ? { ...a } : null; },
+      moveTaskApproved: (taskId, state) => self.moveTask(taskId, state, { approved: true }),
+    };
+  }
   async createApproval(input: ApprovalCreate): Promise<Approval> {
     if (isClientRole(this.role)) throw new ForbiddenError();
     const v = approvalCreateSchema.parse(input);
-    const db = this.db();
-    const a = await this.pushApproval(db, v);
-    this.persist(db);
-    return a;
+    return createApprovalWithChain(this.approvalIO(), v, await this.me());
   }
+  /** Eski tek adımlı yol (ihale onay kapısı gibi sistem kaynaklı onaylar): politika aranmaz. */
   private async pushApproval(db: DemoDb, v: ReturnType<typeof approvalCreateSchema.parse>): Promise<Approval> {
     const a: Approval = {
       id: this.nextId('a', db.approvals.map((x) => x.id)), org_id: this.orgId, action_type: v.action_type, title: v.title, subject: v.subject,
@@ -370,32 +443,24 @@ export class DemoRepo implements Repo {
     await this.fire(db, 'approvals.insert', 'approvals', a);
     return a;
   }
+  async gateApproval(action: ApprovalAction, title: string, subject: ApprovalSubject) {
+    const policy = await matchPolicy(this, action, await policySubjectOf(this, subject));
+    if (!policy) return { gated: false as const };
+    const open = subject.task_id ? this.db().approvals.find((a) => a.org_id === this.orgId && a.status === 'pending' && a.action_type === action && a.subject.task_id === subject.task_id && a.subject.to_state === subject.to_state) : null;
+    if (open) return { gated: true as const, approval: { ...open } };
+    const approval = await this.createApproval({ action_type: action, title, subject, required_role: policy.steps[0]?.role ?? 'owner', due_at: addDaysIso(this.now(), 2) });
+    return { gated: true as const, approval };
+  }
   async decideApproval(id: string, decision: 'approved' | 'rejected', note?: string): Promise<Approval> {
-    const db = this.db();
-    const a = db.approvals.find((x) => x.id === id && x.org_id === this.orgId);
-    if (!a) throw new NotFoundError('Onay');
-    if (a.status !== 'pending') throw new ForbiddenError('Bu onay zaten karara bağlanmış');
-    if (!canDecideApproval(this.role, a.required_role)) throw new ForbiddenError(`Bu onay ${a.required_role} rolü içindir`);
-    const before = { ...a };
-    a.status = decision; a.decided_by = `u_${this.account.id}`; a.decided_at = this.now(); a.decision_note = note ?? null;
-    this.log(db, `approval.${decision}`, `approvals/${id}`, { note: note ?? null });
-    await this.fire(db, 'approvals.update', 'approvals', a, before);
+    const me = await this.me();
+    const r = await decideWithChain(this.approvalIO(), id, decision, note, me, { matrixAllows: can(me, 'approvals.decide', await permissionContext(this, me)) });
     // Onay kapısı: yüksek öncelikli ihale ataması onaylanınca gerçekleşir (SQL'de approvals tetikleyicisi).
-    if (decision === 'approved' && a.subject.bid_id) {
-      const bid = (db.taskBids ??= []).find((b) => b.id === a.subject.bid_id && b.status === 'open');
-      if (bid) await this.finalizeAssignment(db, bid);
+    if (r.outcome === 'approved' && r.approval.subject.bid_id) {
+      const db = this.db();
+      const bid = (db.taskBids ??= []).find((b) => b.id === r.approval.subject.bid_id && b.status === 'open');
+      if (bid) { await this.finalizeAssignment(db, bid); this.persist(db); }
     }
-    this.persist(db);
-    // 0017: onaylanan ajan önerisi onaylayanın yetkisiyle uygulanır; sonuç subject.executed'a yazılır.
-    if (decision === 'approved' && isAgentApproval(a)) {
-      const r = await executeAgentAction(this, a.subject.payload, { today: this.now().slice(0, 10) });
-      const db2 = this.db(); const a2 = db2.approvals.find((x) => x.id === id)!;
-      a2.subject = { ...a2.subject, executed: { at: this.now(), task_ids: r.task_ids } };
-      this.log(db2, 'agent.execute', `approvals/${id}`, { agent: a2.subject.agent, tasks: r.task_ids.length, project: r.project_id });
-      this.persist(db2);
-      return { ...a2 };
-    }
-    return { ...a };
+    return r.approval;
   }
 
   async listInbox() {
@@ -435,6 +500,7 @@ export class DemoRepo implements Repo {
     const db = this.db();
     db.settings[this.orgId] = { ...db.settings[this.orgId], ...v };
     this.persist(db);
+    invalidatePermissionCache(this);
     return db.settings[this.orgId];
   }
   async getConnect(): Promise<ConnectData> {
@@ -784,15 +850,17 @@ export class DemoRepo implements Repo {
     }
     const merged = { ...(cur ?? {}), ...input } as Records[K];
     validateRecord(kind, merged);
+    await guardCollectionSave(this, await this.me(), kind, merged as unknown as Record<string, unknown>, (cur as unknown as Record<string, unknown> | undefined) ?? null);
+    if (kind === 'delegations' || kind === 'project_members') invalidatePermissionCache(this);
     if (cur) {
       const before = { ...cur };
-      Object.assign(cur, input);
+      Object.assign(cur, merged);
       this.log(db, `${kind}.update`, `${kind}/${cur.id}`);
       if (kind !== 'automation_runs' && kind !== 'automations') await this.fire(db, `${COLLECTIONS[kind].table}.update`, COLLECTIONS[kind].table, cur, before);
       this.persist(db);
       return { ...cur };
     }
-    const rec = { ...input, id: this.nextId(COLLECTIONS[kind].prefix, rows.map((r) => r.id)), org_id: this.orgId, created_at: this.now() } as Records[K];
+    const rec = { ...merged, id: this.nextId(COLLECTIONS[kind].prefix, rows.map((r) => r.id)), org_id: this.orgId, created_at: this.now() } as Records[K];
     rows.push(rec);
     this.log(db, `${kind}.create`, `${kind}/${rec.id}`);
     // Otomasyon çalıştırma günlüğü / otomasyonların kendisi olay üretmez (döngü önleme).

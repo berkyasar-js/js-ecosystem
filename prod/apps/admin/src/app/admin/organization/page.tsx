@@ -6,8 +6,9 @@ import { Async, PageHeader, Tabs } from '@/components/ui';
 import { Msg, errText } from '@/components/admin-ui';
 import { useSession } from '@/components/session';
 import { useAdminSettings } from '@/lib/client';
+import { ApprovalPoliciesEditor } from '@/components/approval-policies';
 
-type Tab = 'general' | 'nav' | 'data';
+type Tab = 'general' | 'nav' | 'approvals' | 'data';
 
 export default function Organization() {
   const st = useAdminSettings();
@@ -24,8 +25,8 @@ export default function Organization() {
   };
   return (
     <>
-      <PageHeader title="Organizasyon" sub="Ad, logo, saat dilimi, para birimi, çalışma saatleri, gezinme düzeni, veri dökümü" />
-      <Tabs<Tab> tabs={[['general', 'Genel'], ['nav', 'Gezinme'], ['data', 'Veri']]} value={tab} onChange={setTab} />
+      <PageHeader title="Organizasyon" sub="Ad, logo, saat dilimi, para birimi, çalışma saatleri, gezinme düzeni, onay akışları, veri dökümü" />
+      <Tabs<Tab> tabs={[['general', 'Genel'], ['nav', 'Gezinme'], ['approvals', 'Onay akışları'], ['data', 'Veri']]} value={tab} onChange={setTab} />
       <Msg m={msg} />
       <Async q={{ data: st.settings, error: st.error, loading: st.loading }}>{(settings) => (
         <div className="grid max-w-3xl gap-5">
@@ -43,6 +44,14 @@ export default function Organization() {
               {g.logo_url && /^https:\/\//.test(g.logo_url) && <img src={g.logo_url} alt="Logo önizleme" className="h-10 w-auto self-start rounded bg-white/5 p-1" />}
               <button className="btn btn-primary w-fit">Kaydet</button>
             </form>
+          )}
+          {tab === 'approvals' && (
+            <>
+              <section className="card grid gap-3"><h2 className="font-bold">İş akışı</h2>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={settings.workflow?.enforce_dependencies !== false} onChange={(e) => { void st.save({ workflow: { ...settings.workflow, enforce_dependencies: e.target.checked } }).then(() => setMsg({ ok: true, text: 'İş akışı ayarı kaydedildi.' }), (er: unknown) => setMsg({ ok: false, text: errText(er) })); }} /> Bağımlılıkları zorla: engelli görev (teslim edilmemiş “engelliyor” bağı olan) üretim ve sonrasına taşınamaz; owner / org admin / PM geçebilir.</label>
+              </section>
+              <ApprovalPoliciesEditor />
+            </>
           )}
           {tab === 'nav' && <NavEditor nav={settings.nav ?? {}} onSave={async (nav) => { try { await st.save({ nav }); setMsg({ ok: true, text: 'Gezinme düzeni kaydedildi; kullanıcı uygulamasında bir sonraki yenilemede etkin.' }); } catch (e) { setMsg({ ok: false, text: errText(e) }); } }} />}
           {tab === 'data' && (

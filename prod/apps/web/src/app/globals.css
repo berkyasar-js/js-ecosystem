@@ -341,3 +341,15 @@ main .grid:not([class*='grid-cols']) { grid-template-columns: minmax(0, 1fr); }
 .app-card .fav { position: absolute; right: 12px; top: 12px; background: none; border: 0; cursor: pointer; color: var(--muted); padding: 6px; border-radius: 8px; }
 .app-card .fav[aria-pressed="true"] { color: #ffb020; }
 .app-card .fav:hover { background: rgba(144,108,255,.12); }
+
+/* ───── 0018: onay zinciri stepper (Onay Merkezi) ───── */
+.ap-steps { list-style: none; margin: 0; padding: 10px 0 0; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: flex-start; }
+.ap-steps li { display: flex; align-items: flex-start; gap: 8px; min-width: 160px; max-width: 320px; }
+.ap-step-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; border: 1px solid var(--line); color: var(--muted); background: transparent; }
+.ap-steps li[data-status="approved"] .ap-step-dot { background: #203e34; color: #a4d4bb; border-color: transparent; }
+.ap-steps li[data-status="rejected"] .ap-step-dot { background: rgba(255, 66, 0, .15); color: #ff9e7c; border-color: transparent; }
+.ap-steps li[aria-current="step"] .ap-step-dot { border-color: var(--brand-ink); color: var(--brand-ink); box-shadow: 0 0 0 3px rgba(145, 169, 255, .18); }
+.ap-steps li[data-status="skipped"] { opacity: .5; }
+.ap-step-body { display: grid; gap: 2px; font-size: 13px; line-height: 1.25; }
+.ap-step-body small { font-size: 11px; color: var(--muted); }
+.ap-steps-meta { margin-left: auto; align-self: center; font-size: 11px; color: var(--muted); gap: 4px !important; min-width: 0 !important; }

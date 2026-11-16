@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { DEFAULT_PREFS, featureEnabled, type Me, type NavSettings, type Organization, type SetupState, type UserPrefs } from '@jscore/contracts';
+import { DEFAULT_PREFS, can, featureEnabled, type CanCtx, type Capability, type Me, type NavSettings, type Organization, type PermissionOverrides, type SetupState, type UserPrefs } from '@jscore/contracts';
 import { clearCookie, createClientRepo, readCookie, setCookie } from '@jscore/core/repo/client';
 import { DEMO_COOKIE, ORG_COOKIE, isSupabaseConfigured, validOrgId } from '@jscore/core/env';
 import { createBrowser } from '@jscore/core/supabase/browser';
@@ -9,7 +9,7 @@ import { DEMO_STORAGE_KEY } from '@jscore/core/repo/demo';
 import type { Repo } from '@jscore/core/repo/types';
 
 /** Ana Yönetim Paneli ayarları: modül bayrakları, özellik anahtarları, MFA zorunluluğu. `loaded=false` iken her şey açık sayılır (yanıp sönmeyi azaltır; sunucu tarafı ayrıca uygular). */
-export interface Features { loaded: boolean; flags?: Record<string, boolean>; toggles?: Record<string, boolean>; requireMfa: boolean; nav?: NavSettings | null; setup?: SetupState | null; orgName?: string; logoUrl?: string }
+export interface Features { loaded: boolean; flags?: Record<string, boolean>; toggles?: Record<string, boolean>; requireMfa: boolean; nav?: NavSettings | null; setup?: SetupState | null; orgName?: string; logoUrl?: string; /** 0018 yetki matrisi sapmaları (settings.permissions) */ permissions?: PermissionOverrides | null }
 interface Ctx {
   features: Features;
   repo: Repo | null; me: Me | null; orgs: Organization[]; orgId: string; mode: 'demo' | 'supabase'; rev: number;
@@ -25,6 +25,11 @@ export const useSession = () => {
 };
 /** Özellik anahtarı açık mı? (`<modül>.<özellik>`, bkz. contracts FEATURES) */
 export const useFeature = (key: string) => featureEnabled(useSession().features.toggles, key);
+/** 0018: arayüzde gizle/kapat kararı — yetki matrisi (org sapmaları) + isteğe bağlı proje rolü. Delegasyon ve RLS Repo/sunucu tarafında ayrıca uygulanır. */
+export function useCan(cap: Capability, ctx: Omit<CanCtx, 'overrides'> = {}): boolean {
+  const { me, features } = useSession();
+  return can(me, cap, { ...ctx, overrides: features.permissions ?? null });
+}
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -63,7 +68,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!repo) return;
     let alive = true;
     repo.getSettings().then(
-      (st) => alive && setFeatures({ loaded: true, flags: st.feature_flags, toggles: st.feature_toggles, requireMfa: st.security?.require_mfa === true, nav: st.nav ?? null, setup: st.setup ?? null, orgName: st.general?.name, logoUrl: st.general?.logo_url }),
+      (st) => alive && setFeatures({ loaded: true, flags: st.feature_flags, toggles: st.feature_toggles, requireMfa: st.security?.require_mfa === true, nav: st.nav ?? null, setup: st.setup ?? null, orgName: st.general?.name, logoUrl: st.general?.logo_url, permissions: (st.permissions as PermissionOverrides | undefined) ?? null }),
       () => alive && setFeatures({ loaded: true, requireMfa: false }),
     );
     return () => { alive = false; };

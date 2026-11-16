@@ -3,7 +3,7 @@
 import { COLLECTIONS } from '../contracts/src/modules.ts';
 
 const EXISTING = new Set(['time_entries', 'invoices', 'surveys', 'survey_responses']); // 0002/0003'te var → yalnızca ALTER
-const LATER = new Set(['saved_views', 'milestones', 'requests', 'announcements', 'announcement_acks', 'project_members', 'agent_policies']); // 0017'de elle yazıldı (özel RLS)
+const LATER = new Set(['saved_views', 'milestones', 'requests', 'announcements', 'announcement_acks', 'project_members', 'agent_policies', 'task_links', 'approval_policies', 'approval_steps', 'delegations']); // 0017/0018'de elle yazıldı (özel RLS)
 const arr = (roles) => `array[${roles.map((r) => `'${r}'`).join(',')}]::core.app_role[]`;
 const out = [];
 const p = (s = '') => out.push(s);

@@ -1,8 +1,8 @@
-import { canDecideApproval, type Approval, type Me, type Notification, type Task } from '@jscore/contracts';
+import { canDecideApproval, canDecideStep, chainView, fmtSla, type Approval, type ApprovalStep, type Delegation, type Me, type Notification, type Task, type TeamMember } from '@jscore/contracts';
 import { byDue, isDone, isOverdue } from '@/components/work/work-utils';
 
 /** Tek kuyruk öğesi: bildirim, bana düşen onay, anma, görevimde Trello kaynaklı değişiklik, bugün biten / geciken görev. */
-export type InboxKind = 'notification' | 'approval' | 'mention' | 'trello' | 'due';
+export type InboxKind = 'notification' | 'approval' | 'mention' | 'trello' | 'due' | 'unblocked';
 export interface InboxItem {
   /** `<kind>:<kaynak id>` — prefs.inbox_done ile eşleşir. */
   id: string; kind: InboxKind; title: string; body: string; href: string;
@@ -12,8 +12,10 @@ export interface InboxItem {
   read?: boolean; notification_id?: string; approval_id?: string; task_id?: string;
   /** 0017: ajan yazma önerisi (action_type='agent') → kuyrukta onay kartı. */
   approval?: Approval;
+  /** 0018: zincir adımı / SLA ("adım 2/3 · SLA 5 sa kaldı"). */
+  step?: string;
 }
-export const INBOX_KIND_LABELS: Record<InboxKind, string> = { approval: 'Onay', due: 'Teslim', mention: 'Anma', trello: 'Trello', notification: 'Bildirim' };
+export const INBOX_KIND_LABELS: Record<InboxKind, string> = { approval: 'Onay', due: 'Teslim', mention: 'Anma', trello: 'Trello', notification: 'Bildirim', unblocked: 'Önün açıldı' };
 export type InboxFilter = 'all' | InboxKind;
 
 export interface InboxInput {
@@ -21,6 +23,8 @@ export interface InboxInput {
   today: string; done: string[];
   /** Trello kaynaklı değişikliklerde geriye bakış (gün). */
   trelloWindowDays?: number;
+  /** 0018: zincir adımları + ekip + delegasyonlar → "sıra bende mi?" (yoksa required_role kuralı). */
+  steps?: ApprovalStep[]; team?: TeamMember[]; delegations?: Delegation[]; now?: string;
 }
 const daysAgo = (today: string, n: number) => new Date(new Date(`${today}T00:00:00Z`).getTime() - n * 86400000).toISOString().slice(0, 10);
 
@@ -32,14 +36,20 @@ export function buildInbox(i: InboxInput): InboxItem[] {
   for (const n of i.notifications) {
     if (me && n.employee_id !== me) continue;
     if (n.read) continue;
-    const kind: InboxKind = n.kind === 'mention' ? 'mention' : 'notification';
+    const kind: InboxKind = n.kind === 'mention' ? 'mention' : n.kind === 'unblocked' ? 'unblocked' : 'notification';
     out.push({ id: `${kind}:${n.id}`, kind, title: n.title, body: n.body, href: n.href ?? '/app/overview', at: n.created_at, urgent: n.kind === 'approval', read: n.read, notification_id: n.id });
   }
+  const now = i.now ?? `${i.today}T12:00:00Z`;
   for (const a of i.approvals) {
-    if (a.status !== 'pending' || !canDecideApproval(i.me.role, a.required_role)) continue;
+    if (a.status !== 'pending') continue;
+    const mine = (i.steps ?? []).filter((s) => s.approval_id === a.id);
+    const view = mine.length ? chainView(mine, now) : null;
+    const canDecide = view?.current ? canDecideStep(i.me, view.current, { team: i.team, delegations: i.delegations, now }) : canDecideApproval(i.me.role, a.required_role);
+    if (!canDecide) continue;
     const agent = a.action_type === 'agent';
     const n = a.subject.payload?.tasks.length ?? 0;
-    out.push({ id: `approval:${a.id}`, kind: 'approval', title: a.title, body: agent ? `Ajan ${(a.subject.agent ?? 'kurul').toUpperCase()} önerisi · ${n} görev${a.subject.payload?.milestones?.length ? ` · ${a.subject.payload.milestones.length} kilometre taşı` : ''}` : `${a.action_type} · karar bekliyor`, href: '/app/approvals', at: a.due_at || a.created_at, urgent: agent || (!!a.due_at && a.due_at.slice(0, 10) <= i.today), approval_id: a.id, approval: agent ? a : undefined });
+    const step = view?.current ? `adım ${view.current.step_index + 1}/${view.total}${view.hoursLeft !== null ? ` · ${fmtSla(view.hoursLeft)}` : ''}` : undefined;
+    out.push({ id: `approval:${a.id}`, kind: 'approval', title: a.title, body: agent ? `Ajan ${(a.subject.agent ?? 'kurul').toUpperCase()} önerisi · ${n} görev${a.subject.payload?.milestones?.length ? ` · ${a.subject.payload.milestones.length} kilometre taşı` : ''}` : `${a.action_type} · karar bekliyor${step ? ` · ${step}` : ''}`, href: '/app/approvals', at: a.due_at || a.created_at, urgent: agent || !!view?.overdue || (!!a.due_at && a.due_at.slice(0, 10) <= i.today), approval_id: a.id, approval: agent ? a : undefined, step });
   }
   const since = daysAgo(i.today, i.trelloWindowDays ?? 7);
   for (const t of i.tasks) {
@@ -55,6 +65,6 @@ export function buildInbox(i: InboxInput): InboxItem[] {
 }
 export const filterInbox = (items: InboxItem[], f: InboxFilter) => (f === 'all' ? items : items.filter((x) => x.kind === f));
 export const inboxCounts = (items: InboxItem[]): Record<InboxFilter, number> => ({
-  all: items.length, approval: 0, due: 0, mention: 0, trello: 0, notification: 0,
+  all: items.length, approval: 0, due: 0, mention: 0, trello: 0, notification: 0, unblocked: 0,
   ...items.reduce<Partial<Record<InboxKind, number>>>((acc, x) => ({ ...acc, [x.kind]: (acc[x.kind] ?? 0) + 1 }), {}),
 });

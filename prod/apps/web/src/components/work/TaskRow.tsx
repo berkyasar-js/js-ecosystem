@@ -8,8 +8,10 @@ import { TaskBadgeList } from './task-badges';
 import { PRIORITY_LABEL, isDone, isLate, isTrello } from './work-utils';
 
 /** Kontrollü görev satırı. Görev adı gerçek düğmedir; tamamlama ayrı kontroldür (iç içe etkileşim yok). */
-export function TaskRow({ task, assignee, category, today, selected = false, pending = false, readonly = false, cursor = false, onOpen, onComplete, extra, badges, lead }: {
+export function TaskRow({ task, assignee, category, today, selected = false, pending = false, readonly = false, cursor = false, onOpen, onComplete, extra, badges, lead, blockers = 0, gated = false }: {
   task: Task; badges?: TaskBadges; assignee: string; category: string; today: string; selected?: boolean; pending?: boolean; readonly?: boolean; cursor?: boolean;
+  /** 0018: açık engel sayısı (🔒 rozet) ve bekleyen aşama onayı. */
+  blockers?: number; gated?: boolean;
   onOpen: () => void; onComplete: () => void; extra?: React.ReactNode;
   /** 0017: satır başı seçim kutusu (toplu düzenleme). */
   lead?: React.ReactNode;
@@ -21,7 +23,7 @@ export function TaskRow({ task, assignee, category, today, selected = false, pen
     <tr aria-selected={selected} aria-busy={pending} className={cursor ? 'is-cursor' : undefined} onClick={(e) => { if (!(e.target as HTMLElement).closest('button, input, label')) onOpen(); }}>
       {lead !== undefined && <td className="wk-select-cell">{lead}</td>}
       <td>
-        <button type="button" className={`wk-complete ${done ? 'done' : ''}`} aria-label={done ? `${task.title} tamamlandı` : `${task.title} görevini tamamla`} aria-pressed={done} disabled={pending || done || readonly} onClick={onComplete}>
+        <button type="button" className={`wk-complete ${done ? 'done' : ''}`} aria-label={done ? `${task.title} tamamlandı` : `${task.title} görevini tamamla`} aria-pressed={done} disabled={pending || done || readonly} title={blockers ? `${blockers} açık engel` : undefined} onClick={onComplete}>
           <Check aria-hidden strokeWidth={3} />
         </button>
       </td>
@@ -32,7 +34,7 @@ export function TaskRow({ task, assignee, category, today, selected = false, pen
           {trelloOn && isTrello(task) && <span className="wk-chip" data-tone="info">Trello</span>}
           {task.client_visible && <span className="wk-chip">Müşteriye açık</span>}
         </span>
-        <TaskBadgeList task={task} badges={badges} />
+        <TaskBadgeList task={task} badges={badges} blockers={blockers} gated={gated} />
       </th>
       <td><span className="wk-person">{task.assignee_id ? <Avatar id={task.assignee_id} name={assignee} size="sm" /> : null}<span>{assignee}</span></span></td>
       <td><span className={`wk-date ${late ? 'late' : ''}`}>{fmtDate(task.due_at)}{late && <span className="wk-sr"> (gecikmiş)</span>}</span></td>

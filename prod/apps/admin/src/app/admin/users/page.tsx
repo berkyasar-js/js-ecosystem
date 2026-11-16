@@ -1,8 +1,10 @@
 'use client';
 import { useState } from 'react';
 import { ROLES, ROLE_LABELS, canAssignRole, isClientRole, type Role } from '@jscore/contracts';
-import { Async, PageHeader, fmtTime } from '@/components/ui';
+import { Async, PageHeader, Tabs, fmtTime } from '@/components/ui';
 import { Msg, NeedsSupabase, errText } from '@/components/admin-ui';
+import { DelegationPanel } from '@/components/delegations';
+import { PermissionMatrix } from '@/components/permissions';
 import { api, useApi } from '@/lib/client';
 
 interface U {
@@ -11,8 +13,18 @@ interface U {
 }
 interface Data { users: U[]; employees: Array<{ id: string; name: string; role_title: string; code: string | null; auth_user_id: string | null }>; clients: Array<{ id: string; name: string }>; me: string; my_role: Role }
 
+type Tab = 'members' | 'matrix' | 'delegations';
 export default function Users() {
-  return (<><PageHeader title="Kullanıcılar & Roller" sub="Üyelik, rol, müşteri kapsamı, oturum ve parola/MFA süreçleri" /><NeedsSupabase><Inner /></NeedsSupabase></>);
+  const [tab, setTab] = useState<Tab>('members');
+  return (
+    <>
+      <PageHeader title="Kullanıcılar & Roller" sub="Üyelik, rol, müşteri kapsamı, oturum ve parola/MFA süreçleri · yetki matrisi · geçici yetki devri" />
+      <Tabs<Tab> tabs={[['members', 'Üyeler'], ['matrix', 'Yetki matrisi'], ['delegations', 'Delege et']]} value={tab} onChange={setTab} />
+      {tab === 'members' && <NeedsSupabase><Inner /></NeedsSupabase>}
+      {tab === 'matrix' && <PermissionMatrix />}
+      {tab === 'delegations' && <DelegationPanel />}
+    </>
+  );
 }
 
 function Inner() {

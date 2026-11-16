@@ -6,6 +6,7 @@ import { TASK_STATES, TASK_STATE_LABELS, isClientRole, type MediaAsset, type Mil
 import { ActivityFeed } from '../activity-feed';
 import { MembersPanel } from './members';
 import { MilestonePanel } from './milestones';
+import { ChainView } from './chain';
 import { Avatar } from '../avatar';
 import { useSession } from '../session';
 import { ErrorBox, fmtDate, money, todayFor, useData, APPROVAL_STATUS } from '../ui';
@@ -139,6 +140,8 @@ export function ProjectWorkspace({ projectId, backHref = '/app/projects' }: { pr
           </section>
         </div>
       )}
+
+      {view === 'chain' && <ChainView tasks={tasks} team={team} today={today} onOpen={(id) => { setView('list'); setOpenReq({ id, n: Date.now() }); }} />}
 
       {view === 'activity' && (
         <div className="wk-pad"><section className="wk-box" aria-label="Proje akışı"><h3>Akış</h3><p className="wk-muted" style={{ fontSize: 12, marginBottom: 10 }}>Kişi, ajan ve Trello hareketleri tek zaman çizelgesinde (denetim kaydı + yorumlar + senkron günlüğü).</p>

@@ -1,6 +1,6 @@
 import { TASK_STATES, applyViewQuery, type SavedViewQuery, type Task, type TaskState, type TeamMember } from '@jscore/contracts';
 
-export type WorkView = 'list' | 'board' | 'summary' | 'files' | 'activity' | 'members';
+export type WorkView = 'list' | 'board' | 'summary' | 'files' | 'activity' | 'members' | 'chain';
 export const DONE_STATES: readonly TaskState[] = ['delivery', 'archive'];
 export const isDone = (t: Pick<Task, 'state'>) => DONE_STATES.includes(t.state);
 export const PRIORITY_LABEL = { high: 'Yüksek', normal: 'Normal', low: 'Düşük' } as const;
@@ -21,10 +21,13 @@ export function progressOf(tasks: Task[]) {
 }
 
 /** Liste filtreleri = kayıtlı görünüm sorgusu (0017): mine/high/q + aşama, sorumlu, sıralama, gruplama. */
-export type WorkFilters = SavedViewQuery & { mine: boolean; high: boolean; q: string };
+export type WorkFilters = SavedViewQuery & { mine: boolean; high: boolean; q: string; /** 0018: yalnızca engelli (açık blocks öncülü olan) görevler */ blocked?: boolean };
 export const EMPTY_FILTERS: WorkFilters = { mine: false, high: false, q: '' };
-export const applyFilters = (tasks: Task[], f: WorkFilters, employeeId?: string): Task[] => applyViewQuery(tasks, f, employeeId);
-export const isFiltered = (f: WorkFilters) => !!(f.mine || f.high || f.q.trim() || f.states?.length || f.assignee || f.project || (f.sort && f.sort !== 'due') || (f.group && f.group !== 'none'));
+export const applyFilters = (tasks: Task[], f: WorkFilters, employeeId?: string, blocked?: Record<string, number>): Task[] => {
+  const out = applyViewQuery(tasks, f, employeeId);
+  return f.blocked ? out.filter((t) => (blocked?.[t.id] ?? 0) > 0) : out;
+};
+export const isFiltered = (f: WorkFilters) => !!(f.mine || f.high || f.blocked || f.q.trim() || f.states?.length || f.assignee || f.project || (f.sort && f.sort !== 'due') || (f.group && f.group !== 'none'));
 
 /** Bugünün odağı: açık görevler arasında gecikmiş → yüksek öncelik → en yakın tarih. */
 export function focusTask(tasks: Task[], today: string): Task | undefined {

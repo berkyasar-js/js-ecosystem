@@ -3,6 +3,7 @@ import { Avatar } from '@/components/avatar';
 import { MODULES, ROLE_LABELS, canAccessModule, hasPermission } from '@jscore/contracts';
 import { PageHeader } from '@/components/ui';
 import { useSession } from '@/components/session';
+import { DelegationPanel } from '@/components/delegations';
 
 const CHECKS: Array<[string, string, string, string]> = [
   ['Görev güncelle', 'work', 'task', 'update'], ['Onay karara bağla', 'core', 'approval', 'decide'],
@@ -37,6 +38,9 @@ export default function Profile() {
           <p className="mt-3 text-xs text-muted">Owner/Org Admin, bordro ve özlük arşivine varsayılan olarak erişemez; ayrı yetki gerekir.</p>
         </section>
       </div>
+      <h2 className="mt-8 mb-3 text-lg font-bold">Delege et</h2>
+      <p className="mb-3 text-sm text-muted">İzin ya da seyahatte yetkilerini geçici olarak bir ekip arkadaşına devret. Onay kararı ve finans yetkileri owner onayından geçer; süre bitince kendiliğinden düşer.</p>
+      <DelegationPanel />
     </>
   );
 }

@@ -301,3 +301,12 @@ main .grid:not([class*='grid-cols']) { grid-template-columns: minmax(0, 1fr); }
 .org-node { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; font-size: 13px; }
 .org-node:hover { background: rgba(144,108,255,.08); }
 .nav-editor-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--nested); }
+
+/* ───── 0018: yetki matrisi ───── */
+.perm-table th, .perm-table td { text-align: center; white-space: nowrap; }
+.perm-table th:first-child, .perm-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--card); z-index: 1; }
+.perm-table tr.perm-group th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--nested); padding-top: 10px; }
+.perm-cell { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.perm-dev { color: var(--accent); font-size: 10px; }
+.ap-chain { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ap-chain .chip + .chip::before { content: '→'; margin-right: 6px; color: var(--muted); }

@@ -8,11 +8,13 @@ import {
   type BoardDecision, type ConnectData, type Integration, type Me, type Message, type OrgSettings, type Role, type Task, type TaskCreate, type TaskPatch, type TaskState,
   DEFAULT_PREFS, brandCreateSchema, employeeCreateSchema, employeePatchSchema, projectCreateSchema, userPrefsPatchSchema, userPrefsSchema, type Brand, type BrandCreate, type EmployeeCreate, type EmployeePatch, type Project, type ProjectCreate, type UserPrefs,
   brandPatchSchema, buildTimeline, type ActivityEntry, type BrandPatch,
+  blockersOf, moveNeedsOverride, can, type ApprovalAction, type ApprovalSubject, type TaskLink,
 } from '@jscore/contracts';
-import { executeAgentAction, isAgentApproval } from '../agents/execute';
+import { createApprovalWithChain, decideWithChain, matchPolicy, policySubjectOf, type ApprovalIO } from '../approvals/engine';
+import { assertCan, assertCanEditTask, guardCollectionSave, invalidatePermissionCache, permissionContext } from '../permissions';
 import { DEFAULT_SETTINGS } from './defaults';
 import { addDaysIso, generateToken, sha256Hex, tokenPrefix } from '../token';
-import { ForbiddenError, NotFoundError, type Repo } from './types';
+import { ForbiddenError, NotFoundError, PendingApprovalError, type Repo } from './types';
 import { validateRecord } from './validate';
 
 type Row = Record<string, unknown>;
@@ -92,6 +94,7 @@ export class SupabaseRepo implements Repo {
   async createProject(input: ProjectCreate): Promise<Project> {
     const v = projectCreateSchema.parse(input);
     const me = await this.me();
+    await assertCan(this, me, 'projects.create');
     const p = await this.ok<Project>(this.sb.from('projects').insert({ org_id: await this.org(), brand_id: v.brand_id, name: v.name, type: v.type, summary: v.summary, status: 'active', flow_stage: 'brief', flow_owner: me?.employee_id ?? null, due_at: v.due_at ?? null }).select('*').single());
     await this.audit('project.create', `projects/${p.id}`, { name: p.name });
     return p;
@@ -118,11 +121,40 @@ export class SupabaseRepo implements Repo {
   }
   async createTask(input: TaskCreate) {
     const v = taskCreateSchema.parse(input);
+    await assertCan(this, await this.me(), 'tasks.create', { projectId: v.project_id });
     return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').insert({ ...v, org_id: await this.org() }).select().single()));
   }
-  async moveTask(id: string, state: TaskState) { return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').update({ state }).eq('id', id).select().single())); }
+  /** 0018: yetki (tasks.move_stage + kendi/her görev) → bağımlılık koruması (SQL tetikleyicisi de uygular) → task_stage onay kapısı → yazma. */
+  async moveTask(id: string, state: TaskState, opts: { approved?: boolean } = {}) {
+    const me = await this.me();
+    const t = await this.ok<Task | null>(this.sb.from('tasks').select('*').eq('id', id).maybeSingle());
+    if (!t) throw new NotFoundError('Görev');
+    if (t.state === state) return t;
+    const ctx = await assertCanEditTask(this, me, t);
+    if (!can(me, 'tasks.move_stage', ctx)) throw new ForbiddenError('Aşama değiştirme yetkin yok');
+    if (!opts.approved) {
+      const settings = await this.getSettings().catch(() => null);
+      if (settings?.workflow?.enforce_dependencies !== false) {
+        const links = (await this.ok<TaskLink[]>(this.sb.from('task_links').select('*').eq('to_task_id', id).eq('kind', 'blocks')).catch(() => [] as TaskLink[]));
+        if (links.length) {
+          const preds = await this.ok<Array<Pick<Task, 'id' | 'state'>>>(this.sb.from('tasks').select('id,state').in('id', links.map((l) => l.from_task_id)));
+          const n = blockersOf(id, links, preds).length;
+          if (moveNeedsOverride(state, n) && !can(me, 'tasks.override_block', ctx)) throw new ForbiddenError(`Görev engelli: önce bağımlı olduğu ${n} görev teslim edilmeli`);
+        }
+      }
+      const gate = await this.gateApproval('task_stage', `Teslim onayı: ${t.title}`, { task_id: t.id, project_id: t.project_id, to_state: state, task_type: t.task_type, labels: t.labels, brand_id: await this.brandOfProject(t.project_id) ?? undefined });
+      if (gate.gated) throw new PendingApprovalError(gate.approval.id, 'Bu aşama geçişi onaya gönderildi (onaylanınca uygulanır)');
+    }
+    return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').update({ state }).eq('id', id).select().single()));
+  }
+  private async brandOfProject(projectId: string): Promise<string | null> {
+    const p = await this.ok<{ brand_id: string } | null>(this.sb.from('projects').select('brand_id').eq('id', projectId).maybeSingle()).catch(() => null);
+    return p?.brand_id ?? null;
+  }
   async updateTask(id: string, patch: TaskPatch) {
     const v = taskPatchSchema.parse(patch);
+    const cur = await this.ok<Task | null>(this.sb.from('tasks').select('id,assignee_id,project_id').eq('id', id).maybeSingle());
+    if (cur) await assertCanEditTask(this, await this.me(), cur);
     return this.pushSoon(await this.ok<Task>(this.sb.from('tasks').update(v).eq('id', id).select().single()));
   }
   /** Best-effort satır içi JS → Trello itmesi (tarayıcıda, beklemeden). Kaçırılırsa /api/events/dispatch cron'u olaydan yeniden itiyor; itme idempotent. */
@@ -279,25 +311,40 @@ export class SupabaseRepo implements Repo {
   }
 
   async listApprovals() { return this.ok(this.sb.from('approvals').select('*').eq('org_id', await this.org()).order('created_at', { ascending: false })); }
+  /* ───────── 0018 onay zinciri: politika → adımlar → karar → yan etki (approvals/engine) ───────── */
+  private approvalIO(): ApprovalIO {
+    const sb = this.sb; const self = this;
+    return {
+      repo: this, now: () => new Date().toISOString(),
+      insertApproval: async (row) => { const { policy_id, current_step, requested_by, ...v } = row; return self.ok<Approval>(sb.from('approvals').insert({ ...v, policy_id, current_step, requested_by, org_id: await self.org() }).select().single()); },
+      patchApproval: async (id, patch) => self.one<Approval>(sb.from('approvals').update(patch).eq('id', id).select(), 'Onay'),
+      getApproval: (id) => self.ok<Approval | null>(sb.from('approvals').select('*').eq('id', id).maybeSingle()),
+      moveTaskApproved: (taskId, state) => self.moveTask(taskId, state, { approved: true }),
+    };
+  }
   async createApproval(input: ApprovalCreate) {
     const v = approvalCreateSchema.parse(input);
-    return this.ok<Approval>(this.sb.from('approvals').insert({ ...v, org_id: await this.org() }).select().single());
+    const me = await this.me();
+    if (!me) throw new ForbiddenError();
+    return createApprovalWithChain(this.approvalIO(), v, me);
+  }
+  async gateApproval(action: ApprovalAction, title: string, subject: ApprovalSubject) {
+    const policy = await matchPolicy(this, action, await policySubjectOf(this, subject));
+    if (!policy) return { gated: false as const };
+    if (subject.task_id) {
+      const open = await this.ok<Array<{ id: string; subject: ApprovalSubject }>>(this.sb.from('approvals').select('id,subject').eq('org_id', await this.org()).eq('action_type', action).eq('status', 'pending').filter('subject->>task_id', 'eq', subject.task_id));
+      const same = open.find((a) => a.subject.to_state === subject.to_state);
+      if (same) return { gated: true as const, approval: await this.ok<Approval>(this.sb.from('approvals').select('*').eq('id', same.id).single()) };
+    }
+    const approval = await this.createApproval({ action_type: action, title, subject, required_role: policy.steps[0]?.role ?? 'owner', due_at: addDaysIso(new Date().toISOString(), 2) });
+    return { gated: true as const, approval };
   }
   async decideApproval(id: string, decision: 'approved' | 'rejected', note?: string) {
     const me = await this.me();
-    const cur = await this.ok<Approval | null>(this.sb.from('approvals').select('*').eq('id', id).maybeSingle());
-    if (!cur) throw new NotFoundError('Onay');
-    if (cur.status !== 'pending') throw new ForbiddenError('Bu onay zaten karara bağlanmış');
-    if (!me || !canDecideApproval(me.role, cur.required_role)) throw new ForbiddenError();
-    const row = await this.ok<Approval>(this.sb.from('approvals').update({ status: decision, decided_by: me.id, decided_at: new Date().toISOString(), decision_note: note ?? null }).eq('id', id).eq('status', 'pending').select().single());
-    // 0017: onaylanan ajan önerisi onaylayanın JWT'si (RLS) ile uygulanır; "kim onayladı" = "kim yazdı".
-    if (decision === 'approved' && isAgentApproval(row)) {
-      const r = await executeAgentAction(this, row.subject.payload, { today: new Date().toISOString().slice(0, 10) });
-      const subject = { ...row.subject, executed: { at: new Date().toISOString(), task_ids: r.task_ids } };
-      await this.audit('agent.execute', `approvals/${id}`, { agent: row.subject.agent, tasks: r.task_ids.length, project: r.project_id });
-      return this.ok<Approval>(this.sb.from('approvals').update({ subject }).eq('id', id).select().single());
-    }
-    return row;
+    if (!me) throw new ForbiddenError();
+    const r = await decideWithChain(this.approvalIO(), id, decision, note, me, { matrixAllows: can(me, 'approvals.decide', await permissionContext(this, me)) });
+    // Onay kapılı ihale ataması (assign_bid): SQL tetikleyicisi approvals güncellemesinde atamayı yapar; burada ek iş yok.
+    return r.approval;
   }
 
   async listInbox() {
@@ -325,6 +372,7 @@ export class SupabaseRepo implements Repo {
   async saveSettings(patch: Partial<OrgSettings>) {
     const merged = { ...(await this.getSettings()), ...orgSettingsPatchSchema.parse(patch) };
     await this.ok(this.sb.from('organizations').update({ settings: merged, name: merged.general.name }).eq('id', await this.org()).select('id'));
+    invalidatePermissionCache(this);
     return merged;
   }
   async getConnect(): Promise<ConnectData> {
@@ -435,12 +483,16 @@ export class SupabaseRepo implements Repo {
   async save<K extends CollKey>(kind: K, input: SaveInput<K>): Promise<Records[K]> {
     const table = COLLECTIONS[kind].table;
     let merged: Row = input as Row;
+    let cur: Row | null = null;
     if (input.id) {
-      const cur = await this.ok<Row | null>(this.sb.from(table).select('*').eq('id', input.id).maybeSingle());
+      cur = await this.ok<Row | null>(this.sb.from(table).select('*').eq('id', input.id).maybeSingle());
       if (!cur) throw new NotFoundError('Kayıt');
       merged = { ...this.fromRow(cur), ...input };
     }
     validateRecord(kind, merged);
+    // 0018: yetki matrisi / bağımlılık / delegasyon kuralları (RLS tabanının üstünde).
+    await guardCollectionSave(this, await this.me(), kind, merged, cur ? (this.fromRow(cur) as unknown as Row) : null);
+    if (kind === 'delegations' || kind === 'project_members') invalidatePermissionCache(this);
     const row = this.toRow(kind, merged);
     const saved = input.id
       ? await this.ok<Row>(this.sb.from(table).update(row).eq('id', input.id).select().single())
