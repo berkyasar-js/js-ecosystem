@@ -41,7 +41,7 @@ Trello / MCP / cron ──Bearer|HMAC──▶ doğrula ──▶ servis rolü (
 
       <Section eyebrow="Sorumlu açıklama" title="Güvenlik açığı bildirimi">
         <div className="prose">
-          <p>Bir açık bulduysanız <a href="mailto:security@jobsstudio.com.tr">security@jobsstudio.com.tr</a> adresine yazın. 72 saat içinde yanıt veririz; düzeltme yayınlanana kadar açığı kamuya açmamanızı rica ederiz.</p>
+          <p>Bir açık bulduysanız <a href="mailto:hello@jobsstudio.co">hello@jobsstudio.co</a> adresine yazın. 72 saat içinde yanıt veririz; düzeltme yayınlanana kadar açığı kamuya açmamanızı rica ederiz.</p>
           <p className="text-xs">Şeffaflık notu: Supabase RLS ve tetikleyiciler canlı veritabanında kurulum sırasında doğrulanır; MFA zorunluluğu bir arayüz kapısıdır (RLS’te aal2 politikası yoktur). Bu sınırlamalar belgelenmiştir ve yol haritasındadır.</p>
         </div>
       </Section>

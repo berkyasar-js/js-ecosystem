@@ -8,7 +8,7 @@ export const SITE = {
   adminUrl: 'https://js-ecosystem-admin.vercel.app',
   reaUrl: 'https://js-rea-studio.vercel.app',
   company: 'Jobs Studio',
-  email: 'hello@jobsstudio.com.tr',
+  email: 'hello@jobsstudio.co',
 };
 
 export const NAV: Array<{ label: string; href: string; children?: Array<{ label: string; href: string; desc: string }> }> = [

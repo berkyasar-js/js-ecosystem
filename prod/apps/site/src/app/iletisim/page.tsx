@@ -15,7 +15,7 @@ export default function Page() {
         <div className="grid gap-4 md:grid-cols-3">
           <Feature title="Satış & demo"><a className="text-brand-ink underline" href={`mailto:${SITE.email}?subject=JS%20Workspace%20demo`}>{SITE.email}</a><br />Konu: “JS Workspace demo”</Feature>
           <Feature title="Kurumsal & kendi sunucunda kurulum"><a className="text-brand-ink underline" href={`mailto:${SITE.email}?subject=Kurumsal%20teklif`}>{SITE.email}</a><br />Koltuk sayısı ve altyapı tercihinizi yazın.</Feature>
-          <Feature title="Güvenlik bildirimi"><a className="text-brand-ink underline" href="mailto:security@jobsstudio.com.tr">security@jobsstudio.com.tr</a><br />72 saat içinde yanıt.</Feature>
+          <Feature title="Güvenlik bildirimi"><a className="text-brand-ink underline" href="mailto:hello@jobsstudio.co">hello@jobsstudio.co</a><br />72 saat içinde yanıt.</Feature>
         </div>
         <p className="mt-6 text-sm text-muted">{SITE.company} · İstanbul · Çalışma saatleri 09:00–18:00 (Europe/Istanbul)</p>
       </Section>
