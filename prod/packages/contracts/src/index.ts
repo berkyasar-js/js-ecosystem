@@ -152,6 +152,8 @@ export interface Brand {
   health: number; internal: boolean; contact?: string; email?: string;
   /** 0017: alan sahibi — bu markaya açılan yeni talep/görev varsayılan olarak bu kişiye düşer. */
   default_assignee_id?: string | null;
+  /** 0020: dış kaynak bağı ('hubspot:company:<id>') + eşitleme saati. */
+  source_ref?: string | null; synced_at?: string | null; sync_origin?: string | null; updated_at?: string;
 }
 export const brandPatchSchema = z.object({ default_assignee_id: z.string().min(1).nullable().optional(), health: z.number().int().min(0).max(100).optional(), status: z.enum(['active', 'risky', 'prospect']).optional() }).strict();
 export type BrandPatch = z.input<typeof brandPatchSchema>;
@@ -501,3 +503,4 @@ export * from './board-chat';
 export * from './workspace';
 export * from './governance';
 export * from './notifications';
+export * from './hubspot';

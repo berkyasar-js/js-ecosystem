@@ -27,8 +27,10 @@ export const LEAVE_DECIDERS: Role[] = ['owner', 'org_admin', 'operations', 'acco
 const C = (table: string, prefix: string, module: string, read: ReadMode, write: Role[], extra: Partial<CollMeta> = {}): CollMeta => ({ table, prefix, module, read, write, ...extra });
 
 export const COLLECTIONS = {
-  crm_deals: C('crm_deals', 'd', 'crm', 'internal', OPS),
+  crm_deals: C('crm_deals', 'd', 'crm', 'internal', OPS, { native: ['brand_id', 'source_ref', 'synced_at', 'sync_origin', 'updated_at'] }),
   crm_contacts: C('crm_contacts', 'ct', 'crm', 'brand_all', OPS),
+  /** 0020: müşteri kişileri (HubSpot contact ↔ client_contacts). Gerçek kolonlar; `data` yalnızca uyumluluk için. Müşteri rolleri kendi markasının kişilerini okur. */
+  client_contacts: C('client_contacts', 'cc', 'crm', 'brand_all', OPS, { native: ['client_id', 'brand_id', 'name', 'email', 'phone', 'title', 'source_ref', 'raw', 'synced_at', 'sync_origin', 'updated_at'], nullBrand: true }),
   crm_proposals: C('crm_proposals', 'pr', 'crm', [...OPS, 'finance', 'auditor'], [...OPS, 'finance']),
   crm_contracts: C('crm_contracts', 'co', 'crm', [...OPS, 'finance', 'auditor'], OPS),
   time_entries: C('time_entries', 'te', 'mywork', 'internal', [...OPS_CR, 'finance', 'hr', 'freelancer'], { native: ['employee_id', 'task_id', 'minutes', 'note', 'worked_on'] }),
@@ -112,8 +114,18 @@ interface Base { id: string; org_id: string; created_at: string }
 export const DEAL_STAGES = ['new', 'talk', 'proposal', 'won', 'lost'] as const;
 export type DealStage = (typeof DEAL_STAGES)[number];
 export const DEAL_STAGE_LABELS: Record<DealStage, string> = { new: 'Yeni', talk: 'Görüşme', proposal: 'Teklif', won: 'Kazanıldı', lost: 'Kaybedildi' };
-export interface Deal extends Base { brand_id: string | null; company: string; title: string; stage: DealStage; value_minor: number; owner: string; source: string; next_step: string }
+/** Dış sistemle eşitlenen kayıtların ortak alanları (0020: clients/brands/crm_deals/client_contacts). */
+export interface ExternalSyncFields { source_ref?: string | null; sync_origin?: string | null; synced_at?: string | null; updated_at?: string }
+export interface Deal extends Base, ExternalSyncFields {
+  brand_id: string | null; company: string; title: string; stage: DealStage; value_minor: number; owner: string; source: string; next_step: string;
+  /** HubSpot: kapanış tarihi (closedate), pipeline/aşama id'leri (geri yazımda korunur). */
+  close_at?: string | null; hs_pipeline?: string | null; hs_stage?: string | null;
+}
 export interface Contact extends Base { brand_id: string; name: string; title: string; email: string; phone: string; primary: boolean; client_visible?: boolean }
+/** 0020 client_contacts: müşteri (client) kişisi; marka isteğe bağlı. HubSpot contact'ı `source_ref='hubspot:contact:<id>'` + `raw` (HubSpot özellikleri) ile gelir. */
+export interface ClientContact extends Base, ExternalSyncFields {
+  client_id: string; brand_id: string | null; name: string; email: string; phone: string; title: string; raw?: Record<string, unknown> | null;
+}
 export interface QuoteLine { desc: string; qty: number; unit_minor: number }
 export interface Proposal extends Base {
   brand_id: string; deal_id: string | null; number: string; title: string; version: number; status: 'draft' | 'sent' | 'accepted' | 'rejected';
@@ -257,7 +269,7 @@ export interface AgentPolicy extends Base {
 }
 
 export interface Records {
-  crm_deals: Deal; crm_contacts: Contact; crm_proposals: Proposal; crm_contracts: Contract; time_entries: TimeEntry; notifications: Notification;
+  crm_deals: Deal; crm_contacts: Contact; client_contacts: ClientContact; crm_proposals: Proposal; crm_contracts: Contract; time_entries: TimeEntry; notifications: Notification;
   task_requests: TaskRequest; allocations: Allocation; leaves: Leave; skills: Skill; equipment: Equipment; equipment_bookings: EquipmentBooking;
   rate_cards: RateCard; budgets: Budget; expenses: Expense; purchase_requests: PurchaseRequest; suppliers: Supplier; invoices: Invoice;
   ledger_entries: LedgerEntry; cost_rates: CostRate; hr_profiles: HrProfile; hr_docs: HrDoc; hr_assets: HrAsset; trainings: Training;
@@ -285,8 +297,15 @@ export const proposalSchema = z.object({
   payment_terms_days: z.number().int().min(0).max(365), valid_until: z.string().min(8), history: z.array(z.object({ version: z.number(), total_minor: z.number(), at: z.string() })),
 });
 export const dealSchema = z.object({
-  brand_id: z.string().nullable(), company: z.string().trim().min(2).max(120), title: z.string().trim().min(2).max(200), stage: z.enum(DEAL_STAGES),
-  value_minor: money, owner: z.string().min(1), source: z.string().max(60), next_step: z.string().max(200),
+  brand_id: z.string().nullable(), company: z.string().trim().min(1).max(200), title: z.string().trim().min(1).max(300), stage: z.enum(DEAL_STAGES),
+  value_minor: money, owner: z.string().min(1), source: z.string().max(60), next_step: z.string().max(500),
+  source_ref: z.string().nullable().optional(), close_at: z.string().nullable().optional(), hs_pipeline: z.string().nullable().optional(), hs_stage: z.string().nullable().optional(),
+  sync_origin: z.string().nullable().optional(), synced_at: z.string().nullable().optional(), updated_at: z.string().optional(),
+});
+export const clientContactSchema = z.object({
+  client_id: z.string().min(1), brand_id: z.string().nullable(), name: z.string().trim().min(1).max(200), email: z.string().trim().max(200), phone: z.string().trim().max(60), title: z.string().trim().max(120),
+  source_ref: z.string().nullable().optional(), raw: z.record(z.string(), z.unknown()).nullable().optional(),
+  sync_origin: z.string().nullable().optional(), synced_at: z.string().nullable().optional(), updated_at: z.string().optional(),
 });
 export const leaveSchema = z.object({
   employee_id: z.string().min(1), type: z.enum(['yillik', 'hastalik', 'mazeret', 'ucretsiz']), start: z.string().min(8), end: z.string().min(8),

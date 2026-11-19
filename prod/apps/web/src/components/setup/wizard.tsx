@@ -221,8 +221,10 @@ function ModulesStep({ settings, onNext }: { settings: OrgSettings; onNext(flags
 function IntegrationsStep({ onNext }: { onNext(): Promise<void> }) {
   const { mode, me } = useSession();
   const q = useData((r) => r.getConnect().catch(() => null));
-  const [hub, setHub] = useState<{ connected: boolean; token: string | null } | null>(null);
+  const [hub, setHub] = useState<{ connected: boolean; token: string | null; portal_id?: string | null; mode?: string } | null>(null);
   const [hubErr, setHubErr] = useState<string | null>(null);
+  const [hubTest, setHubTest] = useState<{ portal_id: string; owners: number; pipelines: string[] } | null>(null);
+  const [hubBusy, setHubBusy] = useState(false);
   const [google, setGoogle] = useState<string>('—');
   const loadHub = useCallback(() => { fetch('/api/setup/hubspot', { cache: 'no-store' }).then((r) => r.json()).then((j) => setHub(j.error ? { connected: false, token: null } : j), () => setHub({ connected: false, token: null })); }, []);
   useEffect(loadHub, [loadHub]);
@@ -231,12 +233,18 @@ function IntegrationsStep({ onNext }: { onNext(): Promise<void> }) {
     createBrowser().auth.getUser().then(({ data }) => { const p = (data.user?.app_metadata?.providers as string[] | undefined) ?? []; setGoogle(p.includes('google') ? `Google ile giriş yapıldı (${me?.email})` : `Bu hesap ${p.join(', ') || 'e-posta'} ile giriş yaptı; Google sağlayıcısı Supabase → Authentication → Providers’tan açılır.`); }, () => setGoogle('—'));
   }, [me]);
   const trello = q.data?.integrations.find((i) => i.provider === 'trello');
+  /** Token kaydedilir ve sunucu hemen "Bağlantıyı test et" çalıştırır (portal id, owner sayısı, pipeline'lar). Başka ayar yok; eşleme/içe aktarma panelde. */
   const submitHub = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); setHubErr(null);
-    const token = String(new FormData(e.currentTarget).get('token') ?? '');
-    const r = await fetch('/api/setup/hubspot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }) });
-    const j = await r.json(); if (!r.ok) { setHubErr(j.error ?? 'Kaydedilemedi'); return; }
-    e.currentTarget?.reset?.(); loadHub();
+    e.preventDefault(); setHubErr(null); setHubTest(null); setHubBusy(true);
+    const form = e.currentTarget;
+    try {
+      const token = String(new FormData(form).get('token') ?? '');
+      const r = await fetch('/api/setup/hubspot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }) });
+      const j = (await r.json()) as { error?: string; test?: { portal_id: string; owners: number; pipelines: string[] }; test_error?: string };
+      if (!r.ok) { setHubErr(j.error ?? 'Kaydedilemedi'); return; }
+      if (j.test) setHubTest(j.test); else if (j.test_error) setHubErr(`Token kaydedildi ama doğrulanamadı: ${j.test_error}`);
+      form.reset?.(); loadHub();
+    } finally { setHubBusy(false); }
   };
   return (
     <div className="grid gap-4">
@@ -246,11 +254,12 @@ function IntegrationsStep({ onNext }: { onNext(): Promise<void> }) {
         {ADMIN_URL ? <a className="btn w-fit" href={`${ADMIN_URL}/admin/integrations`} target="_blank" rel="noreferrer">Trello’yu bağla <ExternalLink size={14} aria-hidden /></a> : <p className="text-xs text-muted">NEXT_PUBLIC_ADMIN_URL tanımlı değil.</p>}
       </section>
       <section className="card grid gap-2">
-        <div className="flex items-center justify-between gap-2"><h2 className="font-bold">HubSpot</h2><span className={`chip ${hub?.connected ? 'chip-ok' : ''}`}>{hub?.connected ? `Bağlı · ${hub.token}` : 'Bağlı değil'}</span></div>
-        <p className="text-sm text-muted">Özel uygulama (private app) erişim token’ı. Yalnızca sunucuda saklanır, arayüzde maskeli görünür; kaydetme ve kaldırma denetim kaydına yazılır.</p>
+        <div className="flex items-center justify-between gap-2"><h2 className="font-bold">HubSpot</h2><span className={`chip ${hub?.connected ? 'chip-ok' : ''}`}>{hub?.connected ? `Bağlı · ${hub.token}${hub.portal_id ? ` · portal ${hub.portal_id}` : ''}` : 'Bağlı değil'}</span></div>
+        <p className="text-sm text-muted">Özel uygulama (private app) erişim token’ı. Yalnızca sunucuda saklanır, arayüzde maskeli görünür; kaydedince bağlantı test edilir. Aşama eşlemesi, tam içe aktarma ve eşitleme Ana Yönetim Paneli → Entegrasyonlar → HubSpot’tadır (varsayılan mod: yalnızca HubSpot → JS).</p>
+        {hubTest && <p role="status" className="text-sm" data-testid="hub-test">Bağlantı doğrulandı · portal {hubTest.portal_id} · {hubTest.owners} owner · pipeline: {hubTest.pipelines.join(', ') || '—'}</p>}
         <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => void submitHub(e)}>
           <input name="token" className="input w-auto min-w-64" type="password" placeholder="pat-eu1-…" minLength={20} required autoComplete="off" aria-label="HubSpot token" />
-          <button className="btn btn-primary">{hub?.connected ? 'Token’ı değiştir' : 'Bağla'}</button>
+          <button className="btn btn-primary" disabled={hubBusy}>{hubBusy ? 'Test ediliyor…' : hub?.connected ? 'Token’ı değiştir' : 'Bağla ve test et'}</button>
           {hub?.connected && <button type="button" className="btn" onClick={() => { void fetch('/api/setup/hubspot', { method: 'DELETE' }).then(loadHub); }}>Kaldır</button>}
         </form>
         {hubErr && <p role="alert" className="text-sm text-magenta">{hubErr}</p>}

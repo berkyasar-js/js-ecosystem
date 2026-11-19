@@ -65,6 +65,9 @@ const brands: Brand[] = brandRows.map(([id, name, sector, status, owner, ad, hea
   compliance_flags: id === 'c_anova' ? ['savunma-sanayii-gizlilik'] : id === 'c_wellana' ? ['saglik-beyani'] : [], monthly_quota: quota ?? {}, health,
   internal: id === 'c_edit' || id === 'c_jobs', email: `info@${id.slice(2)}.example`,
   default_assignee_id: owner,
+  // 0020: Clayton ve Anova HubSpot şirketine bağlı (demo rozet + "HubSpot'ta aç")
+  source_ref: id === 'c_clayton' ? 'hubspot:company:3001' : id === 'c_anova' ? 'hubspot:company:3002' : null,
+  synced_at: id === 'c_clayton' || id === 'c_anova' ? '2026-11-10T08:00:00Z' : null,
 }));
 
 const stageIdx = (s: TaskState) => TASK_STATES.indexOf(s);

@@ -184,9 +184,12 @@ describe('şema', () => {
     const g = readFileSync(fileURLToPath(new URL('../../../../../packages/schema/supabase/migrations/0018_governance.sql', import.meta.url)), 'utf8');
     const later = new Set(['saved_views', 'milestones', 'requests', 'announcements', 'announcement_acks', 'project_members', 'agent_policies']); // 0017
     const gov = new Set(['task_links', 'approval_policies', 'approval_steps', 'delegations']); // 0018
+    const hs = readFileSync(fileURLToPath(new URL('../../../../../packages/schema/supabase/migrations/0020_hubspot.sql', import.meta.url)), 'utf8');
+    const hubspot = new Set(['client_contacts']); // 0020
     for (const k of COLL_KEYS) {
       const t = COLLECTIONS[k].table;
       if (existing.has(t)) expect(sql).toContain(`alter table public.${t} add column if not exists data`);
+      else if (hubspot.has(t)) { expect(hs).toContain(`create table if not exists public.${t} (`); expect(hs).toContain(`alter table public.${t} enable row level security;`); expect(hs).toContain(`create policy ${t}_r on`); }
       else if (gov.has(t)) { expect(g).toContain(`create table if not exists public.${t} (`); expect(g).toContain(`alter table public.${t} enable row level security;`); expect(g).toContain(`create policy ${t}_r on`); }
       else if (later.has(t)) { expect(v8).toContain(`create table if not exists public.${t} (`); expect(v8).toContain(`alter table public.${t} enable row level security;`); expect(v8).toContain(`create policy ${t}_r on`); }
       else { expect(sql).toContain(`create table public.${t} (`); expect(sql).toContain(`alter table public.${t} enable row level security;`); expect(sql).toContain(`create policy ${t}_r on`); }

@@ -1,8 +1,8 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
-import { DEAL_STAGES, DEAL_STAGE_LABELS, type Deal, type DealStage, type Proposal, type QuoteLine } from '@jscore/contracts';
-import { Empty, fmtDate, money, todayFor } from '../ui';
+import { useEffect, useState } from 'react';
+import { DEAL_STAGES, DEAL_STAGE_LABELS, hubspotUrlFor, parseHubSpotRef, type Deal, type DealStage, type Proposal, type QuoteLine, type SyncLogEntry } from '@jscore/contracts';
+import { Empty, fmtDate, fmtTime, money, todayFor } from '../ui';
 import { useFeature, useSession } from '../session';
 import { Await, Bar, Card, Chip, Crud, FormCard, Gate, Grid, Kanban, Metric, ModulePage, Table, brandName, nameOf, tl, toneOf, useAct, useCan, useWorld } from '../mod';
 import { accountHealth, bumpProposal, contractUsage, dueDateFor, proposalTotals, surveyStats } from '@jscore/core/domain';
@@ -13,14 +13,37 @@ const TABS: Array<[string, string]> = [['pipeline', 'Pipeline'], ['accounts', 'M
 const STAGES = DEAL_STAGES.map((s) => [s, DEAL_STAGE_LABELS[s]] as [string, string]);
 const STATUS: Record<string, [string, 'ok' | 'bad' | 'warn']> = { active: ['Aktif', 'ok'], risky: ['Riskli', 'bad'], prospect: ['Aday', 'warn'] };
 
+/** HubSpot rozeti + "HubSpot'ta aç" bağlantısı (source_ref 'hubspot:<entity>:<id>' olan kayıtlarda). */
+export function HubSpotBadge({ ref, syncedAt, compact }: { ref: string | null | undefined; syncedAt?: string | null; compact?: boolean }) {
+  const url = hubspotUrlFor(ref);
+  if (!url) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5 align-middle">
+      <Chip tone="brand">HubSpot</Chip>
+      <a className="text-xs underline-offset-2 hover:underline" href={url} target="_blank" rel="noreferrer" title="HubSpot’ta aç">HubSpot’ta aç ↗</a>
+      {!compact && syncedAt && <span className="text-[11px] text-muted">eşitlendi {fmtTime(syncedAt)}</span>}
+    </span>
+  );
+}
+/** Son HubSpot senkron günlüğü (yetki yoksa boş) — fırsat kartlarında "atlanan çakışma" ve köken göstergesi için. */
+function useHubSpotLog() {
+  const { repo } = useSession();
+  const [log, setLog] = useState<SyncLogEntry[]>([]);
+  useEffect(() => { let on = true; repo?.listSyncLog('hubspot', 100).then((l) => { if (on) setLog(l); }, () => undefined); return () => { on = false; }; }, [repo]);
+  return log;
+}
+const lastSyncOf = (log: SyncLogEntry[], entity: string, localId: string) => log.find((e) => e.entity === entity && e.entity_id === localId && e.ok && !e.action.startsWith('skipped'));
+const conflictOf = (log: SyncLogEntry[], entity: string, localId: string) => log.find((e) => e.entity === entity && e.entity_id === localId && e.action === 'skipped_conflict');
+
 export function CrmView({ tab }: { tab?: string }) {
   const { mode, repo } = useSession();
   const healthOn = useFeature('crm.health_scores');
   const can = useCan();
-  const q = useWorld(['crm_deals', 'crm_contacts', 'crm_proposals', 'crm_contracts']);
+  const q = useWorld(['crm_deals', 'crm_contacts', 'client_contacts', 'crm_proposals', 'crm_contracts']);
   const { act, busy, Err } = useAct();
   const [sel, setSel] = useState<string>('');
   const today = todayFor(mode);
+  const hsLog = useHubSpotLog();
   return (
     <ModulePage id="crm" title="JS CRM" sub="Pipeline, müşteriler, teklifler ve sözleşmeler" tabs={TABS} tab={tab}>
       {(t) => <Await q={q}>{(d) => {
@@ -37,8 +60,11 @@ export function CrmView({ tab }: { tab?: string }) {
               </Grid>
               <Kanban<Deal> items={d.crm_deals} stages={STAGES} stageOf={(x) => x.stage} readonly={!write}
                 onMove={async (x, to) => { await repo!.moveDeal(x.id, to as DealStage); }}
-                render={(x) => (<><div className="text-[13px] font-semibold leading-snug">{x.title}</div><div className="mt-1 text-xs text-muted">{x.company}</div>
-                  <div className="mt-2 flex flex-wrap gap-1.5"><Chip>{tl(x.value_minor)}</Chip><Chip>{nameOf(team, x.owner).split(' ')[0]}</Chip></div><div className="mt-1 text-[11px] text-muted">{x.next_step}</div></>)} />
+                render={(x) => { const hs = parseHubSpotRef(x.source_ref); const conflict = hs ? conflictOf(hsLog, 'deal', x.id) : undefined; const last = hs ? lastSyncOf(hsLog, 'deal', x.id) : undefined; return (<><div className="text-[13px] font-semibold leading-snug">{x.title}</div><div className="mt-1 text-xs text-muted">{x.company}</div>
+                  <div className="mt-2 flex flex-wrap gap-1.5"><Chip>{tl(x.value_minor)}</Chip><Chip>{x.owner === 'hubspot' ? 'Sahipsiz' : nameOf(team, x.owner).split(' ')[0]}</Chip>{hs && <HubSpotBadge ref={x.source_ref} compact />}</div>
+                  {hs && <div className="mt-1 text-[11px] text-muted">Kaynak: HubSpot{x.synced_at ? ` · eşitlendi ${fmtTime(x.synced_at)}` : last ? ` · ${last.action} ${fmtTime(last.created_at)}` : ''}{x.close_at ? ` · kapanış ${fmtDate(x.close_at)}` : ''}</div>}
+                  {conflict && <div className="mt-1 text-[11px] text-magenta" title={conflict.message}>Çakışma atlandı ({fmtTime(conflict.created_at)}): {conflict.message.slice(0, 80)}</div>}
+                  <div className="mt-1 text-[11px] text-muted">{x.next_step}</div></>); }} />
               {!write && <p className="text-xs text-muted">Kartları taşıma yetkin yok (salt okunur).</p>}
               <Gate ok={write} why=""><FormCard title="Yeni fırsat" busy={busy} fields={[
                 { name: 'company', label: 'Şirket', required: true }, { name: 'title', label: 'Başlık', required: true }, { name: 'value', label: 'Tutar (₺)', type: 'number', def: 100000 },
@@ -50,13 +76,14 @@ export function CrmView({ tab }: { tab?: string }) {
         if (t === 'accounts') {
           return (
             <Card title={`Müşteriler & Markalar (${d.brands.length})`}>
-              <Table heads={['Marka', 'Sektör', 'Durum', 'Account', 'Art Director', 'Sağlık', 'Uyumluluk']}>
+              <Table heads={['Marka', 'Sektör', 'Durum', 'Account', 'Art Director', 'Sağlık', 'Uyumluluk', 'Kaynak']}>
                 {d.brands.map((b) => (
                   <tr key={b.id}>
                     <td><Link className="font-semibold hover:underline" href={`/app/crm/${b.id}`}>{b.name}</Link></td><td className="text-muted">{b.sector}</td>
                     <td><Chip tone={STATUS[b.status][1]}>{STATUS[b.status][0]}</Chip></td><td>{nameOf(team, b.account_owner).split(' ')[0]}</td><td>{nameOf(team, b.art_director).split(' ')[0]}</td>
                     <td className="min-w-24">{healthOn ? <Bar pct={b.health} tone={b.health < 55 ? 'bad' : b.health < 70 ? 'warn' : 'ok'} /> : <span className="text-muted">—</span>}</td>
                     <td>{b.compliance_flags.length ? b.compliance_flags.map((f) => <Chip key={f} tone="warn">{f}</Chip>) : <span className="text-muted">—</span>}</td>
+                    <td>{b.source_ref ? <HubSpotBadge ref={b.source_ref} syncedAt={b.synced_at} compact /> : <span className="text-muted">JS</span>}</td>
                   </tr>
                 ))}
               </Table>
@@ -64,10 +91,19 @@ export function CrmView({ tab }: { tab?: string }) {
           );
         }
         if (t === 'contacts') {
-          return <Crud kind="crm_contacts" title="Kişi" rows={d.crm_contacts} canEdit={write} empty="Kişi yok." heads={['Ad', 'Marka', 'Ünvan', 'E-posta', 'Telefon']}
-            cells={(r) => [<strong key="n">{r.name}{r.primary ? ' ★' : ''}</strong>, brandName(d.brands, r.brand_id), r.title, r.email, r.phone]}
-            fields={[{ name: 'brand', label: 'Marka', type: 'select', options: d.brands.map((b) => [b.id, b.name]) }, { name: 'name', label: 'Ad soyad', required: true }, { name: 'title', label: 'Ünvan' }, { name: 'email', label: 'E-posta', type: 'email' }, { name: 'phone', label: 'Telefon' }, { name: 'primary', label: 'Birincil kişi', type: 'checkbox' }]}
-            build={(v) => ({ brand_id: String(v.brand), name: String(v.name), title: String(v.title), email: String(v.email), phone: String(v.phone), primary: !!v.primary, client_visible: true })} />;
+          const clientOf = (brandId: string) => d.brands.find((b) => b.id === brandId)?.client_id ?? '';
+          return (
+            <div className="grid gap-4">
+              <Crud kind="client_contacts" title="Müşteri kişileri" rows={d.client_contacts} canEdit={write} empty="Kişi yok. HubSpot bağlıysa kişiler içe aktarmayla gelir; buradan da eklenebilir (iki yönlü modda HubSpot’a yazılır)." heads={['Ad', 'Marka', 'Ünvan', 'E-posta', 'Telefon', 'Kaynak']}
+                cells={(r) => [<strong key="n">{r.name}</strong>, r.brand_id ? brandName(d.brands, r.brand_id) : <span className="text-muted">—</span>, r.title, r.email, r.phone,
+                  r.source_ref ? <HubSpotBadge key="h" ref={r.source_ref} syncedAt={r.synced_at} compact /> : <span key="j" className="text-muted">JS{r.updated_at && r.synced_at && r.updated_at > r.synced_at ? ' · itilecek' : ''}</span>]}
+                fields={[{ name: 'brand', label: 'Marka', type: 'select', required: true, options: d.brands.map((b) => [b.id, b.name]) }, { name: 'name', label: 'Ad soyad', required: true }, { name: 'title', label: 'Ünvan' }, { name: 'email', label: 'E-posta', type: 'email' }, { name: 'phone', label: 'Telefon' }]}
+                build={(v) => ({ client_id: clientOf(String(v.brand)), brand_id: String(v.brand) || null, name: String(v.name), title: String(v.title), email: String(v.email), phone: String(v.phone), source_ref: null })}
+                rowActions={(r) => write && <ContactEdit row={r} brands={d.brands} busy={busy} onSave={(patch) => act(() => repo!.save('client_contacts', { id: r.id, ...patch }))} />} />
+              {d.crm_contacts.length > 0 && <Card title={`Eski kişi kayıtları (${d.crm_contacts.length})`}><p className="mb-2 text-xs text-muted">0020 öncesi “Kişiler” kayıtları; yeni kayıtlar müşteri kişilerinde tutulur.</p>
+                <Table heads={['Ad', 'Marka', 'Ünvan', 'E-posta', 'Telefon']}>{d.crm_contacts.map((r) => <tr key={r.id}><td>{r.name}{r.primary ? ' ★' : ''}</td><td>{brandName(d.brands, r.brand_id)}</td><td>{r.title}</td><td>{r.email}</td><td>{r.phone}</td></tr>)}</Table></Card>}
+            </div>
+          );
         }
         if (t === 'proposals') {
           const cur = d.crm_proposals.find((p) => p.id === sel);
@@ -109,6 +145,24 @@ export function CrmView({ tab }: { tab?: string }) {
         );
       }}</Await>}
     </ModulePage>
+  );
+}
+
+/** Satır içi kişi düzenleme (ad / ünvan / e-posta / telefon / marka); iki yönlü modda kayıt HubSpot'a itilir. */
+function ContactEdit({ row, brands, busy, onSave }: { row: { id: string; name: string; title: string; email: string; phone: string; brand_id: string | null }; brands: Array<{ id: string; name: string; client_id: string }>; busy: boolean; onSave: (patch: Record<string, unknown>) => Promise<unknown> }) {
+  const [open, setOpen] = useState(false);
+  const [v, setV] = useState({ name: row.name, title: row.title, email: row.email, phone: row.phone, brand_id: row.brand_id ?? '' });
+  if (!open) return <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setOpen(true)}>Düzenle</button>;
+  const brand = brands.find((b) => b.id === v.brand_id);
+  return (
+    <form className="inline-grid gap-1 text-left" onSubmit={(e) => { e.preventDefault(); void onSave({ name: v.name, title: v.title, email: v.email, phone: v.phone, brand_id: v.brand_id || null, ...(brand ? { client_id: brand.client_id } : {}) }).then(() => setOpen(false)); }}>
+      <input className="input" aria-label="Ad soyad" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />
+      <input className="input" aria-label="Ünvan" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} />
+      <input className="input" aria-label="E-posta" type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} />
+      <input className="input" aria-label="Telefon" value={v.phone} onChange={(e) => setV({ ...v, phone: e.target.value })} />
+      <select className="input" aria-label="Marka" value={v.brand_id} onChange={(e) => setV({ ...v, brand_id: e.target.value })}><option value="">—</option>{brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+      <div className="flex gap-1"><button className="btn btn-primary btn-sm" disabled={busy}>Kaydet</button><button type="button" className="btn btn-sm" onClick={() => setOpen(false)}>Vazgeç</button></div>
+    </form>
   );
 }
 
@@ -166,7 +220,7 @@ function ProposalEditor({ proposal, brands, deals, today, canEdit, busy, onSave,
 export function Account360({ brandId }: { brandId: string }) {
   const { mode, me, repo } = useSession();
   const healthOn = useFeature('crm.health_scores');
-  const q = useWorld(['crm_contacts', 'crm_contracts', 'invoices', 'survey_responses', 'surveys', 'requests']);
+  const q = useWorld(['crm_contacts', 'client_contacts', 'crm_contracts', 'invoices', 'survey_responses', 'surveys', 'requests']);
   const { act, busy, Err } = useAct();
   const today = todayFor(mode);
   const canOwnArea = !!me && ['owner', 'org_admin', 'operations', 'account'].includes(me.role);
@@ -189,7 +243,7 @@ export function Account360({ brandId }: { brandId: string }) {
               <Metric label="Açık görev" value={open.length} hint={`${late} gecikmiş`} tone={late ? 'bad' : undefined} def="Arşivlenmemiş görev sayısı." />
               <Metric label="Geciken fatura" value={overdue} tone={overdue ? 'bad' : 'ok'} def="Vadesi geçmiş ve ödenmemiş fatura sayısı." />
             </Grid>
-            <Card title={b.name} aside={<Chip tone={STATUS[b.status][1]}>{STATUS[b.status][0]}</Chip>}>
+            <Card title={b.name} aside={<span className="flex flex-wrap items-center gap-2"><Chip tone={STATUS[b.status][1]}>{STATUS[b.status][0]}</Chip>{b.source_ref && <HubSpotBadge ref={b.source_ref} syncedAt={b.synced_at} />}</span>}>
               {Err}
               <p className="text-sm text-muted">{b.sector} · Account: {nameOf(d.team, b.account_owner)} · AD: {nameOf(d.team, b.art_director)}</p>
               {b.compliance_flags.length > 0 && <p className="mt-2">{b.compliance_flags.map((f) => <Chip key={f} tone="warn">{f}</Chip>)}</p>}
@@ -205,7 +259,11 @@ export function Account360({ brandId }: { brandId: string }) {
             <Card title="Projeler">{projects.length === 0 ? <Empty>Proje yok.</Empty> : <Table heads={['Proje', 'Durum', 'Teslim', 'Bütçe']}>{projects.map((p) => <tr key={p.id}><td><Link className="font-semibold hover:underline" href={`/app/projects/${p.id}`}>{p.name}</Link></td><td>{p.status}</td><td>{fmtDate(p.due_at)}</td><td>{money(p.budget_minor)}</td></tr>)}</Table>}</Card>
             <Card title="Açık görevler">{open.length === 0 ? <Empty>Açık görev yok.</Empty> : <ul className="grid gap-2">{open.slice(0, 8).map((t) => <li key={t.id} className="nested flex justify-between gap-2 text-sm"><span>{t.title}</span><Chip tone={isOverdue(t, today) ? 'bad' : undefined}>{fmtDate(t.due_at)}</Chip></li>)}</ul>}</Card>
             <Grid cols={2}>
-              <Card title="Kişiler">{d.crm_contacts.filter((c) => c.brand_id === b.id).map((c) => <p key={c.id} className="text-sm">{c.name} <span className="text-muted">· {c.title} · {c.email}</span></p>)}</Card>
+              <Card title="Kişiler">
+                {d.client_contacts.filter((c) => c.brand_id === b.id || c.client_id === b.client_id).map((c) => <p key={c.id} className="text-sm">{c.name} <span className="text-muted">· {c.title} · {c.email}</span> {c.source_ref && <HubSpotBadge ref={c.source_ref} compact />}</p>)}
+                {d.crm_contacts.filter((c) => c.brand_id === b.id).map((c) => <p key={c.id} className="text-sm">{c.name} <span className="text-muted">· {c.title} · {c.email}</span></p>)}
+                {!d.client_contacts.some((c) => c.brand_id === b.id || c.client_id === b.client_id) && !d.crm_contacts.some((c) => c.brand_id === b.id) && <span className="text-sm text-muted">Kişi yok.</span>}
+              </Card>
               <Card title="Sözleşme">{d.crm_contracts.filter((c) => c.brand_id === b.id).map((c) => <p key={c.id} className="text-sm">{c.title} <span className="text-muted">· {fmtDate(c.end)} bitiş</span></p>)}{!d.crm_contracts.some((c) => c.brand_id === b.id) && <span className="text-sm text-muted">Sözleşme kaydı yok.</span>}</Card>
             </Grid>
           </div>

@@ -3,7 +3,7 @@ import type {
   AgentPrompt, AgentRun, Approval, ApprovalCreate, BoardAnswer, BoardDecision, Brand, Channel, ConnectData, Integration, Me, Member,
   Message, Organization, OrgSettings, Project, Task, TaskCreate, TaskPatch, TaskState, TaskType, TeamMember, Twin, TwinBid,
   AccessToken, BidAssignResult, BidProposal, TaskAssignment, TaskBid, TokenCreate,
-  TrelloImportResult, TrelloMode, TrelloPublicState,
+  TrelloImportResult, TrelloMode, TrelloPublicState, SyncLogEntry,
   AttachmentInput, CheckItemCreate, CheckItemPatch, TaskAttachment, TaskBadges, TaskCheckItem, TaskChecklist, TaskComment,
   BrandCreate, EmployeeCreate, EmployeePatch, ProjectCreate, UserPrefs,
   ActivityEntry, BrandPatch, ApprovalAction, ApprovalSubject, Notification, NotificationRule,
@@ -105,6 +105,8 @@ export interface Repo {
   trelloImport?(fixture?: TrelloSnapshot): Promise<TrelloImportResult>;
   trelloSetMember?(name: string, employeeId: string): Promise<void>;
   trelloSetMode?(mode: TrelloMode): Promise<void>;
+  /** 0020: entegrasyon senkron günlüğü (integration_sync_log; RLS yetkisi yoksa boş). CRM'de HubSpot çakışma göstergesi için. */
+  listSyncLog(provider: string, limit?: number): Promise<SyncLogEntry[]>;
   // agents & intel
   listAgentPrompts(): Promise<AgentPrompt[]>;
   getActivePrompt(agent: string): Promise<AgentPrompt | null>;

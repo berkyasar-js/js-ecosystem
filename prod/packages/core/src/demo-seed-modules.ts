@@ -20,7 +20,7 @@ const ALLOC: Array<[string, number[], string]> = [
 export function makeModuleSeed(): ModuleCols {
   const c: ModuleCols = {};
   c.crm_deals = rows('crm_deals', [
-    { brand_id: 'c_clayton', company: 'Clayton', title: 'Konut lansman paketi', stage: 'proposal', value_minor: 65000000, owner: 'OE', source: 'Referans', next_step: 'Perşembe sunum toplantısı' },
+    { brand_id: 'c_clayton', company: 'Clayton', title: 'Konut lansman paketi', stage: 'proposal', value_minor: 65000000, owner: 'OE', source: 'HubSpot', next_step: 'Perşembe sunum toplantısı', source_ref: 'hubspot:deal:5001', synced_at: '2026-11-10T08:00:00Z', sync_origin: 'hubspot', updated_at: '2026-11-10T08:00:00Z', close_at: '2026-12-15T00:00:00Z', hs_pipeline: 'default', hs_stage: 'presentationscheduled' },
     { brand_id: 'c_globmac', company: 'Globmac', title: 'Fuar standı ve katalog', stage: 'talk', value_minor: 38000000, owner: 'SO', source: 'Web formu', next_step: 'Keşif görüşmesi' },
     { brand_id: 'c_tarla', company: 'Tarla Sofrası', title: 'Marka yenileme', stage: 'new', value_minor: 24000000, owner: 'SO', source: 'LinkedIn', next_step: 'İlk arama' },
     { brand_id: 'c_wellana', company: 'Wellana', title: 'Kasım yenileme (retainer)', stage: 'proposal', value_minor: 54000000, owner: 'OE', source: 'Mevcut müşteri', next_step: 'Teklif v2 gönder' },
@@ -34,6 +34,12 @@ export function makeModuleSeed(): ModuleCols {
     { brand_id: 'c_badem', name: 'Elif T.', title: 'Dijital Pazarlama', email: 'elif@badem.example', phone: '+90 212 555 01 03', primary: true },
     { brand_id: 'c_clayton', name: 'Ali Çetin', title: 'Satış Direktörü', email: 'ali@clayton.example', phone: '+90 212 555 01 04', primary: true },
     { brand_id: 'c_anova', name: 'Mert S.', title: 'Satın Alma', email: 'mert@anova.example', phone: '+90 212 555 01 05', primary: false, client_visible: true },
+  ]);
+  /** 0020: müşteri kişileri — ikisi HubSpot'tan gelmiş gibi (source_ref + synced_at), biri JS'te açılmış. */
+  c.client_contacts = rows('client_contacts', [
+    { client_id: 'cl_anova', brand_id: 'c_anova', name: 'Pınar Yılmaz', email: 'pinar@anova.example', phone: '+90 212 555 01 01', title: 'Pazarlama Müdürü', source_ref: 'hubspot:contact:901', synced_at: '2026-11-10T08:00:00Z', sync_origin: 'hubspot', updated_at: '2026-11-10T08:00:00Z' },
+    { client_id: 'cl_clayton', brand_id: 'c_clayton', name: 'Ali Çetin', email: 'ali@clayton.example', phone: '+90 212 555 01 04', title: 'Satış Direktörü', source_ref: 'hubspot:contact:902', synced_at: '2026-11-10T08:00:00Z', sync_origin: 'hubspot', updated_at: '2026-11-10T08:00:00Z' },
+    { client_id: 'cl_wellana', brand_id: 'c_wellana', name: 'Deniz Kaya', email: 'deniz@wellana.example', phone: '+90 212 555 01 02', title: 'Marka Yöneticisi', source_ref: null, updated_at: '2026-11-12T09:30:00Z' },
   ]);
   c.crm_proposals = rows('crm_proposals', [
     { brand_id: 'c_clayton', deal_id: 'd1', number: 'TKL-2026-041', title: 'Clayton lansman paketi', version: 2, status: 'sent', vat_pct: 20, payment_terms_days: 30, valid_until: '2026-11-15',

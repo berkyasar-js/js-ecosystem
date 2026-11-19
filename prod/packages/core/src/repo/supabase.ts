@@ -9,7 +9,7 @@ import {
   DEFAULT_PREFS, brandCreateSchema, employeeCreateSchema, employeePatchSchema, projectCreateSchema, userPrefsPatchSchema, userPrefsSchema, type Brand, type BrandCreate, type EmployeeCreate, type EmployeePatch, type Project, type ProjectCreate, type UserPrefs,
   brandPatchSchema, buildTimeline, type ActivityEntry, type BrandPatch,
   blockersOf, moveNeedsOverride, can, type ApprovalAction, type ApprovalSubject, type TaskLink,
-  notificationRuleSchema, type Notification, type NotificationRule,
+  notificationRuleSchema, type Notification, type NotificationRule, type SyncLogEntry,
 } from '@jscore/contracts';
 import { createApprovalWithChain, decideWithChain, matchPolicy, policySubjectOf, type ApprovalIO } from '../approvals/engine';
 import { onAnnouncement, onComment, onRequestConverted, onTaskWritten } from '../notify/producers';
@@ -145,6 +145,7 @@ export class SupabaseRepo implements Repo {
     const client = await this.ok<{ id: string }>(this.sb.from('clients').insert({ org_id: org, name: v.client_name?.trim() || v.name, sector: v.sector || null }).select('id').single());
     const brand = await this.ok<Brand>(this.sb.from('brands').insert({ org_id: org, client_id: client.id, name: v.name, sector: v.sector || null, status: 'active' }).select('*').single());
     await this.audit('brand.create', `brands/${brand.id}`, { name: brand.name });
+    this.hubspotSoon('company', client.id);
     return brand;
   }
   async createProject(input: ProjectCreate): Promise<Project> {
@@ -368,6 +369,12 @@ export class SupabaseRepo implements Repo {
       sync: (sync ?? []) as unknown as NonNullable<Parameters<typeof buildTimeline>[0]['sync']>,
     }, { taskIds: idSet, projectId: scope.project_id ?? null, limit: scope.limit });
   }
+  async listSyncLog(provider: string, limit = 100): Promise<SyncLogEntry[]> {
+    try {
+      const { data, error } = await this.sb.from('integration_sync_log').select('id,provider,direction,entity,entity_id,external_id,action,ok,message,created_at').eq('org_id', await this.org()).eq('provider', provider).order('created_at', { ascending: false }).limit(limit);
+      return error ? [] : ((data ?? []) as SyncLogEntry[]);
+    } catch { return []; }
+  }
   subscribePresence(cb: (ids: string[]) => void) {
     let ch: ReturnType<SupabaseClient['channel']> | null = null;
     let alive = true;
@@ -571,7 +578,13 @@ export class SupabaseRepo implements Repo {
     await this.audit(`${kind}.${input.id ? 'update' : 'create'}`, `${kind}/${saved.id as string}`);
     const out = this.fromRow<K>(saved);
     await this.afterCollectionSave(kind, out as unknown as Row, cur ? (this.fromRow(cur) as unknown as Row) : null);
+    this.hubspotSoon(kind === 'crm_deals' ? 'deal' : kind === 'client_contacts' ? 'contact' : null, saved.id as string);
     return out;
+  }
+  /** Best-effort satır içi JS → HubSpot itmesi (tarayıcıda, beklemeden; mode=two_way değilse sunucu `skipped` döner). Cron olaydan yineler; idempotent. */
+  private hubspotSoon(entity: 'company' | 'contact' | 'deal' | null, id: string) {
+    if (!entity || typeof window === 'undefined') return;
+    void fetch('/api/integrations/hubspot/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ entity, id }), keepalive: true }).catch(() => undefined);
   }
   /** Bildirim üreticileri: duyuru → hedef kitle, talep → göreve dönüştü. */
   private async afterCollectionSave(kind: CollKey, rec: Row, before: Row | null) {

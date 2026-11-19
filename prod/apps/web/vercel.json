@@ -11,6 +11,10 @@
     {
       "path": "/api/integrations/trello/reconcile",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/integrations/hubspot/reconcile",
+      "schedule": "30 * * * *"
     }
   ]
 }

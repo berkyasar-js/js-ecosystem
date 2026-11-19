@@ -576,6 +576,19 @@ export class DemoRepo implements Repo {
     this.log(db, 'token.revoke', `access_tokens/${id}`);
     this.persist(db);
   }
+  /** 0020: senkron günlüğü — Trello: bellek içi günlük; HubSpot: demo örneği (bir çakışma satırı dahil). Yetkisiz rol boş görür. */
+  async listSyncLog(provider: string, limit = 100): Promise<SyncLogEntry[]> {
+    if (!['owner', 'org_admin', 'integration_admin', 'operations', 'account', 'pm'].includes(this.role)) return [];
+    if (provider === 'trello') return (this.db().trello?.sync_log ?? []).slice(0, limit);
+    if (provider !== 'hubspot') return [];
+    const at = '2026-11-10T08:00:00Z';
+    const rows: SyncLogEntry[] = [
+      { id: 'hs1', provider: 'hubspot', direction: 'reconcile', entity: 'integration', entity_id: null, external_id: null, action: 'reconcile', ok: true, message: 'çekilen 3 · itilen 0 · HubSpot’ta yeni 0 · atlanan 1', created_at: at },
+      { id: 'hs2', provider: 'hubspot', direction: 'reconcile', entity: 'deal', entity_id: 'd1', external_id: '5001', action: 'skipped_conflict', ok: true, message: 'JS daha yeni (2026-11-10T07:55:00Z) · value_minor uygulanmadı', created_at: at },
+      { id: 'hs3', provider: 'hubspot', direction: 'pull', entity: 'contact', entity_id: 'cc1', external_id: '901', action: 'updated', ok: true, message: 'title', created_at: at },
+    ];
+    return rows.slice(0, limit);
+  }
   /* ───────── Trello (demo): örnek veriyle aynı içe aktarma çekirdeği ───────── */
   async trelloState(): Promise<TrelloPublicState> {
     if (!TOKEN_ADMIN_ROLES.includes(this.role)) throw new ForbiddenError();

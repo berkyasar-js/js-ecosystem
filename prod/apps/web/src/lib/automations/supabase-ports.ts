@@ -3,7 +3,8 @@ import type { Automation, Role } from '@jscore/contracts';
 import { notify as notifyAll } from '@jscore/core/notify';
 import { signBody } from '@jscore/core/hmac';
 import { syncEvent } from '@jscore/core/integrations/trello-push';
-import type { TrelloConfig } from '@jscore/contracts';
+import { syncHubSpotEvent } from '@jscore/core/integrations/hubspot-sync';
+import type { HubSpotConfig, TrelloConfig } from '@jscore/contracts';
 import type { DispatchPorts } from '@jscore/core/automations/dispatch';
 
 type Row = Record<string, unknown>;
@@ -15,8 +16,15 @@ export function supabasePorts(sb: SupabaseClient, env: { webhookSecret?: string;
   const ok = async <T,>(p: PromiseLike<{ data: T | null; error: { message: string } | null }>) => { const { data, error } = await p; if (error) throw new Error(error.message); return data as T; };
   const doFetch = env.fetch ?? fetch;
   const trelloCfg = new Map<string, TrelloConfig | null>();
+  const hubspotCfg = new Map<string, HubSpotConfig | null>();
   return {
-    integrationSync: async (ev) => { await syncEvent(sb, ev, trelloCfg); },
+    // Trello (görevler) + HubSpot (müşteri / kişi / fırsat) — biri hata verse diğeri sürer.
+    integrationSync: async (ev) => {
+      const errs: unknown[] = [];
+      await syncEvent(sb, ev, trelloCfg).catch((e) => errs.push(e));
+      await syncHubSpotEvent(sb, ev, hubspotCfg).catch((e) => errs.push(e));
+      if (errs.length) throw errs[0];
+    },
     now: () => new Date().toISOString(),
     async rules(org) { return (await ok<Row[]>(sb.from('automations').select('*').eq('org_id', org))).map((r) => flat(r) as unknown as Automation); },
     async logRun(org, run) { await ok(sb.from('automation_runs').insert({ org_id: org, data: run }).select('id')); },
