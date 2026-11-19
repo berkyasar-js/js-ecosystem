@@ -95,10 +95,10 @@ export function HubSpotCard() {
   return (
     <section className="card mb-4" aria-labelledby="hs-h">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="hs-h" className="font-bold">HubSpot (CRM)</h2>
+        <h2 id="hs-h" className="flex items-center gap-2 font-bold">HubSpot (CRM) <span className="chip">İsteğe bağlı</span></h2>
         <span className={`chip ${connected ? 'chip-ok' : ''}`}>{connected ? `Bağlı · portal ${st?.portal_id}${st?.last_sync_at ? ` · son senkron ${fmtTime(st.last_sync_at)}` : ''}` : 'Bağlı değil'}</span>
       </div>
-      <p className="mt-1 text-sm text-muted">Geçici köprü: HubSpot şirketleri → müşteri + marka, kişiler → müşteri kişileri, fırsatlar → pipeline. Owner’lar e-posta ile çalışana eşlenir. Çakışmada son yazan kazanır.</p>
+      <p className="mt-1 text-sm text-muted">İsteğe bağlı geçici köprü (Google Workspace ile e-posta/CRM akışı için gerekmez): HubSpot şirketleri → müşteri + marka, kişiler → müşteri kişileri, fırsatlar → pipeline. Owner’lar e-posta ile çalışana eşlenir. Çakışmada son yazan kazanır.</p>
       {demo && <p className="mt-3 text-sm text-muted">Demo modu: HubSpot yalnızca Supabase ile bağlanır (token sunucuda saklanır). Demo CRM’de iki örnek kayıt HubSpot bağlı görünür.</p>}
       {err && <p role="alert" className="mt-3 text-sm text-magenta">{err}</p>}
       {note && <p role="status" className="mt-3 text-sm text-muted">{note}</p>}

@@ -7,6 +7,7 @@ import { markInboxDone, type ApprovalStep, type Delegation, type Notification, t
 import { Async, Empty, PageHeader, fmtDate, todayFor, useData } from '@/components/ui';
 import { useSession } from '@/components/session';
 import { EmailInbox } from '@/components/inbox/email-inbox';
+import { GmailInbox } from '@/components/inbox/gmail-inbox';
 import { INBOX_KIND_LABELS, buildInbox, filterInbox, inboxCounts, type InboxFilter } from '@/lib/inbox';
 
 const FILTERS: Array<[InboxFilter, string]> = [['all', 'Tümü'], ['approval', 'Onaylar'], ['due', 'Teslimler'], ['unblocked', 'Önün açıldı'], ['mention', 'Anmalar'], ['trello', 'Trello'], ['notification', 'Bildirimler']];
@@ -14,6 +15,7 @@ const FILTERS: Array<[InboxFilter, string]> = [['all', 'Tümü'], ['approval', '
 /** Gelen Kutusu: dikkat isteyen her şey tek kuyrukta (bildirim, bana düşen onay, anma, görevimdeki Trello değişikliği, bugün biten / geciken). */
 export default function InboxPage() {
   const qs = useSearchParams();
+  const { mode } = useSession();
   const tab = qs.get('tab') === 'email' ? 'email' : 'queue';
   return (
     <>
@@ -22,7 +24,8 @@ export default function InboxPage() {
         <Link role="tab" href="/app/inbox" aria-selected={tab === 'queue'} className="tab" scroll={false}><InboxIcon size={14} aria-hidden className="mr-1 inline" />Kuyruk</Link>
         <Link role="tab" href="/app/inbox?tab=email" aria-selected={tab === 'email'} className="tab" scroll={false}><Mail size={14} aria-hidden className="mr-1 inline" />E-posta</Link>
       </nav>
-      {tab === 'email' ? <EmailInbox /> : <Queue />}
+      {/* E-posta: Supabase'de Gmail → CRM konuları (0021); demo modunda eski örnek gelen kutusu. */}
+      {tab === 'email' ? (mode === 'demo' ? <EmailInbox /> : <GmailInbox />) : <Queue />}
     </>
   );
 }

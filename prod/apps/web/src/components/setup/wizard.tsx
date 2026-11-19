@@ -233,6 +233,8 @@ function IntegrationsStep({ onNext }: { onNext(): Promise<void> }) {
     createBrowser().auth.getUser().then(({ data }) => { const p = (data.user?.app_metadata?.providers as string[] | undefined) ?? []; setGoogle(p.includes('google') ? `Google ile giriş yapıldı (${me?.email})` : `Bu hesap ${p.join(', ') || 'e-posta'} ile giriş yaptı; Google sağlayıcısı Supabase → Authentication → Providers’tan açılır.`); }, () => setGoogle('—'));
   }, [me]);
   const trello = q.data?.integrations.find((i) => i.provider === 'trello');
+  /** integrations(provider='google') satırı: yalnızca status (config / adres istemciye inmez; ayrıntı panelde). */
+  const googleWs = q.data?.integrations.find((i) => i.provider === 'google');
   /** Token kaydedilir ve sunucu hemen "Bağlantıyı test et" çalıştırır (portal id, owner sayısı, pipeline'lar). Başka ayar yok; eşleme/içe aktarma panelde. */
   const submitHub = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setHubErr(null); setHubTest(null); setHubBusy(true);
@@ -249,12 +251,17 @@ function IntegrationsStep({ onNext }: { onNext(): Promise<void> }) {
   return (
     <div className="grid gap-4">
       <section className="card grid gap-2">
+        <div className="flex items-center justify-between gap-2"><h2 className="font-bold">Google Workspace (Gmail + Takvim)</h2><span className={`chip ${googleWs?.status === 'connected' ? 'chip-ok' : ''}`}>{googleWs?.status === 'connected' ? 'Bağlı' : 'Bağlı değil'}</span></div>
+        <p className="text-sm text-muted">Ajans posta kutusu (<code>hello@jobsstudio.co</code>) OAuth ile bağlanır: bildirim e-postaları Gmail’den gider, gelen e-postalar müşteriyle eşlenip Gelen Kutusu → E-posta’ya düşer, ajans takvimi Ajanda’da görünür. HubSpot ve Resend bu akış için gerekmez.</p>
+        {ADMIN_URL ? <a className="btn btn-primary w-fit" href={`${ADMIN_URL}/admin/integrations`} target="_blank" rel="noreferrer">Google Workspace’i bağla <ExternalLink size={14} aria-hidden /></a> : <p className="text-xs text-muted">NEXT_PUBLIC_ADMIN_URL tanımlı değil.</p>}
+      </section>
+      <section className="card grid gap-2">
         <div className="flex items-center justify-between gap-2"><h2 className="font-bold">Trello</h2><span className={`chip ${trello?.status === 'connected' ? 'chip-ok' : ''}`}>{trello?.status === 'connected' ? 'Bağlı' : 'Bağlı değil'}</span></div>
         <p className="text-sm text-muted">Panoları içe aktarma, iki yönlü eşitleme ve webhook kurulumu Ana Yönetim Paneli → Entegrasyonlar’dadır.</p>
         {ADMIN_URL ? <a className="btn w-fit" href={`${ADMIN_URL}/admin/integrations`} target="_blank" rel="noreferrer">Trello’yu bağla <ExternalLink size={14} aria-hidden /></a> : <p className="text-xs text-muted">NEXT_PUBLIC_ADMIN_URL tanımlı değil.</p>}
       </section>
       <section className="card grid gap-2">
-        <div className="flex items-center justify-between gap-2"><h2 className="font-bold">HubSpot</h2><span className={`chip ${hub?.connected ? 'chip-ok' : ''}`}>{hub?.connected ? `Bağlı · ${hub.token}${hub.portal_id ? ` · portal ${hub.portal_id}` : ''}` : 'Bağlı değil'}</span></div>
+        <div className="flex items-center justify-between gap-2"><h2 className="flex items-center gap-2 font-bold">HubSpot <span className="chip">İsteğe bağlı</span></h2><span className={`chip ${hub?.connected ? 'chip-ok' : ''}`}>{hub?.connected ? `Bağlı · ${hub.token}${hub.portal_id ? ` · portal ${hub.portal_id}` : ''}` : 'Bağlı değil'}</span></div>
         <p className="text-sm text-muted">Özel uygulama (private app) erişim token’ı. Yalnızca sunucuda saklanır, arayüzde maskeli görünür; kaydedince bağlantı test edilir. Aşama eşlemesi, tam içe aktarma ve eşitleme Ana Yönetim Paneli → Entegrasyonlar → HubSpot’tadır (varsayılan mod: yalnızca HubSpot → JS).</p>
         {hubTest && <p role="status" className="text-sm" data-testid="hub-test">Bağlantı doğrulandı · portal {hubTest.portal_id} · {hubTest.owners} owner · pipeline: {hubTest.pipelines.join(', ') || '—'}</p>}
         <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => void submitHub(e)}>

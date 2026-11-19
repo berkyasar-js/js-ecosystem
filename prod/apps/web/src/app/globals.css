@@ -375,3 +375,12 @@ main .grid:not([class*='grid-cols']) { grid-template-columns: minmax(0, 1fr); }
 .ntf-kind { flex: none; }
 @media (prefers-reduced-motion: no-preference) { .ntf-toast { animation: wk-pop var(--js-duration, 180ms) var(--js-ease, ease); } .ntf-pop { animation: wk-pop var(--js-duration, 180ms) var(--js-ease, ease); } }
 @media (max-width: 480px) { .ntf-toast .ntf-kind { display: none; } }
+
+/* 0021 Gelen Kutusu → E-posta: temizlenmiş HTML gövdesi (sunucuda izin listesi) */
+.mail-html { overflow-wrap: anywhere; line-height: 1.5; }
+.mail-html img { max-width: 100%; height: auto; }
+.mail-html a { color: var(--brand-ink); text-decoration: underline; }
+.mail-html blockquote { border-left: 3px solid var(--line); margin: 8px 0; padding-left: 10px; color: var(--muted); }
+.mail-html table { max-width: 100%; border-collapse: collapse; }
+.mail-html td, .mail-html th { padding: 2px 6px; vertical-align: top; }
+.mail-html pre { white-space: pre-wrap; }

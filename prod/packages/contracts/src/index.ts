@@ -368,7 +368,11 @@ export const outputSchemaFor = (a: AgentName) => (a in AGENT_OUTPUT_SCHEMAS ? AG
 export const orgSettingsSchema = z.object({
   general: z.object({ name: z.string().min(1), locale: z.string().default('tr-TR'), timezone: z.string().default('Europe/Istanbul'), currency: z.string().default('TRY'), logo_url: z.string().max(500).optional() }),
   /** Demo modunda bildirim kuralları burada tutulur (Supabase: notification_rules tablosu). `roles` boş = herkes. */
-  notifications: z.object({ rules: z.array(z.object({ event: z.string(), channel: z.enum(['in_app', 'email', 'slack']), enabled: z.boolean(), roles: z.array(z.string()).optional() })) }),
+  notifications: z.object({
+    rules: z.array(z.object({ event: z.string(), channel: z.enum(['in_app', 'email', 'slack']), enabled: z.boolean(), roles: z.array(z.string()).optional() })),
+    /** 0021: e-posta sağlayıcısı — gmail (org posta kutusu bağlıysa varsayılan) | resend | off. Yoksa: Gmail bağlıysa gmail, değilse Resend/günlük. */
+    email_provider: z.enum(['gmail', 'resend', 'off']).optional(),
+  }),
   structure: z.object({ flow_stages: z.array(z.string()), work_hours: z.string().default('09:00-18:00') }),
   /** monthly_cap_usd: 0 = tavan yok. usd_try: ₺ gösterimi için kur (varsayılan 40). */
   ai: z.object({ monthly_cap_usd: z.number().min(0), default_model: z.string(), board_enabled: z.boolean(), usd_try: z.number().positive().optional() }),
@@ -504,3 +508,4 @@ export * from './workspace';
 export * from './governance';
 export * from './notifications';
 export * from './hubspot';
+export * from './google';

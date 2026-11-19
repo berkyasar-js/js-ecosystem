@@ -6,6 +6,7 @@ import {
 import { myTurn } from '../approvals/engine';
 import { adminIO, notify } from './index';
 import { sendEmail, type EmailResult } from './email';
+import { resolveOrgSender } from './email-gmail';
 import { buildDigest, renderDigestEmail, renderInstantEmail, type MailCtx } from './templates';
 import { signUnsubscribe, unsubscribeUrl } from './unsubscribe';
 
@@ -28,7 +29,8 @@ interface Person { emp: Emp; email: string | null; prefs: NotificationPrefs }
 
 export async function runNotifyJobs(sb: SupabaseClient, deps: JobDeps = {}): Promise<JobReport> {
   const now = deps.now ?? (() => new Date().toISOString());
-  const send = deps.send ?? sendEmail;
+  /** `deps.send` verilmezse org başına sağlayıcı çözülür (Gmail posta kutusu / Resend / günlük — settings.notifications.email_provider). */
+  const defaultSend = deps.send;
   const appUrl = deps.appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://js-ecosystem-app.vercel.app';
   const secret = deps.secret ?? process.env.JSCORE_WEBHOOK_SECRET ?? '';
   const only = new Set<NotifyJob>(deps.only ?? ['instant', 'due', 'trello', 'digest']);
@@ -59,6 +61,7 @@ export async function runNotifyJobs(sb: SupabaseClient, deps: JobDeps = {}): Pro
       const people = new Map<string, Person>();
       for (const emp of emps) people.set(emp.id, { emp, email: null, prefs: prefsOf(emp.auth_user_id) });
       const rules = await adminIO(sb).rules(org.id).catch(() => [] as NotificationRule[]);
+      const send: typeof sendEmail = defaultSend ?? (await resolveOrgSender(sb, org.id).then((r) => r.send, () => sendEmail));
       const mail = async (p: Person, kind: 'email' | 'digest', m: { subject: string; html: string; text: string }, logKind: string) => {
         p.email ??= await emailOf(p.emp.auth_user_id);
         if (!p.email) return { status: 'skipped', provider: 'log', error: 'Çalışanın e-posta adresi yok (auth bağlı değil)' } as EmailResult;

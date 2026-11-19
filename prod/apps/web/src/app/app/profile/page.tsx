@@ -7,9 +7,10 @@ import { PageHeader } from '@/components/ui';
 import { useSession } from '@/components/session';
 import { DelegationPanel } from '@/components/delegations';
 import { NotificationPrefsPanel } from '@/components/notification-prefs';
+import { GoogleConnectPanel } from '@/components/google-connect';
 
-type Tab = 'profile' | 'notifications' | 'delegate';
-const TABS: Array<[Tab, string]> = [['profile', 'Profil'], ['notifications', 'Bildirimler'], ['delegate', 'Delege et']];
+type Tab = 'profile' | 'notifications' | 'google' | 'delegate';
+const TABS: Array<[Tab, string]> = [['profile', 'Profil'], ['notifications', 'Bildirimler'], ['google', 'Google'], ['delegate', 'Delege et']];
 
 const CHECKS: Array<[string, string, string, string]> = [
   ['Görev güncelle', 'work', 'task', 'update'], ['Onay karara bağla', 'core', 'approval', 'decide'],
@@ -24,11 +25,12 @@ export default function Profile() {
   const extra = me.scopes.flatMap((s) => (s === 'can.read.hr_archive' ? ['hr:hr_archive:*'] : s === 'can.read.payroll' ? ['payroll:*:*'] : []));
   return (
     <>
-      <PageHeader title="Profilim" sub="Kapsam, yetkiler, bildirimler ve delegasyon" />
+      <PageHeader title="Profilim" sub="Kapsam, yetkiler, bildirimler, Google Takvim ve delegasyon" />
       <nav className="tabs" role="tablist" aria-label="Profil sekmeleri">
         {TABS.map(([t, label]) => <Link key={t} role="tab" href={t === 'profile' ? '/app/profile' : `/app/profile?tab=${t}`} aria-selected={tab === t} className="tab" scroll={false}>{label}</Link>)}
       </nav>
       {tab === 'notifications' && <NotificationPrefsPanel />}
+      {tab === 'google' && <GoogleConnectPanel />}
       {tab === 'delegate' && (
         <>
           <p className="mb-3 text-sm text-muted">İzin ya da seyahatte yetkilerini geçici olarak bir ekip arkadaşına devret. Onay kararı ve finans yetkileri owner onayından geçer; süre bitince kendiliğinden düşer.</p>

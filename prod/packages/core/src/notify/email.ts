@@ -1,10 +1,13 @@
 /**
- * E-posta sağlayıcı soyutlaması. Resend (`RESEND_API_KEY` + `EMAIL_FROM`) varsa gönderir; yoksa yalnızca günlüğe yazar ve 'skipped' döner.
- * Yalnızca sunucu (cron / yönetim rotaları). Sağlayıcı değişirse yalnızca bu dosya değişir.
+ * E-posta sağlayıcı soyutlaması. Sıra: `deps.gmail` (org Google posta kutusu, bkz. email-gmail.ts) → Resend (`RESEND_API_KEY` + `EMAIL_FROM`) → yalnızca günlük ('skipped').
+ * Yalnızca sunucu (cron / yönetim rotaları). Sağlayıcı değişirse yalnızca bu dosya (+ email-gmail.ts) değişir.
  */
 export interface EmailMessage { to: string; subject: string; html: string; text: string; /** List-Unsubscribe başlığı için. */ unsubscribeUrl?: string }
-export interface EmailResult { status: 'sent' | 'skipped' | 'error'; provider: 'resend' | 'log'; provider_id?: string | null; error?: string | null }
-export interface EmailProviderStatus { provider: 'resend' | 'log'; configured: boolean; from: string | null; reason?: string }
+export type EmailProvider = 'gmail' | 'resend' | 'log';
+export interface EmailResult { status: 'sent' | 'skipped' | 'error'; provider: EmailProvider; provider_id?: string | null; error?: string | null }
+export interface EmailProviderStatus { provider: EmailProvider; configured: boolean; from: string | null; reason?: string }
+/** Gmail (ya da başka org bağlı) gönderici: `from` görünen adres; `send` tek ileti gönderir. */
+export interface MailSender { provider: EmailProvider; from: string; send(m: EmailMessage): Promise<EmailResult> }
 
 const RESEND_URL = 'https://api.resend.com/emails';
 export function emailProviderStatus(env: NodeJS.ProcessEnv = process.env): EmailProviderStatus {
@@ -13,13 +16,20 @@ export function emailProviderStatus(env: NodeJS.ProcessEnv = process.env): Email
   if (key && from) return { provider: 'resend', configured: true, from };
   return { provider: 'log', configured: false, from, reason: !key && !from ? 'RESEND_API_KEY ve EMAIL_FROM tanımlı değil' : !key ? 'RESEND_API_KEY tanımlı değil' : 'EMAIL_FROM tanımlı değil' };
 }
+export const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 
-export interface SendDeps { env?: NodeJS.ProcessEnv; fetch?: typeof fetch; log?: (line: string) => void }
+export interface SendDeps { env?: NodeJS.ProcessEnv; fetch?: typeof fetch; log?: (line: string) => void; /** Org bağlı gönderici (Gmail); verilirse Resend'e bakılmaz. */ gmail?: MailSender | null; /** 'off': sağlayıcı kapalı — yalnızca günlük. */ off?: boolean }
 export async function sendEmail(m: EmailMessage, deps: SendDeps = {}): Promise<EmailResult> {
   const st = emailProviderStatus(deps.env ?? process.env);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m.to)) return { status: 'error', provider: st.provider, error: 'Geçersiz alıcı adresi' };
+  const log = deps.log ?? ((l) => console.info(l));
+  if (!isValidEmail(m.to)) return { status: 'error', provider: deps.gmail?.provider ?? st.provider, error: 'Geçersiz alıcı adresi' };
+  if (deps.off) { log(`[email:skipped] to=${m.to} subject="${m.subject}" (e-posta sağlayıcısı kapalı)`); return { status: 'skipped', provider: 'log', error: 'E-posta sağlayıcısı kapalı (ayarlar)' }; }
+  if (deps.gmail) {
+    try { return await deps.gmail.send(m); }
+    catch (e) { return { status: 'error', provider: deps.gmail.provider, error: e instanceof Error ? e.message : 'Gmail gönderim hatası' }; }
+  }
   if (!st.configured) {
-    (deps.log ?? ((l) => console.info(l)))(`[email:skipped] to=${m.to} subject="${m.subject}" (${st.reason})`);
+    log(`[email:skipped] to=${m.to} subject="${m.subject}" (${st.reason})`);
     return { status: 'skipped', provider: 'log', error: st.reason ?? null };
   }
   try {

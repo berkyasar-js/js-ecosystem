@@ -6,6 +6,7 @@ import { useSession } from '@/components/session';
 import { TrelloCard } from './trello-card';
 import { HubSpotCard } from './hubspot-card';
 import { EmailCard } from './email-card';
+import { GoogleCard } from './google-card';
 
 export default function IntegrationsPage() {
   const { repo, me, mode, bump } = useSession();
@@ -38,16 +39,17 @@ export default function IntegrationsPage() {
   };
   return (
     <>
-      <PageHeader title="Entegrasyonlar" sub="Trello, HubSpot, e-posta bildirimleri, MCP sunucuları, API anahtarları ve webhook’lar" />
+      <PageHeader title="Entegrasyonlar" sub="Google Workspace (Gmail + Takvim), Trello, HubSpot (isteğe bağlı), e-posta bildirimleri, MCP sunucuları, API anahtarları ve webhook’lar" />
       <Tabs<typeof tab> tabs={[['int', 'Entegrasyonlar'], ['mcp', 'MCP sunucuları'], ['api', 'API & Webhook’lar'], ['keys', 'API Anahtarları']]} value={tab} onChange={setTab} />
       {err && <p role="alert" className="mb-3 text-sm text-magenta">{err}</p>}
       <Async q={q}>{(d) => tab === 'int' ? (
         <>
+        <GoogleCard />
+        <EmailCard />
         <TrelloCard />
         <HubSpotCard />
-        <EmailCard />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {d.integrations.filter((i) => i.provider !== 'trello' && i.provider !== 'hubspot').map((i) => (
+          {d.integrations.filter((i) => i.provider !== 'trello' && i.provider !== 'hubspot' && i.provider !== 'google').map((i) => (
             <article key={i.id} className="card">
               <div className="flex items-center justify-between gap-2"><h2 className="font-bold">{i.name}</h2><span className={`chip ${i.status === 'connected' ? 'chip-ok' : i.status === 'error' ? 'chip-bad' : ''}`}>{i.status === 'connected' ? 'Bağlı' : i.status === 'error' ? 'Hata' : 'Hazır'}</span></div>
               <div className="mt-3 flex flex-wrap gap-1.5">{i.scopes.map((s) => <span key={s} className="chip">{s}</span>)}</div>
