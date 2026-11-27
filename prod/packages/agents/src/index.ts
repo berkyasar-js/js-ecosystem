@@ -43,6 +43,8 @@ export const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface AgencyRunView {
   id: string; slug: string; project_id: string | null; task_id: string | null; brief: string; by: string | null;
+  /** Elle seçilen tipleme (yoksa rolün varsayılanı kullanılır). */
+  persona: string | null;
   status: 'ok' | 'error' | 'demo'; created_at: string; text: string; cost_usd: number;
 }
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
@@ -54,7 +56,7 @@ export function toAgencyRun(run: { id: string; agent: string; input: unknown; ou
   const output = (run.output && typeof run.output === 'object' ? run.output : {}) as Record<string, unknown>;
   return {
     id: run.id, slug: run.agent.slice(AGENCY_PREFIX.length),
-    project_id: strOrNull(input.project_id), task_id: strOrNull(input.task_id), brief: str(input.brief), by: strOrNull(input.by),
+    project_id: strOrNull(input.project_id), task_id: strOrNull(input.task_id), brief: str(input.brief), by: strOrNull(input.by), persona: strOrNull(input.persona),
     status: run.status === 'ok' || run.status === 'error' ? run.status : 'demo',
     created_at: run.created_at, text: str(output.text), cost_usd: Number(run.cost_usd ?? 0),
   };
@@ -99,3 +101,5 @@ export function demoAgencyOutput(role: AgencyRole, brief: string, projectName: s
     '3. Taslağı proje sahibine onaya gönder; geri bildirimi tek turda işle.',
   ].join('\n');
 }
+
+export * from './personas';

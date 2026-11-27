@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MODULES, NAV_GROUPS, canAccessModule } from '@jscore/contracts';
 import {
-  AGENCY_ROSTER, DIVISIONS, RECENT_WINDOW_MS, agencyActivity, agencyAgentId, demoAgencyOutput, searchRoster, toAgencyRun,
+  AGENCY_ROSTER, DIVISIONS, PERSONAS, RECENT_WINDOW_MS, agencyActivity, personaById, personaFor, personaForRun, agencyAgentId, demoAgencyOutput, searchRoster, toAgencyRun,
 } from '@jscore/agents';
 import { officeLayout } from '@jscore/office-ui/layout';
 import { agencyPrompt, agencySystemPrompt } from '@jscore/agents/server';
@@ -99,5 +99,34 @@ describe('Ajans Ofisi — çıktı ve katalog', () => {
     expect(canAccessModule('pm', 'agency')).toBe(true);
     expect(canAccessModule('client_admin', 'agency')).toBe(false);
     expect(canAccessModule('freelancer', 'agency')).toBe(false);
+  });
+});
+
+describe('Ajans Ofisi — tiplemeler', () => {
+  it('12 tipleme, benzersiz kimlik, her bölüm tam bir tiplemede, görseller yerinde', async () => {
+    const { existsSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    expect(PERSONAS).toHaveLength(12);
+    expect(new Set(PERSONAS.map((p) => p.id)).size).toBe(12);
+    for (const d of DIVISIONS) expect(PERSONAS.filter((p) => p.divisions.includes(d.id)), d.id).toHaveLength(1);
+    for (const p of PERSONAS) expect(existsSync(fileURLToPath(new URL(`../../../public${p.image}`, import.meta.url))), p.image).toBe(true);
+  });
+  it('her rolün deterministik bir tiplemesi var; 12 tiplemenin hepsi kullanılıyor', () => {
+    const used = new Set(AGENCY_ROSTER.map((r) => personaFor(r).id));
+    expect(used.size).toBe(12);
+    expect(personaFor({ slug: 'testing-reality-checker', division: 'testing' }).id).toBe('quality');
+    expect(personaFor({ slug: 'chief-financial-officer', division: 'specialized' }).id).toBe('finance');
+    expect(personaFor({ slug: 'customer-service', division: 'specialized' }).id).toBe('operations');
+    expect(personaFor({ slug: 'x', division: 'bilinmeyen' }).id).toBe('operations');
+  });
+  it('elle seçim geçerliyse onu, değilse varsayılanı kullanır; çalıştırma satırından okunur', () => {
+    const role = { slug: 'testing-reality-checker', division: 'testing' };
+    expect(personaForRun(role, 'sales').id).toBe('sales');
+    expect(personaForRun(role, 'yok').id).toBe('quality');
+    expect(personaForRun(role, null).id).toBe('quality');
+    expect(personaById('yok')).toBeUndefined();
+    const v = toAgencyRun({ id: 'x', agent: agencyAgentId(role.slug), input: { persona: 'creative' }, output: {}, status: 'ok', created_at: '2026-12-01T11:00:00Z' })!;
+    expect(v.persona).toBe('creative');
+    expect(run('a', '2026-12-01T11:00:00Z').persona).toBeNull();
   });
 });

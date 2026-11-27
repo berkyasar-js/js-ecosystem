@@ -5,7 +5,7 @@ export interface OfficeOccupant { slug: string; division: string }
 /** Grup (oda) görünümü: etiket + renk. */
 export interface OfficeGroup { label: string; color: string }
 /** Masadaki kişinin/ajanın görünen adı. */
-export interface OfficePerson { name: string; emoji?: string }
+export interface OfficePerson { name: string; emoji?: string; /** Etikette gösterilen küçük portre (isteğe bağlı). */ image?: string }
 export type SeatState = 'working' | 'recent' | 'idle';
 
 /* ───────── Ofis yerleşimi (saf; birim ≈ metre) ───────── */

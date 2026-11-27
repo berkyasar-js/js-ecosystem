@@ -313,7 +313,7 @@ export function Office3D({ layout, people, groups, activity, matches, selected, 
         {pinned.map((slug) => {
           const r = people.get(slug);
           const isWorking = workingSlugs.includes(slug);
-          return r ? <div key={slug} data-slug={slug} className={`agency-tag ${isWorking ? 'is-working' : ''}`}>{r.emoji ? `${r.emoji} ` : ''}{r.name}{isWorking ? ' · çalışıyor' : ''}</div> : null;
+          return r ? <div key={slug} data-slug={slug} className={`agency-tag ${isWorking ? 'is-working' : ''}`}>{r.image ? <img src={r.image} alt="" /> : r.emoji ? `${r.emoji} ` : ''}{r.name}{isWorking ? ' · çalışıyor' : ''}</div> : null;
         })}
       </div>
       <div ref={tipRef} className="agency-tip" aria-hidden="true" style={{ opacity: hoverRole ? 1 : 0 }}>

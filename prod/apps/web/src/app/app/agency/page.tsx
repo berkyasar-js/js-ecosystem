@@ -6,7 +6,7 @@ import { agentRunBody } from '@jscore/core/agents/client';
 import { Empty, ErrorBox, Loading, PageHeader, Stat, Tabs, fmtTime, todayFor } from '@/components/ui';
 import { useCan, useSession } from '@/components/session';
 import {
-  AGENCY_ROSTER, DIVISIONS, agencyActivity, divisionOf, searchRoster, toAgencyRun,
+  AGENCY_ROSTER, DIVISIONS, PERSONAS, agencyActivity, divisionOf, personaFor, personaForRun, searchRoster, toAgencyRun,
   type AgencyRole, type AgencyRunView, type SeatActivity,
 } from '@jscore/agents';
 import { officeLayout } from '@jscore/office-ui/layout';
@@ -43,6 +43,8 @@ export default function AgencyOffice() {
   const [brief, setBrief] = useState('');
   const [runErr, setRunErr] = useState<string | null>(null);
   const [shown, setShown] = useState<AgencyRunView | null>(null);
+  const [personaFilter, setPersonaFilter] = useState('');
+  const [personaPick, setPersonaPick] = useState('');
 
   const loadRuns = useCallback(async () => {
     if (!repo) return;
@@ -76,13 +78,19 @@ export default function AgencyOffice() {
   }, [repo, projectId]);
 
   const activity = useMemo(() => agencyActivity(runs ?? [], now, working, scope || null), [runs, now, working, scope]);
-  const filtered = useMemo(() => searchRoster(q, division || null), [q, division]);
+  const filtered = useMemo(() => searchRoster(q, division || null).filter((r) => !personaFilter || personaFor(r).id === personaFilter), [q, division, personaFilter]);
   const matches = useMemo(() => {
     const scoped = scope ? filtered.filter((r) => activity.has(r.slug)) : filtered;
     return scoped.length === AGENCY_ROSTER.length ? null : new Set(scoped.map((r) => r.slug));
   }, [filtered, scope, activity]);
   const listed = matches ? AGENCY_ROSTER.filter((r) => matches.has(r.slug)) : AGENCY_ROSTER;
   const role = selected ? roles.get(selected) ?? null : null;
+  // Ofisteki etiketler: rolün tiplemesi (son çalıştırmada elle seçildiyse o).
+  const people = useMemo(() => new Map(AGENCY_ROSTER.map((r) => {
+    const chosen = r.slug === selected && personaPick ? personaPick : activity.get(r.slug)?.last?.persona;
+    return [r.slug, { name: r.name, image: personaForRun(r, chosen).image }];
+  })), [activity, selected, personaPick]);
+  const rolePersona = role ? personaForRun(role, personaPick || activity.get(role.slug)?.last?.persona) : null;
   const feed = useMemo(() => (runs ?? []).filter((r) => !scope || r.project_id === scope).slice(0, 30), [runs, scope]);
   const projectName = (id: string | null) => (id ? projects.find((p) => p.id === id)?.name ?? 'Proje' : 'Projesiz');
   const counts = useMemo(() => {
@@ -91,7 +99,7 @@ export default function AgencyOffice() {
     return { working: w, recent: r };
   }, [activity]);
 
-  const select = (slug: string | null) => { setSelected(slug); setRunErr(null); setShown(slug ? activity.get(slug)?.last ?? null : null); };
+  const select = (slug: string | null) => { setSelected(slug); setPersonaPick(''); setRunErr(null); setShown(slug ? activity.get(slug)?.last ?? null : null); };
 
   async function run(r: AgencyRole) {
     if (!repo) return;
@@ -100,7 +108,7 @@ export default function AgencyOffice() {
     try {
       const body = await agentRunBody(repo, todayFor(mode), { agent: r.slug, input: {} });
       const extra = 'demo_spend_usd' in body ? { demo_spend_usd: body.demo_spend_usd, demo_cap_usd: body.demo_cap_usd } : {};
-      const res = await fetch('/api/agency/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: r.slug, project_id: projectId || null, task_id: taskId || null, brief, ...extra }) });
+      const res = await fetch('/api/agency/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: r.slug, persona: personaPick || null, project_id: projectId || null, task_id: taskId || null, brief, ...extra }) });
       const j = await res.json() as { run?: RawRun & { trigger: string; model: string; tokens_in: number; tokens_out: number; latency_ms: number }; error?: string };
       if (!res.ok || !j.run) throw new Error(j.error ?? 'Rol çalıştırılamadı');
       // Demo'da sunucu durumsuz: satırı tarayıcıdaki depoya biz yazarız.
@@ -139,6 +147,23 @@ export default function AgencyOffice() {
         <p className="w-full text-xs text-muted" aria-live="polite">{listed.length} rol gösteriliyor{scope ? ' · yalnızca bu projede çalışmış roller' : ''}</p>
       </div>
 
+      <section className="mb-4" aria-label="Ajan tiplemeleri">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-bold">Tiplemeler</h2>
+          <p className="text-xs text-muted">12 hazır karakter; her rol biriyle temsil edilir. Portreler yapay zekâ ile üretilmiş kurgusal kişilerdir.</p>
+        </div>
+        <ul className="agency-personas">
+          {PERSONAS.map((p) => { const on = personaFilter === p.id; return (
+            <li key={p.id}>
+              <button type="button" className={`agency-persona ${on ? 'agency-on' : ''}`} aria-pressed={on} onClick={() => setPersonaFilter(on ? '' : p.id)} title={p.blurb}>
+                <img src={p.image} alt="" width={56} height={56} loading="lazy" />
+                <span><strong>{p.name}</strong><span>{p.title}</span></span>
+              </button>
+            </li>
+          ); })}
+        </ul>
+      </section>
+
       {!no3d && <Tabs<'office' | 'list'> tabs={[['office', '3B Ofis'], ['list', 'Liste']]} value={view} onChange={setView} />}
       {no3d && <p className="mb-3 text-sm text-muted">Bu tarayıcıda 3B görünüm açılamadı; roller liste olarak gösteriliyor.</p>}
       {loadErr && <ErrorBox message={loadErr} />}
@@ -147,7 +172,7 @@ export default function AgencyOffice() {
         <div className="min-w-0">
           {effectiveView === 'office' ? (
             <>
-              <Office3D layout={layout} people={roles} groups={groups} activity={activity} matches={matches} selected={selected} onSelect={select} onUnavailable={() => setNo3d(true)} />
+              <Office3D layout={layout} people={people} groups={groups} activity={activity} matches={matches} selected={selected} onSelect={select} onUnavailable={() => setNo3d(true)} />
               <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                 <span><i className="agency-dot" style={{ background: 'var(--lime)' }} /> Çalışıyor</span>
                 <span><i className="agency-dot" style={{ background: 'var(--cyan)' }} /> Son 24 saatte çalıştı</span>
@@ -178,7 +203,13 @@ export default function AgencyOffice() {
           ) : (
             <>
               <div className="flex items-start justify-between gap-2">
-                <h2 className="font-bold">{role.emoji} {role.name}</h2>
+                <div className="flex min-w-0 items-center gap-3">
+                  {rolePersona && <img className="agency-portrait" src={rolePersona.image} alt="" width={64} height={64} />}
+                  <div className="min-w-0">
+                    <h2 className="font-bold">{role.emoji} {role.name}</h2>
+                    {rolePersona && <p className="text-xs text-muted">{rolePersona.name} · {rolePersona.title}</p>}
+                  </div>
+                </div>
                 <button type="button" className="btn btn-sm btn-ghost" onClick={() => select(null)}>Kapat</button>
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
@@ -191,6 +222,11 @@ export default function AgencyOffice() {
 
               <form className="mt-4 grid gap-3 border-t border-line pt-4" onSubmit={(e) => { e.preventDefault(); void run(role); }}>
                 <h3 className="text-sm font-bold">Görevlendir</h3>
+                <div><label className="label" htmlFor="ag-persona">Tipleme</label>
+                  <select id="ag-persona" className="input" value={personaPick} onChange={(e) => setPersonaPick(e.target.value)}>
+                    <option value="">Otomatik — {personaFor(role).name} · {personaFor(role).title}</option>
+                    {PERSONAS.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.title}</option>)}
+                  </select></div>
                 <div><label className="label" htmlFor="ag-project">Proje</label>
                   <select id="ag-project" className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
                     <option value="">Projesiz</option>
@@ -232,7 +268,8 @@ export default function AgencyOffice() {
             {feed.map((r) => { const ro = roles.get(r.slug); const [label, cls] = RUN_STATUS[r.status]; return (
               <li key={r.id}>
                 <button type="button" className="nested flex w-full flex-wrap items-center justify-between gap-2 rounded-2xl p-3 text-left" onClick={() => { setSelected(r.slug); setShown(r); setRunErr(null); }}>
-                  <span className="min-w-0"><strong className="text-sm">{ro ? `${ro.emoji} ${ro.name}` : r.slug}</strong><span className="block truncate text-xs text-muted">{projectName(r.project_id)}{r.by ? ` · ${r.by}` : ''} · {r.brief}</span></span>
+                  {ro && <img className="agency-portrait agency-portrait-sm" src={personaForRun(ro, r.persona).image} alt="" width={36} height={36} loading="lazy" />}
+                  <span className="min-w-0 flex-1"><strong className="text-sm">{ro ? `${ro.emoji} ${ro.name}` : r.slug}{ro ? <span className="font-normal text-muted"> · {personaForRun(ro, r.persona).name}</span> : null}</strong><span className="block truncate text-xs text-muted">{projectName(r.project_id)}{r.by ? ` · ${r.by}` : ''} · {r.brief}</span></span>
                   <span className="flex items-center gap-2 text-xs text-muted"><span className={`chip ${cls}`}>{label}</span>{fmtTime(r.created_at)}</span>
                 </button>
               </li>

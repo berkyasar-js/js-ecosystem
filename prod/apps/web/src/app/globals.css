@@ -388,3 +388,12 @@ main .grid:not([class*='grid-cols']) { grid-template-columns: minmax(0, 1fr); }
 /* ───── Ajans Ofisi (sayfa) — 3B sahne stilleri @jscore/office-ui/office.css içinde ───── */
 .agency-on { outline: 2px solid var(--focus); outline-offset: 1px; }
 .agency-output { max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--input); font: inherit; font-size: 13px; line-height: 1.55; }
+.agency-personas { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.agency-persona { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 16px; border: 1px solid var(--edge); background: var(--card-bg); color: var(--ink); text-align: left; cursor: pointer; }
+.agency-persona:hover { border-color: color-mix(in srgb, var(--brand-ink) 50%, var(--edge)); }
+.agency-persona img, .agency-portrait { flex: none; width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 1px solid var(--edge); background: var(--nested); }
+.agency-portrait { width: 64px; height: 64px; }
+.agency-portrait-sm { width: 36px; height: 36px; }
+.agency-persona span { display: grid; min-width: 0; }
+.agency-persona strong { font-size: 13px; }
+.agency-persona span span { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

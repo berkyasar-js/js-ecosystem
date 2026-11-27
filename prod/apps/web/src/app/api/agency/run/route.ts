@@ -8,13 +8,15 @@ import { assertCan } from '@jscore/core/permissions';
 import { getRepo } from '@jscore/core/repo';
 import { SupabaseRepo } from '@jscore/core/repo/supabase';
 import { createAdmin } from '@jscore/core/supabase/admin';
-import { agencyAgentId, agencyRole, demoAgencyOutput } from '@jscore/agents';
+import { agencyAgentId, agencyRole, demoAgencyOutput, personaById } from '@jscore/agents';
 import { agencyPrompt, agencySystemPrompt, assertAgencyAccess } from '@jscore/agents/server';
 
 export const maxDuration = 120;
 const FALLBACK_MODEL = 'claude-sonnet-4-5';
 const bodySchema = z.object({
   role: z.string().min(1).max(120),
+  /** Elle seçilen tipleme (12 karakterden biri); yoksa rolün varsayılanı. */
+  persona: z.string().max(40).nullable().optional(),
   project_id: z.string().max(80).nullable().optional(),
   task_id: z.string().max(80).nullable().optional(),
   brief: z.string().trim().min(3).max(4000),
@@ -45,7 +47,8 @@ export async function POST(req: Request) {
     const admin = repo.mode === 'supabase' ? createAdmin() : null;
     await enforceAgentCap({ repo, spendRepo: admin ? new SupabaseRepo(admin, me.org_id) : undefined, agent, spendOverrideUsd: body.demo_spend_usd, capOverrideUsd: body.demo_cap_usd });
 
-    const input = { project_id: project?.id ?? null, task_id: task?.id ?? null, brief: body.brief, by: me.name, role: role.name };
+    if (body.persona && !personaById(body.persona)) return json({ error: 'Tipleme bulunamadı' }, 404);
+    const input = { project_id: project?.id ?? null, task_id: task?.id ?? null, brief: body.brief, by: me.name, role: role.name, persona: body.persona ?? null };
     const key = process.env.ANTHROPIC_API_KEY;
     if (repo.mode === 'demo' || !key) {
       const text = demoAgencyOutput(role, body.brief, project?.name ?? null);

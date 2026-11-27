@@ -7,3 +7,4 @@
 .agency-tip { z-index: 2; display: grid; gap: 2px; padding: 6px 10px; border-radius: 12px; font-size: 12px; background: rgba(10,12,26,.92); color: #f0f0f7; border: 1px solid rgba(255,255,255,.18); transition: opacity .12s; }
 .agency-tip span { color: #a2a6bc; font-size: 11px; }
 .agency-dot { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; vertical-align: baseline; }
+.agency-tag img { display: inline-block; width: 22px; height: 22px; margin: -2px 6px -2px -5px; border-radius: 50%; object-fit: cover; vertical-align: middle; }
