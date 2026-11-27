@@ -85,6 +85,7 @@ export const MODULES: ModuleDef[] = [
   M('workload', 'İş yükü', 'people', 'workload', 'Kişi başına haftalık kapasite, planlanan iş ve gecikmeler.', true),
   /* Ajans Ofisi: Agency kadrosu (283 uzman AI rolü) */
   M('aihub', 'AI Çalışma Alanı', 'intel', 'aihub', 'Claude, ChatGPT ve Gemini tek ekranda; rolüne ve kapsamına göre bağlamla.', true, 'ai'),
+  M('myagents', 'Ajanlarım', 'intel', 'myagents', 'Kişisel ajan filon: talimat sürümleri, onay, geri alma ve çalıştırma.', true, 'agents'),
   M('agency', 'Ajans Ofisi', 'intel', 'agency', '283 uzman AI rolü: 3B ofis, projeye görevlendirme ve canlı çalışma görünümü.', true),
 ];
 export const GROUP_LABELS: Record<ModuleGroup, string> = {
@@ -92,14 +93,14 @@ export const GROUP_LABELS: Record<ModuleGroup, string> = {
 };
 const ALL_IDS = MODULES.map((m) => m.id);
 const V8_STAFF = ['agenda', 'announcements', 'requests'];
-const MANAGER = ['overview', 'inbox', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'flow', 'resources', 'people', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events', 'portal', 'board', 'twins', 'insights', 'automations', 'integrations', 'approvals', 'marketplace', 'profile', 'apps', ...V8_STAFF, 'workload', 'dashboards', 'agency', 'aihub'].filter((x) => x !== 'board');
+const MANAGER = ['overview', 'inbox', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'flow', 'resources', 'people', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events', 'portal', 'board', 'twins', 'insights', 'automations', 'integrations', 'approvals', 'marketplace', 'profile', 'apps', ...V8_STAFF, 'workload', 'dashboards', 'agency', 'aihub', 'myagents'].filter((x) => x !== 'board');
 const CLIENT = ['overview', 'mywork', 'messages', 'projects', 'tasks', 'media', 'review', 'transfer', 'portal', 'approvals', 'profile', 'apps', 'requests'];
 export const ROLE_MODULES: Record<Role, string[]> = {
   owner: ALL_IDS, org_admin: ALL_IDS, operations: MANAGER, account: MANAGER,
   pm: MANAGER.filter((x) => !['board', 'marketplace'].includes(x)),
-  creative: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'flow', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'events', 'twins', 'approvals', 'profile', 'apps', 'aihub', 'agency', ...V8_STAFF],
-  finance: ['overview', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'finance', 'insights', 'approvals', 'integrations', 'profile', 'apps', 'aihub', 'agency', ...V8_STAFF],
-  hr: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'resources', 'people', 'hire', 'insights', 'approvals', 'profile', 'apps', 'aihub', 'agency', ...V8_STAFF, 'workload'],
+  creative: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'flow', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'events', 'twins', 'approvals', 'profile', 'apps', 'aihub', 'agency', 'myagents', ...V8_STAFF],
+  finance: ['overview', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'finance', 'insights', 'approvals', 'integrations', 'profile', 'apps', 'aihub', 'agency', 'myagents', ...V8_STAFF],
+  hr: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'resources', 'people', 'hire', 'insights', 'approvals', 'profile', 'apps', 'aihub', 'agency', 'myagents', ...V8_STAFF, 'workload'],
   payroll: ['overview', 'mywork', 'people', 'finance', 'insights', 'approvals', 'profile', 'apps', 'agenda', 'announcements'],
   client_admin: CLIENT,
   client_viewer: CLIENT.filter((x) => x !== 'approvals'),
@@ -517,3 +518,4 @@ export * from './notifications';
 export * from './hubspot';
 export * from './google';
 export * from './tiers';
+export * from './personal-agents';

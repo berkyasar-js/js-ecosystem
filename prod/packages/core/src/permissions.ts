@@ -40,6 +40,7 @@ export async function assertCanEditTask(repo: Repo, me: Me | null, task: Pick<Ta
  * - delegations: oluşturan kendisi (from = ben) ya da delegations.manage; self-servis ve hassas yetkiler (approvals.decide, finance.*) → status 'pending' (owner onayı)
  */
 export async function guardCollectionSave(repo: Repo, me: Me | null, kind: CollKey, merged: Record<string, unknown>, cur: Record<string, unknown> | null): Promise<void> {
+  if (kind === 'personal_agents' || kind === 'agent_versions') { const { guardPersonalAgentSave } = await import('./personal-agents'); await guardPersonalAgentSave(repo, me, kind, merged, cur); return; }
   if (kind === 'requests' && cur && (merged.status !== cur.status || merged.task_id !== cur.task_id)) await assertCan(repo, me, 'requests.triage', { projectId: (merged.project_id as string | null) ?? null });
   if (kind === 'announcements' && !cur) await assertCan(repo, me, 'announcements.post');
   if (kind === 'approval_policies') await assertCan(repo, me, 'delegations.manage');

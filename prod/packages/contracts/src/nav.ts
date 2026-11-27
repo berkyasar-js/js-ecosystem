@@ -31,7 +31,7 @@ export const NAV_GROUPS: NavGroup[] = [
   G('clients', 'Müşteriler', '/app/crm', 'crm', ['crm', 'portal'], [['crm', 'Pipeline'], ['crm', 'Müşteriler & Markalar', '/app/crm?tab=accounts'], ['crm', 'Teklifler', '/app/crm?tab=proposals'], ['portal', 'Müşteri portalı']]),
   G('production', 'Üretim', '/app/uretim', 'studio', ['studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events'],
     [['studio', 'Studio'], ['social', 'Social'], ['media', 'Media'], ['review', 'Review'], ['transfer', 'Transfer'], ['present', 'Present'], ['marketing', 'Marketing'], ['events', 'Events']]),
-  G('team', 'Ekip', '/app/people', 'people', ['people', 'workload', 'resources', 'twins', 'aihub', 'agency', 'hire'], [['people', 'Kişiler'], ['workload', 'İş yükü'], ['resources', 'Kaynaklar'], ['twins', 'İkizler'], ['aihub', 'AI Çalışma Alanı', '/app/ai'], ['agency', 'Ajans Ofisi'], ['hire', 'İşe alım']]),
+  G('team', 'Ekip', '/app/people', 'people', ['people', 'workload', 'resources', 'twins', 'aihub', 'myagents', 'agency', 'hire'], [['people', 'Kişiler'], ['workload', 'İş yükü'], ['resources', 'Kaynaklar'], ['twins', 'İkizler'], ['aihub', 'AI Çalışma Alanı', '/app/ai'], ['myagents', 'Ajanlarım', '/app/agents'], ['agency', 'Ajans Ofisi'], ['hire', 'İşe alım']]),
   G('finance', 'Finans', '/app/finance', 'finance', ['finance', 'insights'], [['finance', 'Finans'], ['insights', 'Raporlar']]),
   G('messages', 'Mesajlar', '/app/messages', 'messages', ['messages'], [], true),
   G('apps', 'Uygulamalar', '/app/apps', 'apps', ['apps'], [], true),

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Role } from './roles';
 import type { ApprovalPolicy, ApprovalStep, Delegation, TaskLink } from './governance';
+import type { AgentVersion, PersonalAgent } from './personal-agents';
 import type { LegacyNotificationKind, NotificationKind } from './notifications';
 
 const isClientRole = (r: Role) => r === 'client_admin' || r === 'client_viewer';
@@ -22,6 +23,7 @@ const OPS_CR: Role[] = [...OPS, 'creative'];
 const FIN: Role[] = ['owner', 'org_admin', 'finance'];
 const HRW: Role[] = ['owner', 'org_admin', 'hr'];
 const CLIENT_W: Role[] = ['client_admin', 'client_viewer'];
+const AGENT_STAFF: Role[] = [...OPS_CR, 'finance', 'hr'];
 /** İzin kararını verebilen roller; çalışan kendi talebini onaylayamaz (UI + Repo kontrol eder). */
 export const LEAVE_DECIDERS: Role[] = ['owner', 'org_admin', 'operations', 'account', 'pm', 'hr'];
 const C = (table: string, prefix: string, module: string, read: ReadMode, write: Role[], extra: Partial<CollMeta> = {}): CollMeta => ({ table, prefix, module, read, write, ...extra });
@@ -93,6 +95,9 @@ export const COLLECTIONS = {
   approval_policies: C('approval_policies', 'ap', 'approvals', 'internal', ['owner', 'org_admin'], { native: ['action_type', 'condition', 'steps', 'escalation', 'active'] }),
   approval_steps: C('approval_steps', 'as', 'approvals', 'internal', [...OPS_CR, 'finance', 'hr', 'payroll', 'freelancer'], { native: ['approval_id', 'step_index', 'approver_role', 'status', 'decided_by', 'decided_at', 'note', 'due_at'] }),
   delegations: C('delegations', 'dg', 'profile', 'internal', [...OPS_CR, 'finance', 'hr', 'payroll', 'freelancer', 'integration_admin'], { native: ['from_employee_id', 'to_employee_id', 'caps', 'starts_at', 'ends_at', 'reason', 'status'] }),
+  /* ───── 0022: kişisel ajan filosu (erişim satır düzeyinde: core.supervises / contracts `supervises`) ───── */
+  personal_agents: C('personal_agents', 'pag', 'myagents', 'internal', AGENT_STAFF, { native: ['owner_employee_id', 'base_role', 'status', 'current_version'] }),
+  agent_versions: C('agent_versions', 'agv', 'myagents', 'internal', AGENT_STAFF, { native: ['agent_id', 'version', 'status', 'author', 'created_by', 'decided_by', 'decided_at'] }),
 } as const satisfies Record<string, CollMeta>;
 export type CollKey = keyof typeof COLLECTIONS;
 export const COLL_KEYS = Object.keys(COLLECTIONS) as CollKey[];
@@ -281,6 +286,7 @@ export interface Records {
   saved_views: SavedView; milestones: Milestone; requests: WorkRequest; announcements: Announcement; announcement_acks: AnnouncementAck;
   project_members: ProjectMember; agent_policies: AgentPolicy;
   task_links: TaskLink; approval_policies: ApprovalPolicy; approval_steps: ApprovalStep; delegations: Delegation;
+  personal_agents: PersonalAgent; agent_versions: AgentVersion;
 }
 type Fields<K extends CollKey> = Omit<Records[K], 'id' | 'org_id' | 'created_at'>;
 /** Yeni kayıt: tüm alanlar; güncelleme: id + değişen alanlar. */

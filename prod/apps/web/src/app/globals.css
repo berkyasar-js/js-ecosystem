@@ -584,3 +584,10 @@ a.metric-link:hover .metric, a.metric-link.metric:hover { transform: none; borde
 .hub-dl dd { text-align: right; min-width: 0; }
 .breadcrumb, .breadcrumb > * { white-space: nowrap; }
 .breadcrumb { overflow: hidden; }
+
+/* ───── Ajanlarım: sürüm karşılaştırma ───── */
+.agent-diff { border: 1px solid var(--line); border-radius: var(--radius-ctl); background: var(--input); padding: 8px 0; max-height: 360px; overflow: auto; font-size: 13px; line-height: 1.55; }
+.agent-diff-line { display: flex; gap: 8px; padding: 1px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-diff-line > span[aria-hidden] { flex: none; width: 10px; color: var(--muted); }
+.agent-diff-line.is-add { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.agent-diff-line.is-del { background: color-mix(in srgb, var(--danger) 14%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger) 60%, transparent); }

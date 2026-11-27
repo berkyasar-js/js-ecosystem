@@ -3,6 +3,7 @@ import { fail, json } from '@jscore/core/api';
 import { verifyHmac } from '@jscore/core/hmac';
 import { createAdmin } from '@jscore/core/supabase/admin';
 import { runNotifyJobs, type NotifyJob } from '@jscore/core/notify/jobs';
+import { runAgentDigest } from '@jscore/core/notify/agent-digest';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -24,7 +25,9 @@ async function run(req: Request, raw: string) {
   const url = new URL(req.url);
   const only = (url.searchParams.get('job') ?? '').split(',').map((s) => s.trim()).filter((s): s is NotifyJob => (JOBS as string[]).includes(s));
   const report = await runNotifyJobs(admin, { only: only.length ? only : undefined, force: url.searchParams.get('force') === '1' });
-  return json(report);
+  // 0022: günlük ajan özeti (yerel 09:00 sonrası, kişi başına günde bir). Tablo henüz yoksa (migration uygulanmadıysa) hata raporlanır, diğer işler etkilenmez.
+  const agents = !only.length || url.searchParams.get('job') === 'agents' ? await runAgentDigest(admin, { force: url.searchParams.get('force') === '1' }).catch((e: unknown) => ({ orgs: 0, notified: 0, errors: [e instanceof Error ? e.message : 'hata'] })) : null;
+  return json({ ...report, agents });
 }
 export async function GET(req: Request) { try { return await run(req, ''); } catch (e) { return fail(e); } }
 export async function POST(req: Request) { try { return await run(req, await req.text()); } catch (e) { return fail(e); } }

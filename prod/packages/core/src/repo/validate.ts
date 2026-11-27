@@ -1,7 +1,7 @@
 import {
   agentPolicySchema, announcementAckSchema, announcementSchema, automationSchema, clientContactSchema, clientRequestSchema, dealSchema, expenseSchema, leaveSchema, milestoneSchema, projectMemberSchema, proposalSchema,
   requestSchema, reviewCommentSchema, savedViewSchema, surveyResponseSchema, type CollKey,
-  approvalPolicySchema, approvalStepSchema, delegationSchema, taskLinkSchema,
+  approvalPolicySchema, approvalStepSchema, delegationSchema, taskLinkSchema, agentVersionSchema, personalAgentSchema,
 } from '@jscore/contracts';
 import type { ZodTypeAny } from 'zod';
 
@@ -12,5 +12,6 @@ const SCHEMAS: Partial<Record<CollKey, ZodTypeAny>> = {
   saved_views: savedViewSchema, milestones: milestoneSchema, requests: requestSchema, announcements: announcementSchema, announcement_acks: announcementAckSchema,
   project_members: projectMemberSchema, agent_policies: agentPolicySchema,
   task_links: taskLinkSchema, approval_policies: approvalPolicySchema, approval_steps: approvalStepSchema, delegations: delegationSchema,
+  personal_agents: personalAgentSchema, agent_versions: agentVersionSchema,
 };
 export function validateRecord(kind: CollKey, rec: unknown) { SCHEMAS[kind]?.parse(rec); }
