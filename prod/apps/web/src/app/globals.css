@@ -385,14 +385,6 @@ main .grid:not([class*='grid-cols']) { grid-template-columns: minmax(0, 1fr); }
 .mail-html td, .mail-html th { padding: 2px 6px; vertical-align: top; }
 .mail-html pre { white-space: pre-wrap; }
 
-/* ───── Ajans Ofisi (3B) ───── */
-.agency-stage { position: relative; height: clamp(380px, 62vh, 680px); border: 1px solid var(--edge); border-radius: 22px; overflow: hidden; background: var(--canvas); touch-action: none; }
-.agency-labels, .agency-tip { position: absolute; left: 0; top: 0; pointer-events: none; }
-.agency-labels { inset: 0; overflow: hidden; }
-.agency-tag { position: absolute; left: 0; top: 0; white-space: nowrap; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; background: rgba(10,12,26,.86); color: #f0f0f7; border: 1px solid #00f0ff; }
-.agency-tag.is-working { border-color: #ccff00; color: #ccff00; }
-.agency-tip { z-index: 2; display: grid; gap: 2px; padding: 6px 10px; border-radius: 12px; font-size: 12px; background: rgba(10,12,26,.92); color: #f0f0f7; border: 1px solid rgba(255,255,255,.18); transition: opacity .12s; }
-.agency-tip span { color: #a2a6bc; font-size: 11px; }
-.agency-dot { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; vertical-align: baseline; }
+/* ───── Ajans Ofisi (sayfa) — 3B sahne stilleri @jscore/office-ui/office.css içinde ───── */
 .agency-on { outline: 2px solid var(--focus); outline-offset: 1px; }
 .agency-output { max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--input); font: inherit; font-size: 13px; line-height: 1.55; }

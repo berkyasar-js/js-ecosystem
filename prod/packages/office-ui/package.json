@@ -1,0 +1,14 @@
+{
+  "name": "@jscore/office-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sanal ofis arayüz kiti: deterministik ofis yerleşimi + three.js 3B sahne. Ajan kataloğundan bağımsızdır (virtual-office-3d).",
+  "exports": {
+    "./layout": "./src/layout.ts",
+    "./office-3d": "./src/office-3d.tsx",
+    "./office.css": "./src/office.css"
+  },
+  "dependencies": { "three": "0.170.0" },
+  "devDependencies": { "@types/three": "0.170.0" },
+  "peerDependencies": { "react": "^19.0.0" }
+}

@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next';
 
 const config: NextConfig = {
-  transpilePackages: ['@jscore/contracts', '@jscore/core'],
+  transpilePackages: ['@jscore/contracts', '@jscore/core', '@jscore/agents', '@jscore/office-ui'],
   poweredByHeader: false,
   async headers() {
     return [{ source: '/(.*)', headers: [

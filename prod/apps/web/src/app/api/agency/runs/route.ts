@@ -1,8 +1,8 @@
 import { fail, json } from '@jscore/core/api';
 import { getRepo } from '@jscore/core/repo';
 import { createAdmin } from '@jscore/core/supabase/admin';
-import { AGENCY_PREFIX, toAgencyRun, type AgencyRunView } from '@/lib/agency';
-import { assertAgencyAccess } from '@/lib/agency/server';
+import { AGENCY_PREFIX, toAgencyRun, type AgencyRunView } from '@jscore/agents';
+import { assertAgencyAccess } from '@jscore/agents/server';
 
 export const dynamic = 'force-dynamic';
 

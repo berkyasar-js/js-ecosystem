@@ -6,11 +6,13 @@ import { agentRunBody } from '@jscore/core/agents/client';
 import { Empty, ErrorBox, Loading, PageHeader, Stat, Tabs, fmtTime, todayFor } from '@/components/ui';
 import { useCan, useSession } from '@/components/session';
 import {
-  AGENCY_ROSTER, DIVISIONS, agencyActivity, divisionOf, officeLayout, searchRoster, toAgencyRun,
+  AGENCY_ROSTER, DIVISIONS, agencyActivity, divisionOf, searchRoster, toAgencyRun,
   type AgencyRole, type AgencyRunView, type SeatActivity,
-} from '@/lib/agency';
+} from '@jscore/agents';
+import { officeLayout } from '@jscore/office-ui/layout';
+import '@jscore/office-ui/office.css';
 
-const Office3D = dynamic(() => import('@/components/agency/office-3d').then((m) => m.Office3D), { ssr: false, loading: () => <div className="agency-stage grid place-items-center text-sm text-muted">3B ofis yükleniyor…</div> });
+const Office3D = dynamic(() => import('@jscore/office-ui/office-3d').then((m) => m.Office3D), { ssr: false, loading: () => <div className="agency-stage grid place-items-center text-sm text-muted">3B ofis yükleniyor…</div> });
 
 const STATE_CHIP: Record<SeatActivity['state'], [string, string]> = { working: ['Çalışıyor', 'chip-ok'], recent: ['Son 24 sa çalıştı', 'chip-brand'], idle: ['Boşta', ''] };
 const RUN_STATUS: Record<AgencyRunView['status'], [string, string]> = { ok: ['Tamamlandı', 'chip-ok'], demo: ['Demo çıktısı', 'chip-warn'], error: ['Hata', 'chip-bad'] };
@@ -19,7 +21,8 @@ type RawRun = Parameters<typeof toAgencyRun>[0];
 export default function AgencyOffice() {
   const { repo, mode, rev } = useSession();
   const canRun = useCan('agents.run');
-  const layout = useMemo(() => officeLayout(), []);
+  const layout = useMemo(() => officeLayout(AGENCY_ROSTER), []);
+  const groups = useMemo(() => new Map(DIVISIONS.map((d) => [d.id, { label: d.label, color: d.color }])), []);
   const roles = useMemo(() => new Map(AGENCY_ROSTER.map((r) => [r.slug, r])), []);
 
   const [view, setView] = useState<'office' | 'list'>('office');
@@ -144,7 +147,7 @@ export default function AgencyOffice() {
         <div className="min-w-0">
           {effectiveView === 'office' ? (
             <>
-              <Office3D layout={layout} roles={roles} activity={activity} matches={matches} selected={selected} onSelect={select} onUnavailable={() => setNo3d(true)} />
+              <Office3D layout={layout} people={roles} groups={groups} activity={activity} matches={matches} selected={selected} onSelect={select} onUnavailable={() => setNo3d(true)} />
               <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                 <span><i className="agency-dot" style={{ background: 'var(--lime)' }} /> Çalışıyor</span>
                 <span><i className="agency-dot" style={{ background: 'var(--cyan)' }} /> Son 24 saatte çalıştı</span>

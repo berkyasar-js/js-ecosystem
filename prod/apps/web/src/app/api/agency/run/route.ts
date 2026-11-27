@@ -8,8 +8,8 @@ import { assertCan } from '@jscore/core/permissions';
 import { getRepo } from '@jscore/core/repo';
 import { SupabaseRepo } from '@jscore/core/repo/supabase';
 import { createAdmin } from '@jscore/core/supabase/admin';
-import { agencyAgentId, agencyRole, demoAgencyOutput } from '@/lib/agency';
-import { agencyPrompt, agencySystemPrompt, assertAgencyAccess } from '@/lib/agency/server';
+import { agencyAgentId, agencyRole, demoAgencyOutput } from '@jscore/agents';
+import { agencyPrompt, agencySystemPrompt, assertAgencyAccess } from '@jscore/agents/server';
 
 export const maxDuration = 120;
 const FALLBACK_MODEL = 'claude-sonnet-4-5';

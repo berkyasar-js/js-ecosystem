@@ -2,12 +2,15 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { divisionOf, type AgencyRole, type OfficeLayout, type SeatActivity } from '@/lib/agency';
+import type { OfficeGroup, OfficeLayout, OfficePerson, SeatState } from './layout';
 
 export interface Office3DProps {
   layout: OfficeLayout;
-  roles: Map<string, AgencyRole>;
-  activity: Map<string, SeatActivity>;
+  /** Masa sahipleri (slug → ad). */
+  people: Map<string, OfficePerson>;
+  /** Oda etiket ve renkleri (grup kimliği → görünüm). */
+  groups: Map<string, OfficeGroup>;
+  activity: Map<string, { state: SeatState }>;
   /** Süzgece uyan roller (null = hepsi). Uymayanlar soluk çizilir. */
   matches: Set<string> | null;
   selected: string | null;
@@ -46,7 +49,8 @@ function labelSprite(text: string, sub: string, color: string, ink: string): THR
  * 3B ofis: bölüm başına bir oda, rol başına bir masa + avatar (InstancedMesh; 283 rol tek çizim çağrısı).
  * Çalışan rol: parlak avatar, yanan ekran, zeminde nabız halkası ve ışık sütunu. Son 24 saatte çalışan: yanan ekran.
  */
-export function Office3D({ layout, roles, activity, matches, selected, onSelect, onUnavailable }: Office3DProps) {
+export function Office3D({ layout, people, groups, activity, matches, selected, onSelect, onUnavailable }: Office3DProps) {
+  const divisionOf = (id: string): OfficeGroup => groups.get(id) ?? { label: id, color: '#8c93ff' };
   const host = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
@@ -123,7 +127,7 @@ export function Office3D({ layout, roles, activity, matches, selected, onSelect,
       wall(room.w, 0.08, room.x + room.w / 2, room.z);
       wall(0.08, room.d, room.x, room.z + room.d / 2);
       wall(0.08, room.d, room.x + room.w, room.z + room.d / 2);
-      const label = labelSprite(div.label, `${room.seats.length} rol`, div.color, '#f0f0f7');
+      const label = labelSprite(div.label, `${room.seats.length}`, div.color, '#f0f0f7');
       label.position.set(room.x + room.w / 2, 2.5, room.z + 0.1); scene.add(label);
       disposables.push(label.material.map!, label.material);
       for (const s of room.seats) seats.push({ slug: s.slug, x: s.x, z: s.z, division: room.division });
@@ -301,18 +305,19 @@ export function Office3D({ layout, roles, activity, matches, selected, onSelect,
 
   const workingSlugs = [...activity.entries()].filter(([, a]) => a.state === 'working').map(([slug]) => slug).slice(0, 14);
   const pinned = selected && !workingSlugs.includes(selected) ? [...workingSlugs, selected] : workingSlugs;
-  const hoverRole = hover ? roles.get(hover) : null;
+  const hoverRole = hover ? people.get(hover) : null;
+  const hoverGroup = hover ? layout.rooms.find((r) => r.seats.some((x) => x.slug === hover))?.division : undefined;
   return (
     <div ref={host} className="agency-stage" role="img" aria-label="Üç boyutlu ajans ofisi: bölüm odaları, masalar ve çalışan roller. Aynı bilgi Liste görünümünde metin olarak bulunur.">
       <div ref={labelsRef} className="agency-labels" aria-hidden="true">
         {pinned.map((slug) => {
-          const r = roles.get(slug);
+          const r = people.get(slug);
           const isWorking = workingSlugs.includes(slug);
-          return r ? <div key={slug} data-slug={slug} className={`agency-tag ${isWorking ? 'is-working' : ''}`}>{r.emoji} {r.name}{isWorking ? ' · çalışıyor' : ''}</div> : null;
+          return r ? <div key={slug} data-slug={slug} className={`agency-tag ${isWorking ? 'is-working' : ''}`}>{r.emoji ? `${r.emoji} ` : ''}{r.name}{isWorking ? ' · çalışıyor' : ''}</div> : null;
         })}
       </div>
       <div ref={tipRef} className="agency-tip" aria-hidden="true" style={{ opacity: hoverRole ? 1 : 0 }}>
-        {hoverRole && <><strong>{hoverRole.emoji} {hoverRole.name}</strong><span>{divisionOf(hoverRole.division).label}</span></>}
+        {hoverRole && <><strong>{hoverRole.emoji ? `${hoverRole.emoji} ` : ''}{hoverRole.name}</strong>{hoverGroup && <span>{divisionOf(hoverGroup).label}</span>}</>}
       </div>
     </div>
   );

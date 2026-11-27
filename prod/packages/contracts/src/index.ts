@@ -511,3 +511,4 @@ export * from './governance';
 export * from './notifications';
 export * from './hubspot';
 export * from './google';
+export * from './tiers';

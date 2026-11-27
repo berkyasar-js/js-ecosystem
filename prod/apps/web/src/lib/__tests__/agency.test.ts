@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { MODULES, NAV_GROUPS, canAccessModule } from '@jscore/contracts';
 import {
-  AGENCY_ROSTER, DIVISIONS, RECENT_WINDOW_MS, agencyActivity, agencyAgentId, demoAgencyOutput, officeLayout, searchRoster, toAgencyRun,
-} from '../agency';
-import { agencyPrompt, agencySystemPrompt } from '../agency/server';
+  AGENCY_ROSTER, DIVISIONS, RECENT_WINDOW_MS, agencyActivity, agencyAgentId, demoAgencyOutput, searchRoster, toAgencyRun,
+} from '@jscore/agents';
+import { officeLayout } from '@jscore/office-ui/layout';
+import { agencyPrompt, agencySystemPrompt } from '@jscore/agents/server';
 
 const run = (slug: string, created_at: string, project_id: string | null = 'p1', status = 'ok') =>
   toAgencyRun({ id: `${slug}-${created_at}`, agent: agencyAgentId(slug), input: { project_id, brief: 'iş', by: 'BY' }, output: { text: 'çıktı' }, status, created_at, cost_usd: '0.01' })!;
@@ -29,7 +30,7 @@ describe('Ajans Ofisi — kadro', () => {
 });
 
 describe('Ajans Ofisi — yerleşim', () => {
-  const layout = officeLayout();
+  const layout = officeLayout(AGENCY_ROSTER);
   it('her role bir masa, bölüm başına bir oda', () => {
     expect(layout.rooms).toHaveLength(DIVISIONS.length);
     const seats = layout.rooms.flatMap((r) => r.seats);
@@ -49,7 +50,7 @@ describe('Ajans Ofisi — yerleşim', () => {
     const keys = layout.rooms.flatMap((r) => r.seats.map((s) => `${s.x.toFixed(2)}:${s.z.toFixed(2)}`));
     expect(new Set(keys).size).toBe(283);
   });
-  it('deterministik', () => { expect(officeLayout()).toEqual(layout); });
+  it('deterministik', () => { expect(officeLayout(AGENCY_ROSTER)).toEqual(layout); });
 });
 
 describe('Ajans Ofisi — etkinlik', () => {
