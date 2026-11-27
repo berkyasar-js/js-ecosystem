@@ -192,7 +192,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             <button className="btn btn-ghost icon-btn hidden sm:inline-flex" onClick={() => void logout()} aria-label="Çıkış"><LogOut size={17} /></button>
           </div>
         </header>
-        <main id="main" className="mx-auto w-full max-w-[1400px] p-4 pb-24 sm:p-6 lg:pb-6">
+        <main id="main" className="mx-auto w-full max-w-[1520px] p-4 pb-24 sm:p-6 lg:px-8 lg:pb-6">
           {notice && <p role="status" className="card mb-4 flex items-center justify-between gap-3 text-sm"><span>{notice}</span><button className="btn btn-ghost btn-sm" onClick={() => setNotice(null)} aria-label="Bildirimi kapat"><X size={14} /></button></p>}
           {verdict === 'disabled' ? <Loading rows={2} /> : children}
         </main>

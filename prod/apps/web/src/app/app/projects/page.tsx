@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { TASK_STATES, TASK_STATE_LABELS, type Milestone } from '@jscore/contracts';
 import { Async, Empty, PageHeader, fmtDate, money, todayFor, useData } from '@/components/ui';
 import { QuickCreate } from '@/components/quick-create';
-import { useSession } from '@/components/session';
+import { useCan, useSession } from '@/components/session';
+import { AtelierIcon } from '@/components/atelier-icon';
 import {
   DUE_FILTER_LABELS, EMPTY_FILTERS, PAGE_SIZE, PROJECT_STATUS_LABELS, SORT_LABELS, UNASSIGNED, activeFilterCount, buildRows, filterRows,
   filtersFromQuery, filtersToQuery, pageCount, type DueFilter, type PortfolioFilters, type PortfolioRow, type PortfolioSort,
@@ -16,7 +17,7 @@ const Missing = ({ children }: { children: string }) => <span className="text-mu
 function DueCell({ row, today }: { row: PortfolioRow; today: string }) {
   const due = row.project.due_at;
   if (!due) return <Missing>Planlanmadı</Missing>;
-  if (row.overdue) return <span className="chip chip-bad"><span aria-hidden>!</span> Gecikti · {fmtDate(due)}</span>;
+  if (row.overdue) return <span className="chip chip-bad"><AtelierIcon id="alert" size={14} /> Gecikti · {fmtDate(due)}</span>;
   return <span className={due.slice(0, 10) === today ? 'font-semibold' : undefined}>{fmtDate(due)}{due.slice(0, 10) === today ? ' · bugün' : ''}</span>;
 }
 function MilestoneCell({ row }: { row: PortfolioRow }) {
@@ -38,6 +39,8 @@ function PlanCell({ row }: { row: PortfolioRow }) {
 export default function Projects() {
   const { mode } = useSession();
   const today = todayFor(mode);
+  // Bütçe yalnızca finans görme yetkisi olan rollerde (yetki matrisi: finance.view).
+  const canSeeBudget = useCan('finance.view');
   const q = useData(async (r) => {
     const safe = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
     const [projects, brands, team, milestones] = await Promise.all([r.listProjects(), r.listBrands(), safe(r.team()), safe(r.list('milestones'))]);
@@ -72,6 +75,13 @@ export default function Projects() {
     const ids = new Set(rows.map((r) => r.project.flow_owner).filter(Boolean));
     return (q.data?.team ?? []).filter((m) => ids.has(m.id));
   }, [rows, q.data]);
+  const chips: Array<{ key: keyof PortfolioFilters; label: string }> = [
+    ...(filters.q.trim() ? [{ key: 'q' as const, label: `Arama: ${filters.q.trim()}` }] : []),
+    ...(filters.status ? [{ key: 'status' as const, label: `Durum: ${PROJECT_STATUS_LABELS[filters.status]}` }] : []),
+    ...(filters.stage ? [{ key: 'stage' as const, label: `Aşama: ${TASK_STATE_LABELS[filters.stage]}` }] : []),
+    ...(filters.owner ? [{ key: 'owner' as const, label: `Sorumlu: ${filters.owner === UNASSIGNED ? 'Atanmamış' : q.data?.team.find((m) => m.id === filters.owner)?.name ?? 'Bilinmiyor'}` }] : []),
+    ...(filters.due ? [{ key: 'due' as const, label: `Teslim: ${DUE_FILTER_LABELS[filters.due]}` }] : []),
+  ];
   const overdueCount = rows.filter((r) => r.overdue).length;
   const hasUpdated = rows.some((r) => r.updatedAt);
 
@@ -115,6 +125,11 @@ export default function Projects() {
             <p aria-live="polite"><strong className="num">{shown.length}</strong> proje{active ? ` · ${rows.length} içinden` : ''}{overdueCount ? <> · <button type="button" className="link-button" onClick={() => set('due', filters.due === 'overdue' ? '' : 'overdue')} aria-pressed={filters.due === 'overdue'}>{overdueCount} gecikmiş</button></> : null}</p>
             {active > 0 && <button type="button" className="btn btn-sm" onClick={() => { setFilters({ ...EMPTY_FILTERS, sort: filters.sort }); setPage(1); }}>Süzgeçleri temizle ({active})</button>}
           </div>
+          {chips.length > 0 && (
+            <ul className="filter-chips mb-3" aria-label="Etkin süzgeçler">
+              {chips.map((c) => <li key={c.key} className="filter-chip">{c.label}<button type="button" aria-label={`${c.label} süzgecini kaldır`} onClick={() => set(c.key, '' as never)}><AtelierIcon id="close" size={14} /></button></li>)}
+            </ul>
+          )}
 
           {shown.length === 0 ? <Empty>Bu süzgece uyan proje yok. Süzgeçleri temizleyip yeniden dene.</Empty> : (
             <>
@@ -123,7 +138,7 @@ export default function Projects() {
                   <caption className="sr-only">Proje portföyü: {shown.length} proje, {SORT_LABELS[filters.sort]} sırasına göre</caption>
                   <thead><tr>
                     <th scope="col">Proje</th><th scope="col">Durum</th><th scope="col">Sorumlu</th><th scope="col">Sonraki kilometre taşı</th>
-                    <th scope="col">Teslim</th><th scope="col">Aşama planı</th><th scope="col" className="num">Bütçe</th>{hasUpdated && <th scope="col">Güncelleme</th>}
+                    <th scope="col">Teslim</th><th scope="col">Aşama planı</th>{canSeeBudget && <th scope="col" className="num">Bütçe</th>}{hasUpdated && <th scope="col">Güncelleme</th>}
                   </tr></thead>
                   <tbody>
                     {slice.map((r) => { const p = r.project; return (
@@ -134,7 +149,7 @@ export default function Projects() {
                         <td className="portfolio-milestone"><MilestoneCell row={r} /></td>
                         <td><DueCell row={r} today={today} /></td>
                         <td><PlanCell row={r} /></td>
-                        <td className="num">{p.budget_minor > 0 ? money(p.budget_minor) : <Missing>Girilmedi</Missing>}</td>
+                        {canSeeBudget && <td className="num">{p.budget_minor > 0 ? money(p.budget_minor) : <Missing>Girilmedi</Missing>}</td>}
                         {hasUpdated && <td className="text-muted">{r.updatedAt ? fmtDate(r.updatedAt) : '—'}</td>}
                       </tr>
                     ); })}

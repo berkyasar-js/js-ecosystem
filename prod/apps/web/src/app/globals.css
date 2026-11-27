@@ -406,24 +406,28 @@ main .grid:not([class*='grid-cols']) { grid-template-columns: minmax(0, 1fr); }
    modül sayfaları aynı sınıfları kullandığı için tümü bu dili devralır.
    ═════════════════════════════════════════════════════════════════════════════ */
 :root {
-  --canvas: #111215; --card: #181a1f; --nested: #1e2127; --line: #2c2f38; --ink: #ecedf0; --muted: #a3a7b2;
-  --brand: #1b25e0; --brand-ink: #a0a7ff; --accent: #ff5a36; --orange-ink: #c93a14;
-  --lime: #c6d98a; --cyan: #9fd0d6; --magenta: #c93a61; --lime-ink: #1f2a05; --cyan-ink: #06282c;
-  --glass: transparent; --edge: #2c2f38; --input: #14161a; --input-line: #353944;
-  --focus: #a0a7ff; --shadow: none;
-  --card-bg: var(--card); --topbar-bg: #111215;
-  --badge-bg: #23262d; --badge-ink: #cfd2da; --tab-on-bg: #ecedf0; --tab-on-ink: #111215;
-  --ok: #7fcf9f; --warn: #e2b866; --danger: #ff8266;
-  --rail: #17181c; --rail-line: #2a2c33; --rail-ink: #c9ccd4; --rail-muted: #9a9ea9;
-  --radius-surface: 14px; --radius-ctl: 10px;
+  /* Atelier kiti (tokens.css) — koyu tema. Marka indigosu (#1b25e0) korunur; kitteki #3648c5 öneridir. */
+  --canvas: #11141a; --card: #191d24; --nested: #20252e; --line: #303640; --ink: #f1f0ec; --muted: #a1a6af;
+  --brand: #1b25e0; --brand-ink: #9da9ff; --accent: #ff8a68; --orange-ink: #b8492a;
+  --lime: #c6d98a; --cyan: #9db8e5; --magenta: #c93a61; --lime-ink: #1f2a05; --cyan-ink: #0c1a2e;
+  --glass: transparent; --edge: #303640; --input: #14181f; --input-line: #3b424d;
+  --focus: #9da9ff; --shadow: 0 12px 28px rgba(0,0,0,.22);
+  --card-bg: var(--card); --topbar-bg: #11141a;
+  --badge-bg: #272c36; --badge-ink: #d5d7dc; --tab-on-bg: #f1f0ec; --tab-on-ink: #11141a;
+  --ok: #8bc8a5; --warn: #e4bd7e; --danger: #f08d98; --info: #9db8e5;
+  --rail: #0c0f14; --rail-line: #252a33; --rail-ink: #cfd2d8; --rail-muted: #9a9ea9;
+  --radius-sm: 6px; --radius-ctl: 10px; --radius-surface: 14px; --radius-feature: 20px;
+  --motion-fast: 120ms; --motion: 180ms;
 }
 :root[data-theme="light"] {
-  --canvas: #f4f2ee; --card: #fcfbf9; --nested: #f0ede8; --line: #e1ddd5; --ink: #17181c; --muted: #5a5d67;
-  --brand-ink: #1b25e0; --accent: #d9431f; --edge: #e1ddd5; --input: #ffffff; --input-line: #cfcac0;
-  --focus: #1b25e0; --shadow: 0 1px 2px rgba(23,24,28,.05);
-  --card-bg: var(--card); --topbar-bg: #f4f2ee;
-  --badge-bg: #ebe8e2; --badge-ink: #3d4049; --tab-on-bg: #17181c; --tab-on-ink: #f4f2ee;
-  --ok: #18794e; --warn: #8a5a00; --danger: #b83200;
+  /* Atelier kiti — açık tema (birincil sunum teması). Yardımcı metin kitteki #6e737d yerine #62666f: zemin üstünde WCAG AA (5.1:1). */
+  --canvas: #f3f2ee; --card: #fffefa; --nested: #f7f6f2; --line: #e4e1d9; --ink: #252830; --muted: #62666f;
+  --brand-ink: #1b25e0; --accent: #e66f4d; --orange-ink: #b8492a; --edge: #e4e1d9; --input: #ffffff; --input-line: #cdc9bf;
+  --focus: #1b25e0; --shadow: 0 8px 24px rgba(23,27,34,.06);
+  --card-bg: var(--card); --topbar-bg: #f3f2ee;
+  --badge-bg: #ebe9e3; --badge-ink: #3d4049; --tab-on-bg: #171b22; --tab-on-ink: #f3f2ee;
+  --ok: #347653; --warn: #936425; --danger: #b54955; --info: #486a9c;
+  --rail: #171b22; --rail-line: #2a2f39; --rail-ink: #cfd2d8; --rail-muted: #9a9ea9;
 }
 h1 { letter-spacing: -.6px; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -455,7 +459,9 @@ a.metric-link:hover .metric, a.metric-link.metric:hover { transform: none; borde
 .input:hover { border-color: var(--muted); }
 
 /* durum rozetleri: renk + metin (yalnız renk değil) */
-.chip { background: var(--badge-bg); }
+.chip { background: var(--badge-bg); font-size: 12px; height: 26px; }
+/* durum rozetleri yüzey renginde: açık temada rozet zemini üstünde kontrast AA'nın altına düşüyordu */
+.chip-ok, .chip-warn, .chip-bad, .chip-brand { background: var(--card); }
 .chip-ok, :root[data-theme="light"] .chip-ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); }
 .chip-warn, :root[data-theme="light"] .chip-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); }
 .chip-bad, :root[data-theme="light"] .chip-bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
@@ -493,7 +499,7 @@ a.metric-link:hover .metric, a.metric-link.metric:hover { transform: none; borde
 .avatar.pt { box-shadow: none; }
 
 /* ana sayfa odak kartı: grafit, tek vurgu */
-.focus-card { background: #17181c; border: 1px solid #2a2c33; border-radius: var(--radius-surface); box-shadow: none; min-height: 0; gap: 20px; }
+.focus-card { background: #171b22; border: 1px solid #2a2f39; border-radius: var(--radius-feature); box-shadow: none; min-height: 0; gap: 20px; }
 .focus-card .orbit-art { display: none; }
 .focus-card .focus-content { max-width: 720px; }
 .focus-card .eyebrow { color: #9a9ea9; }
@@ -538,3 +544,17 @@ a.metric-link:hover .metric, a.metric-link.metric:hover { transform: none; borde
 .portfolio-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 16px; }
 .portfolio-pager .btn-sm, .portfolio-meta .btn-sm { min-height: 36px; }
 @media (min-width: 900px) { .portfolio-table-wrap { display: block; } .portfolio-cards { display: none; } }
+
+/* tipografi tabanı: yardımcı metin 12 px altına inmez (Atelier 02) */
+.eyebrow, .metric-note, .table th, .nav-label, .bottom-tab, .badge, .nav-count, .search-trigger kbd, .identity small, .workspace small { font-size: 12px; }
+.eyebrow, .nav-label { letter-spacing: 1.2px; }
+.btn, .tab, .navitem, .nav-subitem, .input, .chip { transition-duration: var(--motion-fast); }
+.navitem:hover, .nav-subitem:hover { background: #222730; }
+.navitem[aria-current="page"], .nav-subitem[aria-current="page"] { background: #272c36; }
+.at-icon { flex: none; display: inline-block; vertical-align: -0.2em; }
+/* mobilde ana kontroller 44 px (WCAG 2.2 enhanced hedef) */
+@media (max-width: 767px) { .btn, .input, .icon-btn { min-height: 44px; } .icon-btn { width: 44px; } .btn-sm { min-height: 40px; } }
+.filter-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.filter-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 6px 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); font-size: 12px; font-weight: 600; color: var(--ink); }
+.filter-chip button { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--muted); cursor: pointer; background: none; border: 0; }
+.filter-chip button:hover { background: var(--nested); color: var(--ink); }

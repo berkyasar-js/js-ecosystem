@@ -94,10 +94,10 @@ export default function Home() {
             </section>
 
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" style={{ gridColumn: 'span 12' }}>
-              <Stat label="Aktif proje" value={projects.filter((p) => p.status === 'active').length} href="/app/projects?status=active" />
-              <Stat label="Açık görev" value={open.length} href="/app/tasks" />
-              <Stat label="Geciken" value={overdueAll.length} tone={overdueAll.length ? 'bad' : 'ok'} hint="Teslim tarihi geçmiş" href="/app/tasks" />
-              <Stat label="Bekleyen onay" value={pending.length} tone={pending.length ? 'warn' : 'ok'} href="/app/approvals" />
+              <Stat label="Aktif proje" value={projects.filter((p) => p.status === 'active').length} hint="Durumu Aktif olan · şu an" href="/app/projects?status=active" />
+              <Stat label="Açık görev" value={open.length} hint="Teslim edilmemiş, arşivlenmemiş · şu an" href="/app/tasks" />
+              <Stat label="Geciken" value={overdueAll.length} tone={overdueAll.length ? 'bad' : 'ok'} hint="Teslim tarihi bugünden önce olan açık görev" href="/app/tasks" />
+              <Stat label="Bekleyen onay" value={pending.length} tone={pending.length ? 'warn' : 'ok'} hint="Karar verilmemiş · tüm zamanlar" href="/app/approvals" />
             </div>
 
             {!client && (
