@@ -43,12 +43,13 @@ export async function POST(req: Request) {
     if (body.project_id && !project) return json({ error: 'Proje bulunamadı' }, 404);
     const task = body.task_id && project ? (await repo.listTasks({ project_id: project.id })).find((t) => t.id === body.task_id) ?? null : null;
 
+    const department = me.employee_id ? (await repo.team().catch(() => [])).find((m) => m.id === me.employee_id)?.team ?? null : null;
     const agent = agencyAgentId(role.slug);
     const admin = repo.mode === 'supabase' ? createAdmin() : null;
     await enforceAgentCap({ repo, spendRepo: admin ? new SupabaseRepo(admin, me.org_id) : undefined, agent, spendOverrideUsd: body.demo_spend_usd, capOverrideUsd: body.demo_cap_usd });
 
     if (body.persona && !personaById(body.persona)) return json({ error: 'Tipleme bulunamadı' }, 404);
-    const input = { project_id: project?.id ?? null, task_id: task?.id ?? null, brief: body.brief, by: me.name, role: role.name, persona: body.persona ?? null };
+    const input = { project_id: project?.id ?? null, task_id: task?.id ?? null, brief: body.brief, by: me.name, role: role.name, persona: body.persona ?? null, department };
     const key = process.env.ANTHROPIC_API_KEY;
     if (repo.mode === 'demo' || !key) {
       const text = demoAgencyOutput(role, body.brief, project?.name ?? null);

@@ -84,6 +84,7 @@ export const MODULES: ModuleDef[] = [
   M('requests', 'Talepler', 'work', 'requests', 'İş talepleri (hata, fikir, brief, müşteri): triyaj ve göreve dönüştürme.', true),
   M('workload', 'İş yükü', 'people', 'workload', 'Kişi başına haftalık kapasite, planlanan iş ve gecikmeler.', true),
   /* Ajans Ofisi: Agency kadrosu (283 uzman AI rolü) */
+  M('aihub', 'AI Çalışma Alanı', 'intel', 'aihub', 'Claude, ChatGPT ve Gemini tek ekranda; rolüne ve kapsamına göre bağlamla.', true, 'ai'),
   M('agency', 'Ajans Ofisi', 'intel', 'agency', '283 uzman AI rolü: 3B ofis, projeye görevlendirme ve canlı çalışma görünümü.', true),
 ];
 export const GROUP_LABELS: Record<ModuleGroup, string> = {
@@ -91,14 +92,14 @@ export const GROUP_LABELS: Record<ModuleGroup, string> = {
 };
 const ALL_IDS = MODULES.map((m) => m.id);
 const V8_STAFF = ['agenda', 'announcements', 'requests'];
-const MANAGER = ['overview', 'inbox', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'flow', 'resources', 'people', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events', 'portal', 'board', 'twins', 'insights', 'automations', 'integrations', 'approvals', 'marketplace', 'profile', 'apps', ...V8_STAFF, 'workload', 'dashboards', 'agency'].filter((x) => x !== 'board');
+const MANAGER = ['overview', 'inbox', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'flow', 'resources', 'people', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events', 'portal', 'board', 'twins', 'insights', 'automations', 'integrations', 'approvals', 'marketplace', 'profile', 'apps', ...V8_STAFF, 'workload', 'dashboards', 'agency', 'aihub'].filter((x) => x !== 'board');
 const CLIENT = ['overview', 'mywork', 'messages', 'projects', 'tasks', 'media', 'review', 'transfer', 'portal', 'approvals', 'profile', 'apps', 'requests'];
 export const ROLE_MODULES: Record<Role, string[]> = {
   owner: ALL_IDS, org_admin: ALL_IDS, operations: MANAGER, account: MANAGER,
   pm: MANAGER.filter((x) => !['board', 'marketplace'].includes(x)),
-  creative: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'flow', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'events', 'twins', 'approvals', 'profile', 'apps', ...V8_STAFF],
-  finance: ['overview', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'finance', 'insights', 'approvals', 'integrations', 'profile', 'apps', ...V8_STAFF],
-  hr: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'resources', 'people', 'hire', 'insights', 'approvals', 'profile', 'apps', ...V8_STAFF, 'workload'],
+  creative: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'flow', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'events', 'twins', 'approvals', 'profile', 'apps', 'aihub', 'agency', ...V8_STAFF],
+  finance: ['overview', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'finance', 'insights', 'approvals', 'integrations', 'profile', 'apps', 'aihub', 'agency', ...V8_STAFF],
+  hr: ['overview', 'mywork', 'messages', 'projects', 'tasks', 'resources', 'people', 'hire', 'insights', 'approvals', 'profile', 'apps', 'aihub', 'agency', ...V8_STAFF, 'workload'],
   payroll: ['overview', 'mywork', 'people', 'finance', 'insights', 'approvals', 'profile', 'apps', 'agenda', 'announcements'],
   client_admin: CLIENT,
   client_viewer: CLIENT.filter((x) => x !== 'approvals'),
@@ -377,7 +378,11 @@ export const orgSettingsSchema = z.object({
   }),
   structure: z.object({ flow_stages: z.array(z.string()), work_hours: z.string().default('09:00-18:00') }),
   /** monthly_cap_usd: 0 = tavan yok. usd_try: ₺ gösterimi için kur (varsayılan 40). */
-  ai: z.object({ monthly_cap_usd: z.number().min(0), default_model: z.string(), board_enabled: z.boolean(), usd_try: z.number().positive().optional() }),
+  ai: z.object({
+    monthly_cap_usd: z.number().min(0), default_model: z.string(), board_enabled: z.boolean(), usd_try: z.number().positive().optional(),
+    /** Departman (employees.team) → aylık yapay zekâ kotası (USD). Yok / 0 = departman kotası yok (org tavanı yine geçerli). */
+    department_caps_usd: z.record(z.string(), z.number().min(0)).optional(),
+  }),
   security: z.object({
     mfa_required: z.boolean(), session_hours: z.number().int().min(1).max(720), ip_allowlist: z.array(z.string()),
     /** Ana Yönetim Paneli: true → kullanıcı uygulaması her kullanıcıdan TOTP (MFA) kaydı/doğrulaması ister. Varsayılan kapalı (eski `mfa_required` yalnızca bilgi amaçlıydı). */

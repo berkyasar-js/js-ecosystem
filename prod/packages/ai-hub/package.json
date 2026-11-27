@@ -1,0 +1,11 @@
+{
+  "name": "@jscore/ai-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Birleşik yapay zekâ çalışma alanı: Claude + ChatGPT + Gemini sağlayıcı katmanı, otomatik yönlendirme, rol/kapsam bağlamı, departman kotası. Bağımsız paketlenebilir (unified-ai-hub).",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
+  },
+  "dependencies": { "@anthropic-ai/sdk": "^0.65.0", "zod": "^3.25.0" }
+}
