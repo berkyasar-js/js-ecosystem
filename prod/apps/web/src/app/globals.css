@@ -558,3 +558,29 @@ a.metric-link:hover .metric, a.metric-link.metric:hover { transform: none; borde
 .filter-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 6px 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); font-size: 12px; font-weight: 600; color: var(--ink); }
 .filter-chip button { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--muted); cursor: pointer; background: none; border: 0; }
 .filter-chip button:hover { background: var(--nested); color: var(--ink); }
+
+/* ───── AI Çalışma Alanı ───── */
+.hub-grid { display: grid; gap: 16px; }
+@media (min-width: 1100px) { .hub-grid { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } }
+.hub-chat { display: grid; gap: 14px; }
+.hub-log { display: grid; gap: 12px; align-content: start; min-height: 260px; max-height: min(62vh, 720px); overflow-y: auto; padding-right: 4px; }
+.hub-empty { padding: 28px 8px; }
+.hub-msg { padding: 14px 16px; border-radius: var(--radius-surface); border: 1px solid var(--line); background: var(--nested); }
+.hub-msg.is-user { background: var(--card); margin-left: clamp(0px, 8%, 64px); }
+.hub-msg-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+.hub-msg-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; }
+.hub-msg-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.hub-composer { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; }
+.hub-models { display: grid; gap: 8px; margin-top: 12px; border: 0; padding: 0; }
+.hub-model { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-ctl); cursor: pointer; }
+.hub-model:has(input:checked) { border-color: var(--brand-ink); box-shadow: inset 3px 0 0 var(--brand-ink); }
+.hub-model.is-off { cursor: not-allowed; opacity: .7; }
+.hub-model input { margin-top: 3px; }
+.hub-model > span { display: grid; gap: 2px; min-width: 0; font-size: 13px; }
+.hub-model > span > span { font-size: 12px; color: var(--muted); }
+.hub-dl { display: grid; gap: 10px; margin-top: 12px; font-size: 13px; }
+.hub-dl > div { display: flex; justify-content: space-between; gap: 12px; }
+.hub-dl dt { color: var(--muted); font-size: 12px; font-weight: 600; }
+.hub-dl dd { text-align: right; min-width: 0; }
+.breadcrumb, .breadcrumb > * { white-space: nowrap; }
+.breadcrumb { overflow: hidden; }

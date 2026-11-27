@@ -43,6 +43,7 @@ export default function AgencyOffice() {
   const [brief, setBrief] = useState('');
   const [runErr, setRunErr] = useState<string | null>(null);
   const [shown, setShown] = useState<AgencyRunView | null>(null);
+  const [handoff, setHandoff] = useState(false);
   const [personaFilter, setPersonaFilter] = useState('');
   const [personaPick, setPersonaPick] = useState('');
 
@@ -63,6 +64,8 @@ export default function AgencyOffice() {
   }, [repo, mode]);
 
   useEffect(() => { if (repo) repo.listProjects().then(setProjects, () => setProjects([])); }, [repo, rev]);
+  // AI Çalışma Alanı'ndan devredilen fikir: `?brief=` görev metnini doldurur (rolü kullanıcı seçer).
+  useEffect(() => { const b = new URLSearchParams(window.location.search).get('brief'); if (b) { setBrief(b.slice(0, 4000)); setHandoff(true); } }, []);
   useEffect(() => { void loadRuns(); }, [loadRuns, rev]);
   // Başkalarının çalıştırdığı roller de ofiste görünsün: sekme görünürken 20 sn'de bir yenile.
   useEffect(() => {
@@ -164,6 +167,7 @@ export default function AgencyOffice() {
         </ul>
       </section>
 
+      {handoff && <p className="mb-3 rounded-[10px] border border-line bg-nested p-3 text-sm" role="status">AI Çalışma Alanı’ndan bir görev metni getirildi. Bir rol seç; metin “Ne yapsın?” alanında hazır. <button type="button" className="underline" onClick={() => { setHandoff(false); setBrief(''); }}>Vazgeç</button></p>}
       {!no3d && <Tabs<'office' | 'list'> tabs={[['office', '3B Ofis'], ['list', 'Liste']]} value={view} onChange={setView} />}
       {no3d && <p className="mb-3 text-sm text-muted">Bu tarayıcıda 3B görünüm açılamadı; roller liste olarak gösteriliyor.</p>}
       {loadErr && <ErrorBox message={loadErr} />}

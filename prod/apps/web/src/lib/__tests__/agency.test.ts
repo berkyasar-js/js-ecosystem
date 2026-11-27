@@ -97,6 +97,7 @@ describe('Ajans Ofisi — çıktı ve katalog', () => {
     expect(NAV_GROUPS.find((g) => g.id === 'team')!.children.some((c) => c.href === '/app/agency')).toBe(true);
     expect(canAccessModule('owner', 'agency')).toBe(true);
     expect(canAccessModule('pm', 'agency')).toBe(true);
+    expect(canAccessModule('creative', 'agency')).toBe(true);
     expect(canAccessModule('client_admin', 'agency')).toBe(false);
     expect(canAccessModule('freelancer', 'agency')).toBe(false);
   });

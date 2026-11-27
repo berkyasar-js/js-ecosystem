@@ -46,6 +46,7 @@ export default function Agents() {
                 <div><label className="label" htmlFor="fx">Kur (₺ / USD)</label><input id="fx" type="number" min={1} step="0.01" className="input" value={ai.usd_try ?? DEFAULT_USD_TRY} onChange={(e) => setAi({ ...ai, usd_try: Number(e.target.value) || DEFAULT_USD_TRY })} /></div>
                 <div><label className="label" htmlFor="mdl">Varsayılan model</label><input id="mdl" className="input" value={ai.default_model} onChange={(e) => setAi({ ...ai, default_model: e.target.value })} /></div>
               </div>
+              <DepartmentCaps caps={ai.department_caps_usd ?? {}} onChange={(department_caps_usd) => setAi({ ...ai, department_caps_usd })} />
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={ai.board_enabled} onChange={(e) => setAi({ ...ai, board_enabled: e.target.checked })} /> Haftalık kurul açık</label>
               <button className="btn btn-primary w-fit" onClick={() => void save()}>Kaydet</button>
             </>
@@ -164,5 +165,29 @@ function AgentApprovals() {
         </tbody></table></div>
       )}
     </section>
+  );
+}
+
+/** Departman (employees.team) başına aylık yapay zekâ kotası (USD). AI Çalışma Alanı ve Ajans Ofisi çalıştırmaları sayılır; 0 = kota yok. */
+function DepartmentCaps({ caps, onChange }: { caps: Record<string, number>; onChange(next: Record<string, number>): void }) {
+  const [name, setName] = useState('');
+  const entries = Object.entries(caps);
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="label">Departman kotaları (USD / ay)</legend>
+      {entries.length === 0 && <p className="text-xs text-muted">Departman kotası tanımlı değil; yalnızca kurum tavanı uygulanır.</p>}
+      {entries.map(([dep, cap]) => (
+        <div key={dep} className="flex flex-wrap items-center gap-2">
+          <span className="min-w-40 flex-1 text-sm">{dep}</span>
+          <input type="number" min={0} className="input w-32" aria-label={`${dep} kotası (USD)`} value={cap} onChange={(e) => onChange({ ...caps, [dep]: Math.max(0, Number(e.target.value) || 0) })} />
+          <button type="button" className="btn btn-sm" onClick={() => { const next = { ...caps }; delete next[dep]; onChange(next); }}>Kaldır</button>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <input className="input w-auto min-w-40 flex-1" placeholder="Departman adı (çalışan kartındaki ekip adıyla aynı)" aria-label="Yeni departman adı" value={name} onChange={(e) => setName(e.target.value)} />
+        <button type="button" className="btn btn-sm" disabled={!name.trim() || name.trim() in caps} onClick={() => { onChange({ ...caps, [name.trim()]: 0 }); setName(''); }}>Departman ekle</button>
+      </div>
+      <p className="text-xs text-muted">Kaydetmek için aşağıdaki “Kaydet” düğmesini kullan.</p>
+    </fieldset>
   );
 }
