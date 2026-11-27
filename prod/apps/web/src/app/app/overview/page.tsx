@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { TASK_STATE_LABELS, buildDashboards, isClientRole, nextSetupStep, setupProgress, showSetupCard, type AgentRun, type BoardDecision, type ChartId, type Notification } from '@jscore/contracts';
+import { SETUP_STEP_LABELS, TASK_STATE_LABELS, buildDashboards, isClientRole, nextSetupStep, setupProgress, showSetupCard, type AgentRun, type BoardDecision, type ChartId, type Notification } from '@jscore/contracts';
 import { AnnouncementBanner } from '@/components/announcements';
 import { DashChart } from '@/components/dash-chart';
 import { ArrowRight, CheckCircle2, Landmark, Settings2, Sparkles } from 'lucide-react';
@@ -52,27 +52,33 @@ export default function Home() {
             <span className={`chip ${isOverdue(t, today) ? 'chip-bad' : t.due_at?.slice(0, 10) === today ? 'chip-warn' : ''}`}>{fmtDate(t.due_at)}</span>
           </Link>
         );
-        const focus = plan.overdue[0] ?? plan.today[0] ?? plan.week[0] ?? open.sort(byDue)[0];
+        // Kişisel görevi olmayan yönetici: odak kartı ekip durumunu gösterir ve ekip panosuna götürür (kişisel boş mesaj + alakasız görev başlığı yerine).
+        const teamFocus = manager && !client && plan.total === 0 && open.length > 0;
+        const dueTodayAll = open.filter((t) => t.due_at?.slice(0, 10) === today).length;
+        const focus = plan.overdue[0] ?? plan.today[0] ?? plan.week[0] ?? (manager ? undefined : [...open].sort(byDue)[0]);
         return (
           <div className="home-grid">
             {showSetupCard(me.role, setup) && (
               <section className="card flex flex-wrap items-center justify-between gap-4" aria-label="Kurulum">
                 <div className="flex items-center gap-3"><span className="signal-icon"><Settings2 size={17} aria-hidden /></span>
-                  <div><h2 className="font-bold">Çalışma alanı kurulumu %{prog.pct}</h2><p className="text-sm text-muted">{prog.done}/{prog.total} adım tamamlandı · sıradaki: {nextSetupStep(setup) === 'summary' ? 'Özet' : nextSetupStep(setup)}</p></div></div>
+                  <div><h2 className="font-bold">Çalışma alanı kurulumu %{prog.pct}</h2><p className="text-sm text-muted">{prog.done}/{prog.total} adım tamamlandı · sıradaki: {SETUP_STEP_LABELS[nextSetupStep(setup)]}</p></div></div>
                 <div className="flex items-center gap-3"><div className="w-40"><Bar pct={prog.pct} tone="ok" /></div><Link href="/app/setup" className="btn btn-primary">Devam et <ArrowRight size={15} aria-hidden /></Link></div>
               </section>
             )}
 
             {!client && <AnnouncementBanner />}
 
-            <section className="focus-card home-col-8" aria-label="Bugünün planı">
-              <img className="orbit-art" src="/brand/orbit-studio.svg" alt="" aria-hidden="true" />
+            <section className="focus-card home-col-8" aria-label={teamFocus ? 'Ekip odağı' : 'Bugünün planı'}>
               <div className="focus-content">
-                <div className="eyebrow">BUGÜNÜN PLANI</div>
-                <h2>{focus ? focus.title : 'Bugün sakin bir gün.'}</h2>
-                <p>{client ? `${pending.length} kalem kararınızı bekliyor.` : plan.total ? `${plan.overdue.length} gecikmiş, ${plan.today.length} bugün, ${plan.week.length} bu hafta · toplam ${plan.total} açık görev.` : 'Sana atanmış açık görev yok.'}</p>
+                <div className="eyebrow">{teamFocus ? 'EKİP ODAĞI' : 'BUGÜNÜN PLANI'}</div>
+                <h2>{teamFocus ? (overdueAll.length ? `Ekipte ${overdueAll.length} gecikmiş iş var.` : `Ekipte ${open.length} açık iş var.`) : focus ? focus.title : 'Bugün sakin bir gün.'}</h2>
+                <p>{client ? `${pending.length} kalem kararınızı bekliyor.` : plan.total ? `${plan.overdue.length} gecikmiş, ${plan.today.length} bugün, ${plan.week.length} bu hafta · toplam ${plan.total} açık görev.` : teamFocus ? `Sana atanmış açık görev yok. Ekip genelinde ${open.length} açık görev var; ${overdueAll.length} tanesinin teslim tarihi geçti, ${dueTodayAll} tanesi bugün teslim.` : 'Sana atanmış açık görev yok.'}</p>
                 {plan.byStage.length > 0 && <div className="twin-note"><Sparkles size={15} aria-hidden /><span>{plan.byStage.map((s) => `${TASK_STATE_LABELS[s.stage]} ${s.count}`).join(' · ')}</span></div>}
-                <div><Link href={client ? '/app/portal' : '/app/mywork'} className="btn">{client ? 'Portala git' : 'Görevlerime git'} <ArrowRight size={15} aria-hidden /></Link></div>
+                <div className="focus-actions">
+                  {teamFocus
+                    ? <><Link href="/app/tasks" className="btn">Ekip panosuna git <ArrowRight size={15} aria-hidden /></Link>{overdueAll.length > 0 && <Link href="/app/projects?due=overdue" className="btn btn-quiet">Gecikmiş projeler</Link>}</>
+                    : <Link href={client ? '/app/portal' : '/app/mywork'} className="btn">{client ? 'Portala git' : 'Görevlerime git'} <ArrowRight size={15} aria-hidden /></Link>}
+                </div>
               </div>
             </section>
 
@@ -88,10 +94,10 @@ export default function Home() {
             </section>
 
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" style={{ gridColumn: 'span 12' }}>
-              <Stat label="Aktif proje" value={projects.filter((p) => p.status === 'active').length} href="/app/projects" />
-              <Stat label="Açık görev" value={open.length} href="/app/tasks" />
-              <Stat label="Geciken" value={overdueAll.length} tone={overdueAll.length ? 'bad' : 'ok'} hint="Teslim tarihi geçmiş" href="/app/tasks" />
-              <Stat label="Bekleyen onay" value={pending.length} tone={pending.length ? 'warn' : 'ok'} href="/app/approvals" />
+              <Stat label="Aktif proje" value={projects.filter((p) => p.status === 'active').length} hint="Durumu Aktif olan · şu an" href="/app/projects?status=active" />
+              <Stat label="Açık görev" value={open.length} hint="Teslim edilmemiş, arşivlenmemiş · şu an" href="/app/tasks" />
+              <Stat label="Geciken" value={overdueAll.length} tone={overdueAll.length ? 'bad' : 'ok'} hint="Teslim tarihi bugünden önce olan açık görev" href="/app/tasks" />
+              <Stat label="Bekleyen onay" value={pending.length} tone={pending.length ? 'warn' : 'ok'} hint="Karar verilmemiş · tüm zamanlar" href="/app/approvals" />
             </div>
 
             {!client && (

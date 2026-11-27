@@ -43,7 +43,7 @@ export function AnnouncementBanner() {
       {pending.slice(0, 3).map((a) => (
         <div key={a.id} className="flex flex-wrap items-start gap-3 border-b border-line py-3 last:border-b-0 first:pt-0 last:pb-0">
           <span className="signal-icon"><Megaphone size={16} aria-hidden /></span>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 basis-56">
             <div className="flex flex-wrap items-center gap-2"><strong>{a.title}</strong><span className="text-xs text-muted">{a.author_name} · {fmtTime(a.created_at)}</span>{a.requires_ack && <Chip tone="warn">Onay gerekli</Chip>}</div>
             <div className="mt-1 text-sm wk-x-md"><MdLite text={a.body} /></div>
             {a.poll && <p className="mt-2 text-sm font-semibold">{a.poll.question}</p>}
