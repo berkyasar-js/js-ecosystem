@@ -6,8 +6,8 @@ import { agentRunBody } from '@jscore/core/agents/client';
 import { Empty, ErrorBox, Loading, PageHeader, Stat, Tabs, fmtTime, todayFor } from '@/components/ui';
 import { useCan, useSession } from '@/components/session';
 import {
-  AGENCY_ROSTER, DIVISIONS, PERSONAS, agencyActivity, divisionOf, personaFor, personaForRun, searchRoster, toAgencyRun,
-  type AgencyRole, type AgencyRunView, type SeatActivity,
+  AGENCY_ROSTER, DIVISIONS, PERSONAS, agencyActivity, divisionOf, TEAM_MAX, TEAM_MIN, personaFor, personaForRun, searchRoster, toAgencyRun,
+  type AgencyRole, type TeamPick, type AgencyRunView, type SeatActivity,
 } from '@jscore/agents';
 import { officeLayout } from '@jscore/office-ui/layout';
 import '@jscore/office-ui/office.css';
@@ -47,6 +47,16 @@ export default function AgencyOffice() {
   const [personaFilter, setPersonaFilter] = useState('');
   const [personaPick, setPersonaPick] = useState('');
 
+  // Otomatik ekip: açıklamadan önerilen roller (çalıştırma ayrı ve onaylıdır).
+  const [teamDesc, setTeamDesc] = useState('');
+  const [teamProject, setTeamProject] = useState('');
+  const [teamSize, setTeamSize] = useState(5);
+  const [team, setTeam] = useState<Array<TeamPick & { on: boolean; state: 'idle' | 'working' | 'done' | 'error'; error?: string }> | null>(null);
+  const [teamNote, setTeamNote] = useState<string | null>(null);
+  const [teamMethod, setTeamMethod] = useState<'model' | 'rules' | null>(null);
+  const [teamErr, setTeamErr] = useState<string | null>(null);
+  const [teamBusy, setTeamBusy] = useState<'' | 'suggest' | 'run'>('');
+
   const loadRuns = useCallback(async () => {
     if (!repo) return;
     try {
@@ -83,9 +93,10 @@ export default function AgencyOffice() {
   const activity = useMemo(() => agencyActivity(runs ?? [], now, working, scope || null), [runs, now, working, scope]);
   const filtered = useMemo(() => searchRoster(q, division || null).filter((r) => !personaFilter || personaFor(r).id === personaFilter), [q, division, personaFilter]);
   const matches = useMemo(() => {
+    if (team?.length) return new Set(team.map((t) => t.slug)); // kurulan ekip ofiste öne çıkar
     const scoped = scope ? filtered.filter((r) => activity.has(r.slug)) : filtered;
     return scoped.length === AGENCY_ROSTER.length ? null : new Set(scoped.map((r) => r.slug));
-  }, [filtered, scope, activity]);
+  }, [filtered, scope, activity, team]);
   const listed = matches ? AGENCY_ROSTER.filter((r) => matches.has(r.slug)) : AGENCY_ROSTER;
   const role = selected ? roles.get(selected) ?? null : null;
   // Ofisteki etiketler: rolün tiplemesi (son çalıştırmada elle seçildiyse o).
@@ -104,25 +115,64 @@ export default function AgencyOffice() {
 
   const select = (slug: string | null) => { setSelected(slug); setPersonaPick(''); setRunErr(null); setShown(slug ? activity.get(slug)?.last ?? null : null); };
 
-  async function run(r: AgencyRole) {
+  /** Rolü çalıştırır. `o` verilirse (otomatik ekip) formdaki değerler yerine o kullanılır ve hata çağırana fırlatılır. */
+  async function run(r: AgencyRole, o?: { project_id: string | null; brief: string }) {
     if (!repo) return;
-    setRunErr(null); setShown(null);
+    const pid = o ? o.project_id : projectId || null;
+    const tid = o ? null : taskId || null;
+    if (!o) { setRunErr(null); setShown(null); }
     setWorking((w) => [...w, r.slug]);
     try {
       const body = await agentRunBody(repo, todayFor(mode), { agent: r.slug, input: {} });
       const extra = 'demo_spend_usd' in body ? { demo_spend_usd: body.demo_spend_usd, demo_cap_usd: body.demo_cap_usd } : {};
-      const res = await fetch('/api/agency/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: r.slug, persona: personaPick || null, project_id: projectId || null, task_id: taskId || null, brief, ...extra }) });
+      const res = await fetch('/api/agency/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: r.slug, persona: o ? null : personaPick || null, project_id: pid, task_id: tid, brief: o ? o.brief : brief, ...extra }) });
       const j = await res.json() as { run?: RawRun & { trigger: string; model: string; tokens_in: number; tokens_out: number; latency_ms: number }; error?: string };
       if (!res.ok || !j.run) throw new Error(j.error ?? 'Rol çalıştırılamadı');
       // Demo'da sunucu durumsuz: satırı tarayıcıdaki depoya biz yazarız.
       if (mode === 'demo') await repo.logAgentRun({ ...j.run, agent: j.run.agent as AgentName, cost_usd: Number(j.run.cost_usd ?? 0), status: 'demo' });
-      await repo.audit('agency.run', `agency/${r.slug}`, { project_id: projectId || null, task_id: taskId || null }).catch(() => {});
+      await repo.audit('agency.run', `agency/${r.slug}`, { project_id: pid, task_id: tid }).catch(() => {});
       const view = toAgencyRun({ ...j.run, id: `local-${Date.now()}`, created_at: new Date().toISOString() });
-      setShown(view); setBrief('');
+      if (!o) { setShown(view); setBrief(''); }
       await loadRuns();
-    } catch (e) { setRunErr(e instanceof Error ? e.message : 'Rol çalıştırılamadı'); }
+    } catch (e) { if (o) throw e; setRunErr(e instanceof Error ? e.message : 'Rol çalıştırılamadı'); }
     finally { setWorking((w) => { const i = w.indexOf(r.slug); return i < 0 ? w : [...w.slice(0, i), ...w.slice(i + 1)]; }); }
   }
+
+  async function suggestTeam() {
+    if (!repo) return;
+    setTeamErr(null); setTeamBusy('suggest');
+    try {
+      const body = await agentRunBody(repo, todayFor(mode), { agent: 'team-builder', input: {} });
+      const extra = 'demo_spend_usd' in body ? { demo_spend_usd: body.demo_spend_usd, demo_cap_usd: body.demo_cap_usd } : {};
+      const res = await fetch('/api/agency/team', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ description: teamDesc, project_id: teamProject || null, size: teamSize, ...extra }) });
+      const j = await res.json() as { team?: TeamPick[]; method?: 'model' | 'rules'; note?: string; error?: string };
+      if (!res.ok || !j.team) throw new Error(j.error ?? 'Ekip önerilemedi');
+      setTeam(j.team.filter((t) => roles.has(t.slug)).map((t) => ({ ...t, on: true, state: 'idle' as const })));
+      setTeamMethod(j.method ?? null); setTeamNote(j.note ?? null); setSelected(null);
+    } catch (e) { setTeamErr(e instanceof Error ? e.message : 'Ekip önerilemedi'); }
+    finally { setTeamBusy(''); }
+  }
+  /** Seçili rolleri sırayla çalıştırır; biri hata verirse diğerleri sürer. */
+  async function runTeam() {
+    if (!team) return;
+    setTeamErr(null); setTeamBusy('run');
+    const patch = (slug: string, v: Partial<NonNullable<typeof team>[number]>) => setTeam((t) => t && t.map((x) => (x.slug === slug ? { ...x, ...v } : x)));
+    for (const t of team.filter((x) => x.on && x.state !== 'done')) {
+      const r = roles.get(t.slug);
+      if (!r) continue;
+      patch(t.slug, { state: 'working', error: undefined });
+      try { await run(r, { project_id: teamProject || null, brief: `${t.task}\n\nProje açıklaması:\n${teamDesc}`.slice(0, 4000) }); patch(t.slug, { state: 'done' }); }
+      catch (e) { patch(t.slug, { state: 'error', error: e instanceof Error ? e.message : 'Çalıştırılamadı' }); }
+    }
+    setTeamBusy('');
+  }
+  const clearTeam = () => { setTeam(null); setTeamNote(null); setTeamMethod(null); setTeamErr(null); };
+  const teamOn = team?.filter((t) => t.on && t.state !== 'done').length ?? 0;
+  const pickTeamProject = (id: string) => {
+    setTeamProject(id);
+    const text = projects.find((x) => x.id === id)?.summary;
+    if (text && !teamDesc.trim()) setTeamDesc(text.slice(0, 4000));
+  };
 
   const effectiveView = no3d ? 'list' : view;
   return (
@@ -149,6 +199,64 @@ export default function AgencyOffice() {
           </select></div>
         <p className="w-full text-xs text-muted" aria-live="polite">{listed.length} rol gösteriliyor{scope ? ' · yalnızca bu projede çalışmış roller' : ''}</p>
       </div>
+
+      <section className="card mb-4" aria-labelledby="team-h">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="team-h" className="text-sm font-bold">Ekibi otomatik kur</h2>
+          <p className="text-xs text-muted">Projeyi anlat; 283 rol içinden ekip ve her role bir ilk görev önerilir. Onaylamadan hiçbir rol çalışmaz.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+          <div><label className="label" htmlFor="team-desc">Proje açıklaması</label>
+            <textarea id="team-desc" className="input min-h-24" maxLength={4000} placeholder="Örn. Yeni kahve markası için 6 haftalık lansman: Instagram ve TikTok içerikleri, reklam kreatifleri, açılış sayfası ve haftalık raporlama." value={teamDesc} onChange={(e) => setTeamDesc(e.target.value)} />
+            <p className="mt-1 text-xs text-muted">En az 20 karakter. Hedef, kanal ve teslimleri yazdıkça öneri isabetli olur.</p></div>
+          <div className="flex flex-col gap-3">
+            <div><label className="label" htmlFor="team-project">Proje (isteğe bağlı)</label>
+              <select id="team-project" className="input" value={teamProject} onChange={(e) => pickTeamProject(e.target.value)}>
+                <option value="">Projesiz</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select></div>
+            <div><label className="label" htmlFor="team-size">Ekip büyüklüğü</label>
+              <select id="team-size" className="input" value={teamSize} onChange={(e) => setTeamSize(Number(e.target.value))}>
+                {Array.from({ length: TEAM_MAX - TEAM_MIN + 1 }, (_, i) => TEAM_MIN + i).map((n) => <option key={n} value={n}>{n} rol</option>)}
+              </select></div>
+            <button type="button" className="btn btn-primary" disabled={!canRun || teamBusy !== '' || teamDesc.trim().length < 20} onClick={() => void suggestTeam()}>{teamBusy === 'suggest' ? 'Ekip seçiliyor…' : team ? 'Yeniden öner' : 'Ekip öner'}</button>
+          </div>
+        </div>
+        {!canRun && <p className="mt-2 text-xs text-muted">Ekip kurmak için ajan çalıştırma yetkisi gerekir.</p>}
+        {teamErr && <div className="mt-3"><ErrorBox message={teamErr} /></div>}
+        {team && (
+          <div className="mt-4 border-t border-line pt-4" aria-live="polite">
+            <p className="mb-2 text-sm"><strong>{team.length} rol önerildi</strong> <span className="text-muted">· {teamMethod === 'model' ? 'Model seçti' : 'Kurallı eşleme'} · ofiste öne çıkarıldı</span></p>
+            {teamNote && <p className="mb-3 text-xs text-muted">{teamNote}</p>}
+            {team.length === 0 ? <Empty>Uygun rol bulunamadı. Açıklamayı biraz daha ayrıntılandırıp yeniden dene.</Empty> : (
+              <ul className="grid gap-2">
+                {team.map((t) => { const r = roles.get(t.slug)!; const d = divisionOf(r.division); return (
+                  <li key={t.slug} className="flex flex-wrap items-start gap-3 rounded-[10px] border border-line p-3">
+                    <input id={`team-${t.slug}`} type="checkbox" className="mt-1" checked={t.on} disabled={teamBusy === 'run' || t.state === 'done'} onChange={(e) => setTeam((x) => x && x.map((y) => (y.slug === t.slug ? { ...y, on: e.target.checked } : y)))} />
+                    <img src={personaFor(r).image} alt="" width={40} height={40} className="rounded-full" loading="lazy" />
+                    <div className="min-w-0 flex-1">
+                      <label htmlFor={`team-${t.slug}`} className="text-sm font-semibold">{r.name}</label> <span className="text-xs text-muted">· {d?.label ?? r.division}</span>
+                      {t.reason && <p className="text-xs text-muted">{t.reason}</p>}
+                      <label className="sr-only" htmlFor={`team-task-${t.slug}`}>{r.name} için görev</label>
+                      <textarea id={`team-task-${t.slug}`} className="input mt-2 min-h-14 text-sm" maxLength={600} value={t.task} disabled={teamBusy === 'run' || t.state === 'done'} onChange={(e) => setTeam((x) => x && x.map((y) => (y.slug === t.slug ? { ...y, task: e.target.value } : y)))} />
+                      {t.error && <p className="mt-1 text-xs" style={{ color: 'var(--bad, #c0263d)' }} role="alert">{t.error}</p>}
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      {t.state !== 'idle' && <span className={`chip ${t.state === 'done' ? 'chip-ok' : t.state === 'error' ? 'chip-bad' : 'chip-brand'}`}>{t.state === 'done' ? 'Tamamlandı' : t.state === 'error' ? 'Hata' : 'Çalışıyor'}</span>}
+                      <button type="button" className="btn btn-ghost text-xs" onClick={() => select(t.slug)}>{t.state === 'done' ? 'Çıktıyı gör' : 'Rolü aç'}</button>
+                    </div>
+                  </li>
+                ); })}
+              </ul>
+            )}
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button type="button" className="btn btn-primary" disabled={!canRun || teamBusy !== '' || teamOn === 0} onClick={() => void runTeam()}>{teamBusy === 'run' ? 'Ekip çalışıyor…' : `Seçili ${teamOn} rolü çalıştır`}</button>
+              <button type="button" className="btn btn-ghost" disabled={teamBusy !== ''} onClick={clearTeam}>Ekibi temizle</button>
+              <p className="text-xs text-muted">Her rol ayrı bir model çağrısıdır ve bütçeden düşer; roller sırayla çalışır.</p>
+            </div>
+          </div>
+        )}
+      </section>
 
       <section className="mb-4" aria-label="Ajan tiplemeleri">
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">

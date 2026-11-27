@@ -131,3 +131,38 @@ describe('Ajans Ofisi — tiplemeler', () => {
     expect(run('a', '2026-12-01T11:00:00Z').persona).toBeNull();
   });
 });
+
+describe('Ajans Ofisi — otomatik ekip', () => {
+  it('kurallı öneri: açıklamadaki ihtiyaçlara uyan roller, kalite kontrolü dahil, yinelenme yok', async () => {
+    const { suggestTeamByRules } = await import('@jscore/agents');
+    const team = suggestTeamByRules('Yeni ürün lansmanı için Instagram ve TikTok sosyal medya kampanyası, reklam metinleri ve bir açılış sayfası tasarımı.', 6, AGENCY_ROSTER);
+    expect(team).toHaveLength(6);
+    expect(new Set(team.map((t) => t.slug)).size).toBe(6);
+    expect(team.every((t) => AGENCY_ROSTER.some((r) => r.slug === t.slug) && t.reason.length > 5 && t.task.length > 5)).toBe(true);
+    expect(team.map((t) => t.slug)).toContain('testing-reality-checker');
+    expect(team.map((t) => t.slug)).toEqual(expect.arrayContaining(['marketing-instagram-curator', 'marketing-tiktok-strategist']));
+    expect(team.some((t) => t.slug.includes('linkedin'))).toBe(false);
+    const { TEAM_TERM_SLUGS } = await import('@jscore/agents');
+    expect(TEAM_TERM_SLUGS.filter((x) => !AGENCY_ROSTER.some((r) => r.slug === x))).toEqual([]);
+  });
+  it('eşleşme yoksa çekirdek rollerle tamamlar; aynı girdi aynı ekibi verir', async () => {
+    const { suggestTeamByRules } = await import('@jscore/agents');
+    const a = suggestTeamByRules('Qwerty zxcv asdfg hjkl poiuy lkjhg mnbvc.', 4, AGENCY_ROSTER);
+    expect(a.map((t) => t.slug)).toEqual(['testing-reality-checker', 'project-management-project-shepherd', 'marketing-content-creator', 'design-brand-guardian']);
+    expect(suggestTeamByRules('SEO ve blog içerik planı, aylık raporlama.', 5, AGENCY_ROSTER)).toEqual(suggestTeamByRules('SEO ve blog içerik planı, aylık raporlama.', 5, AGENCY_ROSTER));
+  });
+  it('model yanıtı doğrulanır: kadro dışı ve yinelenen roller atılır, kod bloğu ayıklanır, bozuk yanıt boş döner', async () => {
+    const { parseTeamReply, rosterDigest, teamRequestSchema, teamUserPrompt } = await import('@jscore/agents');
+    const reply = '```json\n{"team":[{"slug":"marketing-seo-specialist","reason":"SEO","task":"Anahtar kelime planı"},{"slug":"uydurma-rol","reason":"x","task":"y"},{"slug":"marketing-seo-specialist","reason":"tekrar","task":"z"},{"slug":"testing-reality-checker","reason":"denetim","task":"denetle"}]}\n```';
+    expect(parseTeamReply(reply, AGENCY_ROSTER, 5).map((t) => t.slug)).toEqual(['marketing-seo-specialist', 'testing-reality-checker']);
+    expect(parseTeamReply('Önce şunu söyleyeyim: {"team":[{"slug":"design-ui-designer"}]} umarım yardımcı olur', AGENCY_ROSTER, 5)).toEqual([{ slug: 'design-ui-designer', reason: '', task: '' }]);
+    expect(parseTeamReply('üzgünüm, yapamam', AGENCY_ROSTER, 5)).toEqual([]);
+    expect(parseTeamReply('{"team":"yok"}', AGENCY_ROSTER, 5)).toEqual([]);
+    expect(parseTeamReply(reply, AGENCY_ROSTER, 1)).toHaveLength(1);
+    expect(rosterDigest(AGENCY_ROSTER).split('\n')).toHaveLength(283);
+    expect(teamUserPrompt('Açıklama', 4, AGENCY_ROSTER.slice(0, 2), 'Lansman')).toContain('PROJE (Lansman)');
+    expect(teamRequestSchema.safeParse({ description: 'kısa' }).success).toBe(false);
+    expect(teamRequestSchema.parse({ description: 'Yeterince uzun bir proje açıklaması metni.' }).size).toBe(5);
+    expect(teamRequestSchema.safeParse({ description: 'Yeterince uzun bir proje açıklaması metni.', size: 20 }).success).toBe(false);
+  });
+});

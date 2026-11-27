@@ -103,3 +103,4 @@ export function demoAgencyOutput(role: AgencyRole, brief: string, projectName: s
 }
 
 export * from './personas';
+export * from './team';
