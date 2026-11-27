@@ -83,13 +83,15 @@ export const MODULES: ModuleDef[] = [
   M('dashboards', 'Panolar', 'intel', 'dashboards', 'Görev, gecikme, iş yükü, marka sağlığı, onay ve ajan maliyeti grafikleri.', true),
   M('requests', 'Talepler', 'work', 'requests', 'İş talepleri (hata, fikir, brief, müşteri): triyaj ve göreve dönüştürme.', true),
   M('workload', 'İş yükü', 'people', 'workload', 'Kişi başına haftalık kapasite, planlanan iş ve gecikmeler.', true),
+  /* Ajans Ofisi: Agency kadrosu (283 uzman AI rolü) */
+  M('agency', 'Ajans Ofisi', 'intel', 'agency', '283 uzman AI rolü: 3B ofis, projeye görevlendirme ve canlı çalışma görünümü.', true),
 ];
 export const GROUP_LABELS: Record<ModuleGroup, string> = {
   main: 'ANA MENÜ', work: 'AJANS OPERASYONU', creative: 'ÜRETİM & MEDYA', people: 'İNSAN & MÜŞTERİ', intel: 'ZEKÂ', manage: 'YÖNETİM & SİSTEM', hidden: '',
 };
 const ALL_IDS = MODULES.map((m) => m.id);
 const V8_STAFF = ['agenda', 'announcements', 'requests'];
-const MANAGER = ['overview', 'inbox', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'flow', 'resources', 'people', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events', 'portal', 'board', 'twins', 'insights', 'automations', 'integrations', 'approvals', 'marketplace', 'profile', 'apps', ...V8_STAFF, 'workload', 'dashboards'].filter((x) => x !== 'board');
+const MANAGER = ['overview', 'inbox', 'mywork', 'messages', 'crm', 'projects', 'tasks', 'flow', 'resources', 'people', 'studio', 'social', 'media', 'review', 'transfer', 'present', 'marketing', 'events', 'portal', 'board', 'twins', 'insights', 'automations', 'integrations', 'approvals', 'marketplace', 'profile', 'apps', ...V8_STAFF, 'workload', 'dashboards', 'agency'].filter((x) => x !== 'board');
 const CLIENT = ['overview', 'mywork', 'messages', 'projects', 'tasks', 'media', 'review', 'transfer', 'portal', 'approvals', 'profile', 'apps', 'requests'];
 export const ROLE_MODULES: Record<Role, string[]> = {
   owner: ALL_IDS, org_admin: ALL_IDS, operations: MANAGER, account: MANAGER,
