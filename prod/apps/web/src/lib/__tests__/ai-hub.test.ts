@@ -117,3 +117,22 @@ describe('AI Çalışma Alanı — sağlayıcı çağrıları (ağ taklidi)', ()
     expect(hubCostUsd('claude', 1_000_000, 0)).toBe(3);
   });
 });
+
+describe('AI sağlayıcı seçimi — ajan çalıştırmaları', () => {
+  it('anahtarı olmayan sağlayıcı açık hatayla reddedilir; sessizce başka modele düşülmez', async () => {
+    const { ProviderUnavailableError, requireProvider } = await import('@jscore/ai-hub/server');
+    const keep = { a: process.env.ANTHROPIC_API_KEY, o: process.env.OPENAI_API_KEY, g: process.env.GOOGLE_GENERATIVE_AI_API_KEY, g2: process.env.GEMINI_API_KEY };
+    try {
+      process.env.ANTHROPIC_API_KEY = 'x'; delete process.env.OPENAI_API_KEY; delete process.env.GOOGLE_GENERATIVE_AI_API_KEY; delete process.env.GEMINI_API_KEY;
+      expect(requireProvider(null)).toBe('claude');
+      expect(requireProvider(undefined)).toBe('claude');
+      expect(() => requireProvider('chatgpt')).toThrow(ProviderUnavailableError);
+      expect(() => requireProvider('gemini')).toThrow(/Gemini kullanılamıyor/);
+      process.env.OPENAI_API_KEY = 'y'; process.env.GEMINI_API_KEY = 'z';
+      expect(requireProvider('chatgpt')).toBe('chatgpt');
+      expect(requireProvider('gemini')).toBe('gemini');
+    } finally {
+      for (const [k, v] of [['ANTHROPIC_API_KEY', keep.a], ['OPENAI_API_KEY', keep.o], ['GOOGLE_GENERATIVE_AI_API_KEY', keep.g], ['GEMINI_API_KEY', keep.g2]] as const) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+  });
+});

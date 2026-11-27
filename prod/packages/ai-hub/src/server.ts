@@ -20,6 +20,16 @@ const PRICE: Record<HubProvider, [number, number]> = { claude: [3, 15], chatgpt:
 export const hubCostUsd = (p: HubProvider, tokensIn: number, tokensOut: number) =>
   Math.round(((tokensIn * PRICE[p][0] + tokensOut * PRICE[p][1]) / 1_000_000) * 100000) / 100000;
 
+/** Elle seçilen sağlayıcıyı doğrular (ajan çalıştırmaları için; otomatik yönlendirme yok). Anahtarı olmayan sağlayıcı açık bir hatayla reddedilir — sessizce başka modele düşülmez. */
+export class ProviderUnavailableError extends Error {
+  constructor(public provider: HubProvider) { super(`${provider === 'chatgpt' ? 'ChatGPT' : provider === 'gemini' ? 'Gemini' : 'Claude'} kullanılamıyor: sağlayıcı anahtarı tanımlı değil`); this.name = 'ProviderUnavailableError'; }
+}
+export function requireProvider(choice: HubProvider | null | undefined): HubProvider {
+  const p = choice ?? 'claude';
+  if (!availableProviders().includes(p)) throw new ProviderUnavailableError(p);
+  return p;
+}
+
 export interface HubCallResult { text: string; tokens_in: number; tokens_out: number; model: string }
 export interface HubCallArgs { provider: HubProvider; model: string; system: string; messages: HubMessage[]; maxTokens?: number; fetchImpl?: typeof fetch }
 

@@ -5,6 +5,8 @@ import type { AgentName, Project, Task } from '@jscore/contracts';
 import { agentRunBody } from '@jscore/core/agents/client';
 import { Empty, ErrorBox, Loading, PageHeader, Stat, Tabs, fmtTime, todayFor } from '@/components/ui';
 import { useCan, useSession } from '@/components/session';
+import { ProviderSelect, useProviders } from '@/components/provider-select';
+import type { HubProvider } from '@jscore/ai-hub';
 import {
   AGENCY_ROSTER, DIVISIONS, PERSONAS, agencyActivity, divisionOf, TEAM_MAX, TEAM_MIN, personaFor, personaForRun, searchRoster, toAgencyRun,
   type AgencyRole, type TeamPick, type AgencyRunView, type SeatActivity,
@@ -46,6 +48,8 @@ export default function AgencyOffice() {
   const [handoff, setHandoff] = useState(false);
   const [personaFilter, setPersonaFilter] = useState('');
   const [personaPick, setPersonaPick] = useState('');
+  const providers = useProviders();
+  const [provider, setProvider] = useState<HubProvider>('claude');
 
   // Otomatik ekip: açıklamadan önerilen roller (çalıştırma ayrı ve onaylıdır).
   const [teamDesc, setTeamDesc] = useState('');
@@ -125,7 +129,7 @@ export default function AgencyOffice() {
     try {
       const body = await agentRunBody(repo, todayFor(mode), { agent: r.slug, input: {} });
       const extra = 'demo_spend_usd' in body ? { demo_spend_usd: body.demo_spend_usd, demo_cap_usd: body.demo_cap_usd } : {};
-      const res = await fetch('/api/agency/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: r.slug, persona: o ? null : personaPick || null, project_id: pid, task_id: tid, brief: o ? o.brief : brief, ...extra }) });
+      const res = await fetch('/api/agency/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: r.slug, persona: o ? null : personaPick || null, project_id: pid, task_id: tid, brief: o ? o.brief : brief, provider, ...extra }) });
       const j = await res.json() as { run?: RawRun & { trigger: string; model: string; tokens_in: number; tokens_out: number; latency_ms: number }; error?: string };
       if (!res.ok || !j.run) throw new Error(j.error ?? 'Rol çalıştırılamadı');
       // Demo'da sunucu durumsuz: satırı tarayıcıdaki depoya biz yazarız.
@@ -144,7 +148,7 @@ export default function AgencyOffice() {
     try {
       const body = await agentRunBody(repo, todayFor(mode), { agent: 'team-builder', input: {} });
       const extra = 'demo_spend_usd' in body ? { demo_spend_usd: body.demo_spend_usd, demo_cap_usd: body.demo_cap_usd } : {};
-      const res = await fetch('/api/agency/team', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ description: teamDesc, project_id: teamProject || null, size: teamSize, ...extra }) });
+      const res = await fetch('/api/agency/team', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ description: teamDesc, project_id: teamProject || null, size: teamSize, provider, ...extra }) });
       const j = await res.json() as { team?: TeamPick[]; method?: 'model' | 'rules'; note?: string; error?: string };
       if (!res.ok || !j.team) throw new Error(j.error ?? 'Ekip önerilemedi');
       setTeam(j.team.filter((t) => roles.has(t.slug)).map((t) => ({ ...t, on: true, state: 'idle' as const })));
@@ -219,6 +223,7 @@ export default function AgencyOffice() {
               <select id="team-size" className="input" value={teamSize} onChange={(e) => setTeamSize(Number(e.target.value))}>
                 {Array.from({ length: TEAM_MAX - TEAM_MIN + 1 }, (_, i) => TEAM_MIN + i).map((n) => <option key={n} value={n}>{n} rol</option>)}
               </select></div>
+            <ProviderSelect id="team-provider" value={provider} onChange={setProvider} providers={providers} disabled={teamBusy !== ''} />
             <button type="button" className="btn btn-primary" disabled={!canRun || teamBusy !== '' || teamDesc.trim().length < 20} onClick={() => void suggestTeam()}>{teamBusy === 'suggest' ? 'Ekip seçiliyor…' : team ? 'Yeniden öner' : 'Ekip öner'}</button>
           </div>
         </div>
@@ -252,7 +257,7 @@ export default function AgencyOffice() {
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <button type="button" className="btn btn-primary" disabled={!canRun || teamBusy !== '' || teamOn === 0} onClick={() => void runTeam()}>{teamBusy === 'run' ? 'Ekip çalışıyor…' : `Seçili ${teamOn} rolü çalıştır`}</button>
               <button type="button" className="btn btn-ghost" disabled={teamBusy !== ''} onClick={clearTeam}>Ekibi temizle</button>
-              <p className="text-xs text-muted">Her rol ayrı bir model çağrısıdır ve bütçeden düşer; roller sırayla çalışır.</p>
+              <p className="text-xs text-muted">Her rol ayrı bir model çağrısıdır ve bütçeden düşer; roller seçili modelle sırayla çalışır.</p>
             </div>
           </div>
         )}
@@ -349,6 +354,7 @@ export default function AgencyOffice() {
                     <option value="">Görev seçme</option>
                     {tasks.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
                   </select></div>}
+                <ProviderSelect id="ag-provider" value={provider} onChange={setProvider} providers={providers} />
                 <div><label className="label" htmlFor="ag-brief">Ne yapsın?</label>
                   <textarea id="ag-brief" className="input" rows={4} required minLength={3} maxLength={4000} placeholder="Örn. Lansman için üç farklı reklam metni yaz; hedef kitle 25-34 yaş." value={brief} onChange={(e) => setBrief(e.target.value)} /></div>
                 {runErr && <ErrorBox message={runErr} />}

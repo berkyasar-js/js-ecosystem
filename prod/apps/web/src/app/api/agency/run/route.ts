@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import type { AgentName } from '@jscore/contracts';
 import { enforceAgentCap } from '@jscore/core/agents/cap';
@@ -10,6 +9,8 @@ import { SupabaseRepo } from '@jscore/core/repo/supabase';
 import { createAdmin } from '@jscore/core/supabase/admin';
 import { agencyAgentId, agencyRole, demoAgencyOutput, personaById } from '@jscore/agents';
 import { agencyPrompt, agencySystemPrompt, assertAgencyAccess } from '@jscore/agents/server';
+import { HUB_PROVIDERS } from '@jscore/ai-hub';
+import { ProviderUnavailableError, callProvider, hubCostUsd, hubModel, requireProvider } from '@jscore/ai-hub/server';
 
 export const maxDuration = 120;
 const FALLBACK_MODEL = 'claude-sonnet-4-5';
@@ -20,6 +21,8 @@ const bodySchema = z.object({
   project_id: z.string().max(80).nullable().optional(),
   task_id: z.string().max(80).nullable().optional(),
   brief: z.string().trim().min(3).max(4000),
+  /** Rolü çalıştıracak model sağlayıcısı; verilmezse Claude. */
+  provider: z.enum(HUB_PROVIDERS).nullable().optional(),
   demo_spend_usd: z.number().min(0).optional(),
   demo_cap_usd: z.number().min(0).optional(),
 });
@@ -49,9 +52,10 @@ export async function POST(req: Request) {
     await enforceAgentCap({ repo, spendRepo: admin ? new SupabaseRepo(admin, me.org_id) : undefined, agent, spendOverrideUsd: body.demo_spend_usd, capOverrideUsd: body.demo_cap_usd });
 
     if (body.persona && !personaById(body.persona)) return json({ error: 'Tipleme bulunamadı' }, 404);
-    const input = { project_id: project?.id ?? null, task_id: task?.id ?? null, brief: body.brief, by: me.name, role: role.name, persona: body.persona ?? null, department };
+    const input = { project_id: project?.id ?? null, task_id: task?.id ?? null, brief: body.brief, by: me.name, role: role.name, persona: body.persona ?? null, department, provider: body.provider ?? 'claude' };
     const key = process.env.ANTHROPIC_API_KEY;
-    if (repo.mode === 'demo' || !key) {
+    // Anahtarsız kurulumda Claude demo çıktısına düşer; ChatGPT / Gemini açıkça seçildiyse aşağıda anahtar denetlenir.
+    if (repo.mode === 'demo' || (!key && (body.provider ?? 'claude') === 'claude')) {
       const text = demoAgencyOutput(role, body.brief, project?.name ?? null);
       const run = { agent: agent as AgentName, trigger: 'agency', input, output: { text }, model: 'demo', tokens_in: 0, tokens_out: 0, cost_usd: 0, latency_ms: 0, status: 'demo' as const };
       // Demo'da sunucu durumsuzdur: istemci kendi DemoRepo'suna yazar. Supabase'de (anahtar yoksa) satır burada yazılır.
@@ -60,18 +64,14 @@ export async function POST(req: Request) {
     }
 
     const settings = await repo.getSettings();
-    const model = settings.ai.default_model || FALLBACK_MODEL;
-    const client = new Anthropic({ apiKey: key });
+    const provider = requireProvider(body.provider);
+    const model = hubModel(provider, settings.ai.default_model || FALLBACK_MODEL);
     const t0 = Date.now();
     const base = { agent: agent as AgentName, trigger: 'agency', input, model };
     try {
-      const res = await client.messages.create({
-        model, max_tokens: 1500,
-        system: agencySystemPrompt(prompt, { project: project?.name ?? null, task: task?.title ?? null }),
-        messages: [{ role: 'user', content: body.brief }],
-      });
-      const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim();
-      const run = { ...base, output: { text }, tokens_in: res.usage.input_tokens, tokens_out: res.usage.output_tokens, cost_usd: costUsd(model, res.usage.input_tokens, res.usage.output_tokens), latency_ms: Date.now() - t0, status: 'ok' as const };
+      const res = await callProvider({ provider, model, maxTokens: 1500, system: agencySystemPrompt(prompt, { project: project?.name ?? null, task: task?.title ?? null }), messages: [{ role: 'user', content: body.brief }] });
+      const text = res.text;
+      const run = { ...base, output: { text }, tokens_in: res.tokens_in, tokens_out: res.tokens_out, cost_usd: provider === 'claude' ? costUsd(model, res.tokens_in, res.tokens_out) : hubCostUsd(provider, res.tokens_in, res.tokens_out), latency_ms: Date.now() - t0, status: 'ok' as const };
       await repo.logAgentRun(run);
       return json({ mode: 'ok', run });
     } catch (e) {
@@ -79,5 +79,8 @@ export async function POST(req: Request) {
       await repo.logAgentRun({ ...base, output: { text: '', error: message.slice(0, 500) }, tokens_in: 0, tokens_out: 0, cost_usd: 0, latency_ms: Date.now() - t0, status: 'error' }).catch(() => {});
       return json({ error: `Rol çalıştırılamadı: ${message}` }, 502);
     }
-  } catch (e) { return fail(e); }
+  } catch (e) {
+    if (e instanceof ProviderUnavailableError) return json({ error: e.message, code: 'provider_unavailable' }, 400);
+    return fail(e);
+  }
 }

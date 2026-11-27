@@ -13,6 +13,8 @@ export const teamRequestSchema = z.object({
   description: z.string().trim().min(20, 'Proje açıklaması en az 20 karakter olmalı').max(4000),
   project_id: z.string().max(80).nullable().optional(),
   size: z.number().int().min(TEAM_MIN).max(TEAM_MAX).default(5),
+  /** Ekibi seçecek model sağlayıcısı; verilmezse Claude. */
+  provider: z.enum(['claude', 'chatgpt', 'gemini']).nullable().optional(),
   demo_spend_usd: z.number().min(0).optional(), demo_cap_usd: z.number().min(0).optional(),
 });
 

@@ -3,12 +3,13 @@ import { personalAgentPrompt } from '@jscore/contracts';
 import { fail, json } from '@jscore/core/api';
 import { getRepo } from '@jscore/core/repo';
 import { agencyPrompt } from '@jscore/agents/server';
-import { DepartmentQuotaError } from '@jscore/ai-hub';
+import { DepartmentQuotaError, HUB_PROVIDERS } from '@jscore/ai-hub';
+import { ProviderUnavailableError } from '@jscore/ai-hub/server';
 import { callModel, demoAgentSchema, enforceBudgets, loadAgent, logRun, personalAgentAccess } from '@/lib/personal-agents-server';
 
 export const maxDuration = 120;
 const bodySchema = z.object({
-  agent_id: z.string().min(1).max(80), brief: z.string().trim().min(3).max(4000), project_id: z.string().max(80).nullable().optional(),
+  agent_id: z.string().min(1).max(80), brief: z.string().trim().min(3).max(4000), project_id: z.string().max(80).nullable().optional(), provider: z.enum(HUB_PROVIDERS).nullable().optional(),
   demo_agent: demoAgentSchema.optional(), demo_spend_usd: z.number().min(0).optional(), demo_cap_usd: z.number().min(0).optional(),
 });
 
@@ -25,13 +26,14 @@ export async function POST(req: Request) {
 
     const system = personalAgentPrompt({ name: loaded.agent.name, specialty: loaded.agent.specialty, ownerName: loaded.ownerName, basePrompt: loaded.agent.base_role ? agencyPrompt(loaded.agent.base_role) : null, version: loaded.version });
     const user = project ? `Proje: ${project.name}\n\n${body.brief}` : body.brief;
-    const input = { agent_id: loaded.agent.id, agent_name: loaded.agent.name, owner_employee_id: loaded.agent.owner_employee_id, version: loaded.version.version, department: loaded.department, by: me.name, project_id: project?.id ?? null, brief: body.brief };
+    const input = { agent_id: loaded.agent.id, agent_name: loaded.agent.name, owner_employee_id: loaded.agent.owner_employee_id, version: loaded.version.version, department: loaded.department, by: me.name, project_id: project?.id ?? null, brief: body.brief, provider: body.provider ?? 'claude' };
     const demoText = [`${loaded.agent.name} — demo çıktısı (gerçek model çağrısı yapılmadı)`, `Talimat sürümü: v${loaded.version.version}`, `Görev: ${body.brief.replace(/\s+/g, ' ').slice(0, 160)}`, '', '1. Kapsamı ve başarı ölçütünü netleştir.', '2. İlk taslağı üret, varsayımları listele.', '3. Onaya gönder.'].join('\n');
     try {
-      const call = await callModel(repo, settings, system, user, demoText);
+      const call = await callModel(repo, settings, system, user, demoText, 1500, body.provider ?? null);
       await logRun(repo, loaded.agent.id, 'personal', input, { text: call.text }, call);
       return json({ mode: call.mode, text: call.text, version: loaded.version.version, usage: call.usage, input });
     } catch (e) {
+      if (e instanceof ProviderUnavailableError) return json({ error: e.message, code: 'provider_unavailable' }, 400);
       const message = e instanceof Error ? e.message : 'Model çağrısı başarısız';
       await logRun(repo, loaded.agent.id, 'personal', input, {}, null, message);
       return json({ error: `Ajan çalıştırılamadı: ${message}` }, 502);

@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { activeVersion, canAccessModule, isClientRole, moduleEntitled, personalAgentRunId, type AgentName, type AgentVersion, type Me, type OrgSettings, type PersonalAgent } from '@jscore/contracts';
 import { enforceAgentCap } from '@jscore/core/agents/cap';
@@ -8,7 +7,8 @@ import { listManagedAgents } from '@jscore/core/personal-agents';
 import { ForbiddenError, NotFoundError, type Repo } from '@jscore/core/repo/types';
 import { SupabaseRepo } from '@jscore/core/repo/supabase';
 import { createAdmin } from '@jscore/core/supabase/admin';
-import { DepartmentQuotaError } from '@jscore/ai-hub';
+import { DepartmentQuotaError, type HubProvider } from '@jscore/ai-hub';
+import { callProvider, hubCostUsd, hubModel, requireProvider } from '@jscore/ai-hub/server';
 import { departmentQuota } from './ai-hub-server';
 
 const FALLBACK_MODEL = 'claude-sonnet-4-5';
@@ -57,15 +57,16 @@ export async function enforceBudgets(repo: Repo, me: Me, settings: OrgSettings, 
 }
 
 export interface ModelCall { text: string; mode: 'ok' | 'demo'; usage: { tokens_in: number; tokens_out: number; cost_usd: number; model: string; latency_ms: number } }
-/** Claude çağrısı; demo / anahtarsız modda `demoText` döner. Hata fırlatırsa çağıran kaydeder. */
-export async function callModel(repo: Repo, settings: OrgSettings, system: string, user: string, demoText: string, maxTokens = 1500): Promise<ModelCall> {
+/** Model çağrısı (varsayılan Claude; `choice` ile ChatGPT / Gemini). Demo ya da anahtarsız Claude'da `demoText` döner; anahtarı olmayan ChatGPT / Gemini açık hatayla reddedilir. Hata fırlatırsa çağıran kaydeder. */
+export async function callModel(repo: Repo, settings: OrgSettings, system: string, user: string, demoText: string, maxTokens = 1500, choice: HubProvider | null = null): Promise<ModelCall> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (repo.mode === 'demo' || !key) return { text: demoText, mode: 'demo', usage: { tokens_in: 0, tokens_out: 0, cost_usd: 0, model: 'demo', latency_ms: 0 } };
-  const model = settings.ai.default_model || FALLBACK_MODEL;
+  if (repo.mode === 'demo' || (!key && (choice ?? 'claude') === 'claude')) return { text: demoText, mode: 'demo', usage: { tokens_in: 0, tokens_out: 0, cost_usd: 0, model: 'demo', latency_ms: 0 } };
+  const provider = requireProvider(choice);
+  const model = hubModel(provider, settings.ai.default_model || FALLBACK_MODEL);
   const t0 = Date.now();
-  const res = await new Anthropic({ apiKey: key }).messages.create({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] });
-  const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim();
-  return { text, mode: 'ok', usage: { tokens_in: res.usage.input_tokens, tokens_out: res.usage.output_tokens, cost_usd: costUsd(model, res.usage.input_tokens, res.usage.output_tokens), model, latency_ms: Date.now() - t0 } };
+  const res = await callProvider({ provider, model, maxTokens, system, messages: [{ role: 'user', content: user }] });
+  const cost = provider === 'claude' ? costUsd(model, res.tokens_in, res.tokens_out) : hubCostUsd(provider, res.tokens_in, res.tokens_out);
+  return { text: res.text, mode: 'ok', usage: { tokens_in: res.tokens_in, tokens_out: res.tokens_out, cost_usd: cost, model, latency_ms: Date.now() - t0 } };
 }
 
 export async function logRun(repo: Repo, agentId: string, trigger: string, input: Record<string, unknown>, output: Record<string, unknown>, call: ModelCall | null, error?: string) {

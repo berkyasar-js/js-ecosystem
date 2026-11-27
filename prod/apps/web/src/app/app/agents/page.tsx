@@ -1,4 +1,6 @@
 'use client';
+import { ProviderSelect, useProviders } from '@/components/provider-select';
+import type { HubProvider } from '@jscore/ai-hub';
 import { useMemo, useState } from 'react';
 import {
   AGENT_STATUS, AGENT_STATUS_LABELS, VERSION_STATUS_LABELS, accessTier, activeVersion, lineDiff, pendingDrafts, personalAgentRunId, supervisedEmployees, versionLabel, versionText, versionsOf,
@@ -30,6 +32,8 @@ export default function MyAgents() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ owner: '', name: '', specialty: '', base_role: '', instructions: '', can: '', cannot: '', note: '' });
   const [brief, setBrief] = useState('');
+  const providers = useProviders();
+  const [provider, setProvider] = useState<HubProvider>('claude');
   const [projectId, setProjectId] = useState('');
   const [feedback, setFeedback] = useState('');
   const [result, setResult] = useState<{ agentId: string; text: string; demo: boolean; version: number } | null>(null);
@@ -65,7 +69,7 @@ export default function MyAgents() {
   async function run(d: Data, a: PersonalAgent, v: AgentVersion) {
     if (!repo) return;
     await act('run', async () => {
-      const res = await fetch('/api/agents/personal/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent_id: a.id, brief, project_id: projectId || null, ...(mode === 'demo' ? { demo_agent: demoPayload(d, a, v) } : {}), ...(await spend()) }) });
+      const res = await fetch('/api/agents/personal/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent_id: a.id, brief, project_id: projectId || null, provider, ...(mode === 'demo' ? { demo_agent: demoPayload(d, a, v) } : {}), ...(await spend()) }) });
       const j = await res.json() as { text?: string; mode?: string; version?: number; input?: Record<string, unknown>; error?: string };
       if (!res.ok || !j.text) throw new Error(j.error ?? 'Ajan çalıştırılamadı');
       if (mode === 'demo') await repo.logAgentRun({ agent: personalAgentRunId(a.id) as AgentName, trigger: 'personal', input: j.input ?? {}, output: { text: j.text }, model: 'demo', tokens_in: 0, tokens_out: 0, cost_usd: 0, latency_ms: 0, status: 'demo' });
@@ -163,6 +167,7 @@ export default function MyAgents() {
                       <form className="grid content-start gap-3" onSubmit={(e) => { e.preventDefault(); void run(d, agent, active); }}>
                         <h3 className="text-sm font-bold">Görev ver</h3>
                         <div><label className="label" htmlFor="ag-proj">Proje (isteğe bağlı)</label><select id="ag-proj" className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}><option value="">Projesiz</option>{d.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                        <ProviderSelect id="ag-model" value={provider} onChange={setProvider} providers={providers} />
                         <div><label className="label" htmlFor="ag-do">Ne yapsın?</label><textarea id="ag-do" className="input" rows={4} required minLength={3} maxLength={4000} value={brief} onChange={(e) => setBrief(e.target.value)} /></div>
                         <button className="btn btn-primary w-fit" disabled={!canRun || busy === 'run' || brief.trim().length < 3}>{busy === 'run' ? 'Çalışıyor…' : 'Çalıştır'}</button>
                         {mode === 'demo' && <p className="text-xs text-muted">Demo modunda gerçek model çağrısı yapılmaz.</p>}
