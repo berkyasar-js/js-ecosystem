@@ -4,7 +4,7 @@ import {
   DepartmentQuotaError, HUB_PROVIDERS, demoHubReply, departmentSpendUsd, hubAgentId, hubChatSchema, hubSystemPrompt, isHubAgent, quotaStatus, routeProvider, trimHistory,
   type HubContext, type HubMessage,
 } from '@jscore/ai-hub';
-import { callProvider, hubCostUsd, hubModel } from '@jscore/ai-hub/server';
+import { availableProviders, callProvider, GATEWAY_URL, hubCostUsd, hubModel } from '@jscore/ai-hub/server';
 
 const ctx: HubContext = { org: 'Jobs Studio', name: 'Seda', title: 'Art Director', roleLabel: 'Creative', tierLabel: 'Ekip Üyesi', department: 'Kreatif', brands: ['Anova', 'Wellana'], projects: ['Anova · Lansman filmi'] };
 const ALL = [...HUB_PROVIDERS];
@@ -115,6 +115,22 @@ describe('AI Çalışma Alanı — sağlayıcı çağrıları (ağ taklidi)', ()
     delete process.env.OPENAI_API_KEY;
     await expect(callProvider({ provider: 'chatgpt', model: 'x', system: sys, messages })).rejects.toThrow('anahtarı tanımlı değil');
     expect(hubCostUsd('claude', 1_000_000, 0)).toBe(3);
+  });
+  it('anahtar yoksa Vercel üzerinde AI Gateway yedeği: sağlayıcı ön ekli model, Bearer token, OpenAI biçimi', async () => {
+    process.env.AI_GATEWAY_API_KEY = 'gw-test';
+    expect(availableProviders()).toEqual(expect.arrayContaining(['chatgpt', 'gemini']));
+    expect(hubModel('chatgpt', 'c')).toBe('openai/gpt-4o');
+    expect(hubModel('gemini', 'c')).toBe('google/gemini-2.5-flash');
+    let seen: { url: string; init: RequestInit } | null = null;
+    const fetchImpl = (async (url: string, init: RequestInit) => { seen = { url, init }; return new Response(JSON.stringify({ choices: [{ message: { content: 'gw' } }], usage: { prompt_tokens: 4, completion_tokens: 2 } }), { status: 200 }); }) as unknown as typeof fetch;
+    const r = await callProvider({ provider: 'gemini', model: hubModel('gemini', 'c'), system: sys, messages, fetchImpl });
+    expect(r).toMatchObject({ text: 'gw', tokens_in: 4, tokens_out: 2, model: 'google/gemini-2.5-flash' });
+    expect(seen!.url).toBe(GATEWAY_URL);
+    expect((seen!.init.headers as Record<string, string>).authorization).toBe('Bearer gw-test');
+    expect(JSON.parse(String(seen!.init.body)).messages[0]).toEqual({ role: 'system', content: sys });
+    process.env.AI_HUB_GATEWAY = 'off';
+    expect(availableProviders()).not.toContain('chatgpt');
+    delete process.env.AI_HUB_GATEWAY; delete process.env.AI_GATEWAY_API_KEY;
   });
 });
 
